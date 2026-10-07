@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Widget demo</title>
+<meta name="color-scheme" content="dark light">
+<style>
+  :root { --bg:#f6f7f9; --fg:#1b2430; --muted:#5b6675; --card:#fff; --line:#dfe4ea; --accent:#f28c28 }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111418; --fg:#e8ecf1; --muted:#9aa5b1; --card:#171b21; --line:#2a313a } }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif }
+  .app { display:grid; grid-template-columns:260px 1fr; min-height:100vh }
+  nav { background:var(--card); border-right:1px solid var(--line); padding:20px }
+  nav h1 { font-size:15px; margin:0 0 14px } nav a { display:block; color:var(--muted); padding:7px 0; text-decoration:none } nav a.on { color:var(--fg); font-weight:600 }
+  main { padding:24px; display:grid; grid-template-columns:1fr 440px; gap:24px; align-items:start }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:16px }
+  h2 { font-size:14px; margin:0 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em }
+  pre { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:12.5px; overflow:auto; max-height:260px; margin:0 }
+  button { font:inherit; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); cursor:pointer } button.primary { background:var(--accent); border-color:var(--accent); color:#1a1208; font-weight:600 }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px }
+  .muted { color:var(--muted); font-size:13px }
+  deep-assistant#panel { height:560px; display:block }
+  @media (max-width:1000px) { .app { grid-template-columns:1fr } nav { display:none } main { grid-template-columns:1fr } }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav><h1>Sample application</h1><a class="on" href="#">Dashboard</a><a href="#">Datasets</a><a href="#">Reports</a><a href="#">Settings</a></nav>
+  <main>
+    <div>
+      <div class="card">
+        <h2>Embedded panel · anonymous visitor</h2>
+        <p class="muted">The component fills whatever box you give it and inherits your app's font. This instance has no token, so it behaves like the public website chat.</p>
+        <deep-assistant id="panel" api="" mode="panel" theme="auto"></deep-assistant>
+      </div>
+      <div class="card">
+        <h2>Floating launcher · signed-in user</h2>
+        <p class="muted">Bottom-right "ask" button. This instance carries a token minted by the server for a sample user, so the assistant greets them by name and books without asking for name or email.</p>
+        <div class="row"><button id="open" class="primary">Open the launcher</button><button id="ask">Ask it a question programmatically</button><button id="theme">Toggle theme</button><span class="muted" id="who"></span></div>
+        <deep-assistant id="launcher" api="" mode="launcher" theme="auto" suggestions="What does Lake B2B do?|Book a call with Deep|Which companies are in Champions Group?"></deep-assistant>
+      </div>
+    </div>
+    <div>
+      <div class="card"><h2>Events received by the host page</h2><pre id="events">(none yet)</pre></div>
+      <div class="card"><h2>How it's embedded</h2><pre>&lt;script type="module" src="/static/deep-assistant.js"&gt;&lt;/script&gt;
+
+&lt;deep-assistant api="https://assistant.example.com"
+                mode="launcher" theme="auto"
+                token="…minted by your backend…"&gt;
+&lt;/deep-assistant&gt;
+
+el.addEventListener('deep-assistant:booking', e =&gt; …)
+el.ask('What does Lake B2B do?')</pre></div>
+    </div>
+  </main>
+</div>
+<script type="module">
+  import './static/deep-assistant.js';
+  const api = location.origin;
+  const panel = document.getElementById('panel'), launcher = document.getElementById('launcher'), log = document.getElementById('events');
+  panel.setAttribute('api', api); launcher.setAttribute('api', api);
+  const lines = [];
+  for (const n of ['ready', 'open', 'close', 'question', 'answer', 'sources', 'booking', 'handover', 'feedback', 'error']) {
+    document.addEventListener('deep-assistant:' + n, (e) => { const d = { ...e.detail }; if (d.answer) d.answer = d.answer.slice(0, 60) + '…';
+      lines.unshift(`${new Date().toLocaleTimeString()}  ${e.target.id}  ${n}  ${JSON.stringify(d)}`); log.textContent = lines.slice(0, 30).join('\n'); });
+  }
+  fetch(api + '/demo/token').then(r => r.ok ? r.json() : null).then(d => { if (d && d.token) { launcher.setToken(d.token); document.getElementById('who').textContent = d.note || 'launcher token: Ada Lovelace (sample)'; } }).catch(() => {});
+  document.getElementById('open').onclick = () => launcher.open();
+  document.getElementById('ask').onclick = () => { launcher.open(); launcher.ask('What did Deep ship this week?'); };
+  document.getElementById('theme').onclick = () => { const next = panel.getAttribute('theme') === 'light' ? 'dark' : 'light'; panel.setAttribute('theme', next); launcher.setAttribute('theme', next); };
+</script>
+</body>
+</html>

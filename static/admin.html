@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0e1311; --panel:#141b18; --panel-2:#1b2420; --line:#27332d; --line-strong:#3a4a41; --text:#e6ece8; --muted:#9aa8a0; --scan:#8fd3a3; --beam:#f28c28; --beam-text:#f6a94f; --danger:#e8907f; --on-beam:#1a1208 }
+  :root[data-theme="light"] { --bg:#f2f5f1; --panel:#fbfcfa; --panel-2:#e9eeea; --line:#d3dcd5; --line-strong:#aebbb2; --text:#182019; --muted:#5c6b62; --scan:#257a4d; --beam:#f28c28; --beam-text:#a94c12; --danger:#b4452f; --on-beam:#1a1208 }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--text); font:400 15px/1.5 "IBM Plex Sans", system-ui, sans-serif }
+  .mono { font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase }
+  a { color:var(--beam-text) }
+  header { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid var(--line); background:var(--panel); flex-wrap:wrap }
+  header h1 { font-size:16px; margin:0; font-weight:600 } header h1 span { color:var(--scan); font-family:"IBM Plex Mono", monospace; font-weight:500 }
+  header .right { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+  input, select, textarea, button { font:inherit; color:inherit }
+  input, select, textarea { padding:7px 10px; border:1px solid var(--line-strong); border-radius:4px; background:var(--bg); color:var(--text) }
+  textarea { width:100%; min-height:160px; resize:vertical; line-height:1.5 }
+  .btn { padding:7px 12px; border:1px solid var(--line-strong); border-radius:4px; background:var(--panel); cursor:pointer; min-height:36px }
+  .btn:hover { border-color:var(--scan) } .btn.primary { background:var(--beam); border-color:var(--beam); color:var(--on-beam); font-weight:600 } .btn.danger { color:var(--danger) }
+  .btn:disabled { opacity:.5; cursor:default }
+  nav { display:flex; gap:2px; padding:0 20px; border-bottom:1px solid var(--line); background:var(--panel); overflow-x:auto }
+  nav button { background:transparent; border:0; border-bottom:2px solid transparent; padding:10px 14px; color:var(--muted); cursor:pointer; white-space:nowrap }
+  nav button.on { color:var(--text); border-bottom-color:var(--scan) }
+  main { padding:18px 20px 40px; max-width:1400px }
+  .pane { display:none } .pane.on { display:block }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; margin-bottom:18px }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:12px 14px }
+  .tile small { display:block; color:var(--muted) } .tile .n { font-size:24px; font-weight:600; color:var(--scan); line-height:1.2 } .tile .sub { color:var(--muted); font-size:12px }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:18px } @media (max-width:900px) { .grid2 { grid-template-columns:1fr } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:14px 16px; margin-bottom:18px }
+  .card h2 { margin:0 0 10px; font-size:13px; color:var(--muted); font-weight:500 }
+  .bars { display:flex; align-items:flex-end; gap:4px; height:90px } .bars div { flex:1; background:var(--line-strong); position:relative; min-width:6px } .bars div i { position:absolute; left:0; right:0; bottom:0; background:var(--scan) }
+  .bars div:hover::after { content:attr(data-t); position:absolute; bottom:100%; left:0; background:var(--panel-2); border:1px solid var(--line); padding:3px 6px; font-size:11px; white-space:nowrap; z-index:2 }
+  .chips { display:flex; flex-wrap:wrap; gap:6px } .chip { background:var(--panel-2); border:1px solid var(--line); border-radius:999px; padding:3px 10px; font-size:12px } .chip b { color:var(--scan) }
+  .wrap { overflow-x:auto } table { border-collapse:collapse; width:100%; font-size:13px }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top } th { color:var(--muted); font-weight:500; white-space:nowrap }
+  tr.click { cursor:pointer } tr.click:hover td { background:var(--panel-2) }
+  .muted { color:var(--muted) } .ok { color:var(--scan) } .bad { color:var(--danger) } .warn { color:var(--beam-text) }
+  .ell { max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .tx { display:flex; flex-direction:column; gap:10px; max-width:860px }
+  .m { padding:10px 12px; border:1px solid var(--line); border-radius:6px; background:var(--panel); max-width:85%; white-space:pre-wrap }
+  .m.user { align-self:flex-end; background:var(--panel-2) } .m .meta { color:var(--muted); font-size:11px; margin-bottom:4px }
+  .back { margin-bottom:10px }
+  form.inline { display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:start } form.inline textarea { min-height:80px } form.inline .full { grid-column:1 / -1 }
+  @media (max-width:700px) { form.inline { grid-template-columns:1fr } }
+  .status { color:var(--muted); font-size:13px }
+  .pv { white-space:pre-wrap; font:13px/1.5 "IBM Plex Mono", monospace; margin:0; color:var(--text) } .pv b { color:var(--scan) }
+  #tplform label { display:flex; flex-direction:column; gap:4px } #tplform label input[type=checkbox] { width:auto } #tplform label:has(input[type=checkbox]) { flex-direction:row; align-items:center; gap:8px; font:inherit; text-transform:none; letter-spacing:0; color:var(--text) }
+</style>
+</head>
+<body>
+<header>
+  <h1>ask <span>deep &gt;_</span> console</h1>
+  <div class="right">
+    <input id="token" type="password" placeholder="admin token" size="26">
+    <select id="days"><option value="1">today</option><option value="7" selected>7 days</option><option value="30">30 days</option><option value="90">90 days</option></select>
+    <button class="btn" id="go">Load</button>
+    <button class="btn" id="theme" title="Theme">◐</button>
+    <span class="status" id="status"></span>
+  </div>
+</header>
+<nav>
+  <button data-pane="overview" class="on">Overview</button><button data-pane="convos">Conversations</button><button data-pane="gaps">Gaps</button>
+  <button data-pane="sessions">Sessions</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="emails">Emails</button>
+</nav>
+<main>
+  <section class="pane on" id="overview">
+    <div class="tiles" id="tiles"></div>
+    <div class="grid2">
+      <div class="card"><h2>Conversations per day · resolved (green) vs refused</h2><div class="bars" id="daily"></div></div>
+      <div class="card"><h2>Most asked</h2><div id="top" class="chips"></div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h2>Weekly digest · emailed to the host every Monday 09:00 <button class="btn" type="button" id="digest-send" style="float:right">email it now</button></h2><pre class="pv" id="digest-pv"></pre><p class="status" id="digest-status"></p></div>
+      <div class="card"><h2>Suggested questions · live on the widget <button class="btn" type="button" id="sugg-refresh" style="float:right">refresh</button></h2><div id="sugg" class="chips"></div><p class="muted" id="sugg-note" style="font-size:13px"></p></div>
+    </div>
+  </section>
+  <section class="pane" id="convos">
+    <div id="convo-list" class="wrap"></div>
+    <div id="convo-view" style="display:none"><button class="btn back" id="back">← all conversations</button><div id="convo-head" class="card"></div><div class="tx" id="tx"></div></div>
+  </section>
+  <section class="pane" id="gaps">
+    <div class="grid2">
+      <div class="card"><h2>Questions the assistant could not answer</h2><p class="muted" style="margin:0 0 10px;font-size:13px">Add the missing information to the site, or write a custom answer for it.</p><div class="wrap" id="unanswered"></div></div>
+      <div class="card"><h2>Answers marked "not helpful"</h2><div class="wrap" id="down"></div></div>
+    </div>
+  </section>
+  <section class="pane" id="sessions">
+    <div id="sess-summary" class="chips" style="margin-bottom:12px"></div>
+    <div class="wrap"><table id="sess"><thead><tr><th>when</th><th>where</th><th>network</th><th>channel</th><th>came from</th><th>landing page</th><th>visitor</th><th>msgs</th><th>leads</th><th>ip</th></tr></thead><tbody></tbody></table></div>
+  </section>
+  <section class="pane" id="guidance">
+    <div class="card">
+      <h2>Guidance for the assistant (applies within the fixed rules: cite only, no outside knowledge, anonymity)</h2>
+      <textarea id="gtext" placeholder="Examples:&#10;- Suggest the discovery call for first contact; the GTM session only for people planning a data or AI programme.&#10;- When asked about pricing, say pricing is discussed on a call and offer to book one.&#10;- Keep a warm, direct tone. Never use exclamation marks."></textarea>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:8px"><button class="btn primary" id="gsave">Save guidance</button><span class="status" id="gstatus"></span></div>
+    </div>
+  </section>
+  <section class="pane" id="answers">
+    <div class="card">
+      <h2>Add a custom answer · fires when a visitor's question is close to yours (no model involved)</h2>
+      <form class="inline" id="caform">
+        <input name="question" placeholder="Question, as a visitor would ask it" maxlength="500" required>
+        <input name="link" placeholder="Optional link to show as the source" maxlength="500">
+        <textarea name="answer" class="full" placeholder="The exact answer to give" maxlength="3000" required></textarea>
+        <div class="full" style="display:flex;gap:10px;align-items:center"><button class="btn primary" type="submit">Add</button><span class="status" id="castatus"></span></div>
+      </form>
+    </div>
+    <div class="wrap"><table id="catable"><thead><tr><th>question</th><th>answer</th><th>link</th><th>hits</th><th>on</th><th></th></tr></thead><tbody></tbody></table></div>
+  </section>
+  <section class="pane" id="emails">
+    <div class="card">
+      <h2>Variables you can use in any subject or body</h2>
+      <div class="chips" id="vars"></div>
+      <p class="muted" style="margin:10px 0 0;font-size:13px"><b>{brand}</b> comes from the brand map below: the first keyword found in the call type's name wins, otherwise the default brand. Empty fields fall back to the built-in text. Previews on the right use a sample booking and update as you type.</p>
+    </div>
+    <div class="grid2">
+      <div>
+        <form id="tplform" class="card" style="display:flex;flex-direction:column;gap:10px">
+          <h2>Brand</h2>
+          <label class="mono muted">default brand<input name="brand_default" placeholder="Champions Group" style="width:100%"></label>
+          <label class="mono muted">host name (signs the visitor emails)<input name="host_name" placeholder="Deep" style="width:100%"></label>
+          <label class="mono muted">brand map · one per line · keyword=Brand<textarea name="brand_map" style="min-height:110px"></textarea></label>
+          <h2>Host brief (to {host_email})</h2>
+          <label class="mono muted">subject<input name="host_subject" style="width:100%"></label>
+          <label class="mono muted">body<textarea name="host_body" style="min-height:200px"></textarea></label>
+          <h2>Visitor confirmation after a booking step</h2>
+          <label><input type="checkbox" name="visitor_booking_enabled"> send this email</label>
+          <label class="mono muted">subject<input name="visitor_booking_subject" style="width:100%"></label>
+          <label class="mono muted">body<textarea name="visitor_booking_body" style="min-height:220px"></textarea></label>
+          <h2>Visitor acknowledgement after asking for a human</h2>
+          <label><input type="checkbox" name="visitor_handover_enabled"> send this email</label>
+          <label class="mono muted">subject<input name="visitor_handover_subject" style="width:100%"></label>
+          <label class="mono muted">body<textarea name="visitor_handover_body" style="min-height:160px"></textarea></label>
+          <h2>Visitor confirmation after booking in the chat (carries the .ics invite)</h2>
+          <label><input type="checkbox" name="visitor_confirmed_enabled"> send this email</label>
+          <label class="mono muted">subject<input name="visitor_confirmed_subject" style="width:100%"></label>
+          <label class="mono muted">body<textarea name="visitor_confirmed_body" style="min-height:220px"></textarea></label>
+          <h2>Host "New booking" after a booking in the chat</h2>
+          <label class="mono muted">subject<input name="host_booking_subject" style="width:100%"></label>
+          <label class="mono muted">body<textarea name="host_booking_body" style="min-height:200px"></textarea></label>
+          <h2>Visitor reminder when a Zoom hand-off is still unconfirmed after 24 h</h2>
+          <label><input type="checkbox" name="visitor_nudge_enabled"> send this email (once per lead; "mark confirmed" on a conversation stops it)</label>
+          <label class="mono muted">subject<input name="visitor_nudge_subject" style="width:100%"></label>
+          <label class="mono muted">body<textarea name="visitor_nudge_body" style="min-height:180px"></textarea></label>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn primary" type="submit">Save templates</button>
+            <button class="btn" type="button" id="tplreset">Reset all to defaults</button>
+            <span class="status" id="tplstatus"></span>
+          </div>
+        </form>
+      </div>
+      <div>
+        <div class="card"><h2>Preview · host brief <button class="btn" type="button" data-test="host" style="float:right">send test</button></h2><pre class="pv" id="pv-host"></pre></div>
+        <div class="card"><h2>Preview · visitor booking <button class="btn" type="button" data-test="visitor_booking" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_booking"></pre></div>
+        <div class="card"><h2>Preview · visitor hand-over <button class="btn" type="button" data-test="visitor_handover" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_handover"></pre></div>
+        <div class="card"><h2>Preview · visitor reminder <button class="btn" type="button" data-test="visitor_nudge" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_nudge"></pre></div>
+        <div class="card"><h2>Preview · visitor booking confirmation (chat) <button class="btn" type="button" data-test="visitor_confirmed" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_confirmed"></pre></div>
+        <div class="card"><h2>Preview · host new booking (chat) <button class="btn" type="button" data-test="host_booking" style="float:right">send test</button></h2><pre class="pv" id="pv-host_booking"></pre></div>
+        <p class="status" id="teststatus"></p>
+      </div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = ts => ts ? new Date(ts).toLocaleString(undefined, { month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+const pct = x => x == null ? '—' : Math.round(x * 100) + '%';
+try { $('token').value = sessionStorage.getItem('dh_admin') || ''; const t = localStorage.getItem('dh_theme'); if (t) document.documentElement.dataset.theme = t; } catch {}
+$('theme').onclick = () => { const n = (document.documentElement.dataset.theme || 'dark') === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = n; try { localStorage.setItem('dh_theme', n); } catch {} };
+const H = () => ({ 'X-Admin-Token': $('token').value.trim(), 'Content-Type': 'application/json' });
+async function api(path, opts) { const r = await fetch(path, { headers: H(), ...opts }); if (r.status === 403) throw new Error('wrong token (or ADMIN_TOKEN not set on the server)'); if (!r.ok) throw new Error('error ' + r.status); return r.json(); }
+const days = () => $('days').value;
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => { document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b)); document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === b.dataset.pane)); try { sessionStorage.setItem('dh_pane', b.dataset.pane); } catch {} });
+try { const p = sessionStorage.getItem('dh_pane'); if (p) document.querySelector(`nav button[data-pane="${p}"]`)?.click(); } catch {}
+
+async function loadOverview() {
+  const m = await api(`/admin/metrics?days=${days()}`);
+  $('tiles').innerHTML = [
+    ['conversations', m.conversations, `${m.questions} questions`], ['resolution rate', pct(m.resolution_rate), `${m.resolved} resolved · ${m.refused} refused`],
+    ['satisfaction', pct(m.csat.score), `${m.csat.up} up · ${m.csat.down} down`], ['bookings', m.bookings, `${m.enquiries} enquiries`],
+    ['hand-overs', m.handover_leads, `${m.handovers} requests`], ['custom answers used', m.custom, ''],
+    ['median answer time', m.median_latency_ms != null ? (m.median_latency_ms / 1000).toFixed(1) + ' s' : '—', ''], ['errors', m.errors, '']
+  ].map(([k, v, s]) => `<div class="tile"><small>${k}</small><div class="n">${v ?? 0}</div><div class="sub">${s}</div></div>`).join('');
+  const max = Math.max(1, ...m.daily.map(d => d.conversations));
+  $('daily').innerHTML = m.daily.map(d => `<div style="height:${Math.round(100 * d.conversations / max)}%" data-t="${d.day}: ${d.conversations} conversations, ${d.resolved} resolved, ${d.refused} refused"><i style="height:${d.conversations ? Math.round(100 * d.resolved / Math.max(d.resolved + d.refused, 1)) : 0}%"></i></div>`).join('') || '<span class="muted">no conversations yet</span>';
+  $('top').innerHTML = m.top_questions.map(q => `<span class="chip">${esc(q.question)} <b>${q.count}</b></span>`).join('') || '<span class="muted">nothing yet</span>';
+  const [dg, sg] = await Promise.all([api('/admin/digest?days=7'), api('/admin/suggestions')]);
+  $('digest-pv').innerHTML = `<b>Subject:</b> ${esc(dg.subject)}\n\n${esc(dg.body)}`;
+  $('sugg').innerHTML = sg.items.map(x => `<span class="chip">${esc(x)}</span>`).join('');
+  $('sugg-note').textContent = sg.asked.length ? `From ${sg.days} days of answered questions: ` + sg.asked.map(a => `"${a.question}" ×${a.count}`).join(', ')
+    : `No question has been asked ${sg.min_count || 2}+ times in the last ${sg.days} days yet, so the fixed defaults show.`;
+}
+$('digest-send').onclick = async () => { const b = $('digest-send'); b.disabled = true; $('digest-status').textContent = 'sending…';
+  try { const d = await api('/admin/digest/send?days=7', { method: 'POST' }); $('digest-status').textContent = d.ok ? `Sent to ${d.to}: "${d.subject}"` : 'Not sent: SMTP problem, see server log'; } catch (e) { $('digest-status').textContent = e.message; } finally { b.disabled = false; } };
+$('sugg-refresh').onclick = async () => { try { const sg = await api('/admin/suggestions?refresh=1'); $('sugg').innerHTML = sg.items.map(x => `<span class="chip">${esc(x)}</span>`).join(''); } catch (e) { $('status').textContent = e.message; } };
+async function loadConvos() {
+  const d = await api(`/admin/conversations?days=${days()}&limit=300`);
+  $('convo-view').style.display = 'none'; $('convo-list').style.display = '';
+  $('convo-list').innerHTML = `<table><thead><tr><th>last</th><th>first question</th><th>q</th><th>resolved</th><th>refused</th><th>hand-over</th><th>feedback</th><th>leads</th><th>where</th><th>channel</th></tr></thead><tbody>` +
+    d.items.map(c => `<tr class="click" data-sid="${esc(c.session_id)}"><td>${fmt(c.last)}</td><td class="ell">${esc(c.first_question || '')}</td><td>${c.questions}</td><td class="ok">${c.resolved || ''}</td><td class="bad">${c.refused || ''}</td><td class="warn">${c.handovers || ''}</td>
+      <td>${c.up ? `<span class="ok">▲${c.up}</span> ` : ''}${c.down ? `<span class="bad">▼${c.down}</span>` : ''}</td><td class="ok">${c.leads || ''}</td><td class="muted">${esc([c.city, c.country_code].filter(Boolean).join(', '))}</td><td class="muted">${esc(c.channel || '')}${c.referrer_host ? ' · ' + esc(c.referrer_host) : ''}</td></tr>`).join('') + '</tbody></table>';
+  if (!d.items.length) $('convo-list').innerHTML = '<p class="muted">No conversations in this period.</p>';
+  $('convo-list').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => openConvo(tr.dataset.sid));
+}
+async function openConvo(sid) {
+  const t = await api(`/admin/conversations/${encodeURIComponent(sid)}`);
+  $('convo-list').style.display = 'none'; $('convo-view').style.display = '';
+  const s = t.session || {};
+  $('convo-head').innerHTML = `<div class="mono muted">session ${esc(sid.slice(0, 8))}</div><div>${esc([s.city, s.region, s.country_code].filter(Boolean).join(', ') || 'location unknown')} · ${esc(s.channel || 'direct')}${s.referrer_host ? ' via ' + esc(s.referrer_host) : ''}${s.visits > 1 ? ' · returning (' + s.visits + ')' : ''}${s.client_tz ? ' · ' + esc(s.client_tz) : ''}</div>` +
+    (t.leads.length ? `<div style="margin-top:6px">${t.leads.map(l => `<span class="chip"><b>${esc(l.status)}</b> ${esc(l.name)} · ${esc(l.email)}${l.company ? ' · ' + esc(String(l.company).split(' · ')[0]) : ''}${l.slot_start ? ' · ' + fmt(l.slot_start) : ''}${l.confirmed_at ? ' · <span class="ok">confirmed</span>' : l.nudged_at ? ' · <span class="warn">reminded</span>' : ''}${l.status === 'handoff' && !l.confirmed_at ? ` <button class="btn" data-confirm="${l.id}" title="Zoom confirmation seen: no reminder email, counts as booked">mark confirmed</button>` : ''}</span>`).join(' ')}</div>` : '');
+  $('tx').innerHTML = t.messages.map(m => `<div class="m ${m.role === 'user' ? 'user' : ''}"><div class="meta mono">${m.role === 'user' ? 'visitor' : 'assistant'} · ${fmt(m.ts)}${m.outcome ? ' · ' + esc(m.outcome) : ''}${m.latency_ms ? ' · ' + (m.latency_ms / 1000).toFixed(1) + 's' : ''}${m.feedback === 1 ? ' · <span class="ok">▲ helpful</span>' : m.feedback === -1 ? ' · <span class="bad">▼ not helpful' + (m.feedback_note ? ': ' + esc(m.feedback_note) : '') + '</span>' : ''}</div>${esc(m.text)}${(m.sources || []).length ? `<div class="meta mono" style="margin-top:6px">sources: ${m.sources.map(x => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.url)}</a>`).join(' · ')}</div>` : ''}</div>`).join('');
+  $('convo-head').querySelectorAll('button[data-confirm]').forEach(b => b.onclick = async () => { b.disabled = true; try { await api(`/admin/leads/${b.dataset.confirm}/confirm`, { method: 'POST' }); openConvo(sid); } catch (e) { $('status').textContent = e.message; } });
+}
+$('back').onclick = loadConvos;
+async function loadGaps() {
+  const g = await api(`/admin/gaps?days=${Math.max(days(), 30)}`);
+  $('unanswered').innerHTML = g.unanswered.length ? `<table><thead><tr><th>question</th><th>times</th><th>last</th><th>why</th><th></th></tr></thead><tbody>` + g.unanswered.map(u => `<tr><td>${esc(u.question)}</td><td>${u.count}</td><td class="muted">${fmt(u.last)}</td><td class="muted">${esc(u.reason || '')}</td><td><button class="btn" data-q="${esc(u.question)}">write answer</button></td></tr>`).join('') + '</tbody></table>' : '<p class="muted">Nothing unanswered. Good.</p>';
+  $('unanswered').querySelectorAll('button[data-q]').forEach(b => b.onclick = () => { document.querySelector('nav button[data-pane="answers"]').click(); $('caform').question.value = b.dataset.q; $('caform').answer.focus(); });
+  $('down').innerHTML = g.thumbs_down.length ? `<table><thead><tr><th>question</th><th>answer</th><th>note</th><th>when</th></tr></thead><tbody>` + g.thumbs_down.map(d => `<tr class="click" data-sid="${esc(d.session_id)}"><td class="ell">${esc(d.question || '')}</td><td class="ell">${esc(d.answer)}</td><td class="muted">${esc(d.note || '')}</td><td class="muted">${fmt(d.ts)}</td></tr>`).join('') + '</tbody></table>' : '<p class="muted">No thumbs-down yet.</p>';
+  $('down').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { document.querySelector('nav button[data-pane="convos"]').click(); openConvo(tr.dataset.sid); });
+}
+async function loadSessions() {
+  const d = await api(`/admin/sessions?days=${days()}&limit=500`); const s = d.summary;
+  $('sess-summary').innerHTML = [`sessions <b>${s.sessions}</b>`, `visitors <b>${s.visitors}</b>`, `messages <b>${s.messages}</b>`, `leads <b>${s.leads}</b>`].map(x => `<span class="chip">${x}</span>`).join('') + s.countries.map(c => `<span class="chip">${esc(c.country)} <b>${c.sessions}</b></span>`).join('') + s.channels.map(c => `<span class="chip">${esc(c.channel)} <b>${c.sessions}</b></span>`).join('');
+  const tb = $('sess').querySelector('tbody'); tb.innerHTML = d.items.map(it => { let path = ''; try { path = it.page ? new URL(it.page).pathname : ''; } catch { path = it.page || ''; }
+    return `<tr class="click" data-sid="${esc(it.session_id)}"><td>${fmt(it.first_seen)}</td><td>${esc([it.city, it.region, it.country_code].filter(Boolean).join(', ')) || `<span class="muted">${esc(it.geo_status || '')}</span>`}</td><td class="muted ell">${esc(it.isp || '')}</td><td>${esc(it.channel || 'direct')}</td><td class="ell">${it.utm && it.utm.utm_source ? 'utm: ' + esc(it.utm.utm_source) + '/' + esc(it.utm.utm_medium || '-') : esc(it.referrer_host || 'direct')}</td><td class="muted ell">${esc(path)}</td><td class="muted">${it.visits > 1 ? 'returning (' + it.visits + ')' : (it.visitor_id ? 'new' : '-')}</td><td>${it.messages}</td><td class="ok">${it.leads || ''}</td><td class="muted">${esc(it.ip || '')}</td></tr>`; }).join('');
+  tb.querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { document.querySelector('nav button[data-pane="convos"]').click(); openConvo(tr.dataset.sid); });
+}
+async function loadGuidance() { const g = await api('/admin/guidance'); $('gtext').value = g.text || ''; $('gtext').maxLength = g.max_chars; }
+$('gsave').onclick = async () => { $('gstatus').textContent = 'saving…'; try { await api('/admin/guidance', { method: 'PUT', body: JSON.stringify({ text: $('gtext').value }) }); $('gstatus').textContent = 'saved · live within 30 s'; } catch (e) { $('gstatus').textContent = e.message; } };
+async function loadAnswers() {
+  const d = await api('/admin/custom-answers');
+  const tb = $('catable').querySelector('tbody'); tb.innerHTML = d.items.map(a => `<tr><td>${esc(a.question)}</td><td class="ell" title="${esc(a.answer)}">${esc(a.answer)}</td><td class="ell">${a.link ? `<a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.link)}</a>` : ''}</td><td>${a.hits}</td>
+    <td><input type="checkbox" data-id="${a.id}" ${a.enabled ? 'checked' : ''}></td><td><button class="btn danger" data-del="${a.id}">delete</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No custom answers yet.</td></tr>';
+  tb.querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = () => api(`/admin/custom-answers/${cb.dataset.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: cb.checked }) }));
+  tb.querySelectorAll('button[data-del]').forEach(b => b.onclick = async () => { await api(`/admin/custom-answers/${b.dataset.del}`, { method: 'DELETE' }); loadAnswers(); });
+}
+$('caform').onsubmit = async e => { e.preventDefault(); const f = e.target; $('castatus').textContent = 'adding…';
+  try { await api('/admin/custom-answers', { method: 'POST', body: JSON.stringify({ question: f.question.value.trim(), answer: f.answer.value.trim(), link: f.link.value.trim() || null }) }); f.reset(); $('castatus').textContent = 'added'; loadAnswers(); } catch (err) { $('castatus').textContent = err.message; } };
+
+// ---- email templates
+const TPL_KEYS = ['brand_default', 'host_name', 'brand_map', 'host_subject', 'host_body', 'visitor_booking_enabled', 'visitor_booking_subject', 'visitor_booking_body', 'visitor_handover_enabled', 'visitor_handover_subject', 'visitor_handover_body', 'visitor_nudge_enabled', 'visitor_nudge_subject', 'visitor_nudge_body', 'visitor_confirmed_enabled', 'visitor_confirmed_subject', 'visitor_confirmed_body', 'host_booking_subject', 'host_booking_body'];
+let tplDefaults = {};
+function tplValues() { const f = $('tplform'), out = {}; TPL_KEYS.forEach(k => { const el = f.elements[k]; out[k] = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value; }); return out; }
+function tplFill(t) { const f = $('tplform'); TPL_KEYS.forEach(k => { const el = f.elements[k]; if (el.type === 'checkbox') el.checked = /^(true|1|yes|on)$/i.test(t[k] || ''); else el.value = t[k] || ''; }); }
+function showPreviews(p) { for (const k of ['host', 'visitor_booking', 'visitor_handover', 'visitor_nudge', 'visitor_confirmed', 'host_booking']) { const x = p[k]; $('pv-' + k).innerHTML = `<b>Subject:</b> ${esc(x.subject)}\n\n${esc(x.body)}`; } }
+async function loadEmails() {
+  const d = await api('/admin/email-templates'); tplDefaults = d.defaults; tplFill(d.templates); showPreviews(d.previews);
+  $('vars').innerHTML = d.variables.map(v => `<span class="chip">{${v}}</span>`).join('');
+  $('teststatus').textContent = d.smtp_configured ? `Test emails go to ${d.host_email}.` : 'SMTP is not configured; emails are logged only.';
+}
+let pvTimer = null;
+$('tplform').addEventListener('input', () => { clearTimeout(pvTimer); pvTimer = setTimeout(async () => { try { const d = await api('/admin/email-templates/preview', { method: 'POST', body: JSON.stringify({ templates: tplValues() }) }); showPreviews(d.previews); } catch {} }, 400); });
+$('tplform').onsubmit = async e => { e.preventDefault(); $('tplstatus').textContent = 'saving…';
+  try { const d = await api('/admin/email-templates', { method: 'PUT', body: JSON.stringify({ templates: tplValues() }) }); tplFill(d.templates); showPreviews(d.previews); $('tplstatus').textContent = 'saved · live within 30 s'; } catch (err) { $('tplstatus').textContent = err.message; } };
+$('tplreset').onclick = async () => { const empty = {}; TPL_KEYS.forEach(k => empty[k] = ''); $('tplstatus').textContent = 'resetting…';
+  try { const d = await api('/admin/email-templates', { method: 'PUT', body: JSON.stringify({ templates: empty }) }); tplFill(d.templates); showPreviews(d.previews); $('tplstatus').textContent = 'defaults restored'; } catch (err) { $('tplstatus').textContent = err.message; } };
+document.querySelectorAll('button[data-test]').forEach(b => b.onclick = async () => { b.disabled = true; $('teststatus').textContent = 'sending…';
+  try { const d = await api('/admin/email-templates/test', { method: 'POST', body: JSON.stringify({ kind: b.dataset.test }) }); $('teststatus').textContent = d.ok ? `Sent to ${d.to}: "${d.subject}"` : ('Not sent: ' + (d.error || 'SMTP problem, see server log')); } catch (err) { $('teststatus').textContent = err.message; } finally { b.disabled = false; } });
+
+async function load() {
+  const token = $('token').value.trim(); if (!token) { $('status').textContent = 'enter the admin token'; return; }
+  try { sessionStorage.setItem('dh_admin', token); } catch {}
+  $('status').textContent = 'loading…';
+  try { await Promise.all([loadOverview(), loadConvos(), loadGaps(), loadSessions(), loadGuidance(), loadAnswers(), loadEmails()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
+  catch (e) { $('status').textContent = e.message; }
+}
+$('go').onclick = load; $('days').onchange = load; $('token').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
+if ($('token').value) load();
+</script>
+</body>
+</html>
