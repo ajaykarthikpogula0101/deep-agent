@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Embed test</title>
+<style>
+  body { margin:0; font: 16px/1.6 Georgia, "Times New Roman", serif; color:#222; background:#fafaf7; max-width:720px; padding:40px 24px }
+  h1 { font-size: 28px } p { color:#444 } a { color:#a94c12 }
+</style>
+</head>
+<body>
+<h1>deep &gt;_ (stand-in for deependhq.com)</h1>
+<p>This page mimics the public site: static HTML, its own fonts, and exactly one script tag from the assistant. Nothing from the assistant renders until you tap the "ask" button, bottom right.</p>
+<p>The script tag below is the only integration needed on the real site:</p>
+<pre>&lt;script src="https://assistant.deependhq.com/static/widget.js" defer&gt;&lt;/script&gt;</pre>
+<p><a href="#" id="cta">Or open the assistant from a link on the page</a></p>
+<script src="/static/widget.js?v=2026.10.07.2" defer data-delay="800"></script>
+<script>document.getElementById('cta').addEventListener('click', function (e) { e.preventDefault(); window.deepAssistant.ask('What does Lake B2B do?'); });</script>
+</body>
+</html>
