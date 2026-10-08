@@ -64,3 +64,11 @@ app/main.py    FastAPI, CORS allow-list, scheduler
 static/        chat page + embeddable widget
 docs/          PLAN.md, FAILURE_MODES.md, TEST_LOG.md
 ```
+
+## Quickest local start (Windows)
+
+Double-click `run.cmd` (or run `powershell -ExecutionPolicy Bypass -File scripts\run.ps1`). It starts Docker Desktop if it
+is not running, waits for Postgres to be healthy, then starts the assistant on http://localhost:8080. Docker Desktop stops
+whenever you sign out of Windows; the database container now has `restart: unless-stopped` and Docker Desktop is in the
+Startup folder, so after a reboot both come back on their own. If you still see `connection to server at "127.0.0.1",
+port 5432 failed`, Docker is not up yet: open it and wait for the whale icon to settle, or just run `run.cmd` again.
