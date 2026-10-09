@@ -39,13 +39,13 @@ are generated nightly, so edit the templates / build script, not the published H
 
 The new `static/widget.js` (about 2 KB) keeps the three rules the old gate file existed for: never auto-open, a
 56px launcher inside the safe area on phones with a full-screen panel, and no chat bytes until the visitor hovers or
-taps (the chat is then warmed in idle time). The launcher label is `ask`, same as before.
+taps (the chat is then warmed in idle time). The launcher is a 56px indigo button with the Deep mark (labelled "Open the Deep assistant" for screen readers).
 
 There is no iframe any more. On the first tap the loader fetches `static/deep-assistant.js`, a dependency-free web
 component, and mounts `<deep-assistant mode="launcher">` in the page itself. Shadow DOM keeps the site's CSS and
 the chat's CSS apart; the chat inherits the site's font; keyboards and scrolling behave on phones. The site can
 also open it from any link: `window.deepAssistant.open()` or `window.deepAssistant.ask('What is ChampGraph?')`.
-Optional attributes on the script tag: `data-theme="dark|light|auto"`, `data-title`, `data-subtitle`,
+Optional attributes on the script tag: `data-theme="light|dark|auto"` (default light), `data-title`, `data-subtitle`,
 `data-suggestions="a|b|c"`, `data-delay="3000"`, `data-quick-replies="a|b|c"`, `data-no-greeting`.
 Test page: `/site`; the assistant itself at `/`; the old standalone page at `/legacy`; component reference:
 `docs/WIDGET.md`. Cache-busting: include the script with `?v=<version>` (the version is in `/healthz`); the loader
@@ -54,22 +54,22 @@ forwards it to the component import.
 ### Proactive greeting (bubble + quick replies + badge)
 
 A few seconds after load (`PROACTIVE.delayMs`, default 3000) a rounded card floats above the `ask` button:
-the bot mark, "Hi there 👋", a one-line question, and "deep >_ • just now". Under it, up to four pill buttons
+the Deep mark, "Hi! I'm Deep 👋", a one-line offer, and "Deep • just now". Under it, up to four pill buttons
 with common asks, right-aligned, sized to their text, fading in one after another (no motion under
 `prefers-reduced-motion`). The button shows a red "1" badge while the card is visible. Tapping the card opens the
-chat with the greeting as the bot's first message; tapping a pill opens the chat, shows the greeting, and sends the
-pill's text as the visitor's first message through the normal flow. The × dismisses it; dismissing or opening the
+chat on its welcome screen; tapping a pill opens the chat and sends the pill's text as the visitor's first message
+through the normal flow, except booking pills ("Book…", "Schedule…"), which open the in-chat booking card directly. The × dismisses it; dismissing or opening the
 chat hides it for the rest of the session (`sessionStorage` key `dh_greeting_dismissed`). On phones it keeps
 inside the viewport (`max-width: calc(100vw - 32px)`) and sits just above the button.
 
 **Where to edit:** the `PROACTIVE` object at the top of `static/widget.js`: `title`, `question`, `message`
-(the in-chat first message), `quickReplies`, `delayMs`, `botName`, `unread`. Per-page overrides without touching
+(optional intro line for the welcome screen; empty keeps the component's default), `quickReplies`, `delayMs`, `botName`, `unread`. Per-page overrides without touching
 the file: `data-delay`, `data-quick-replies`, `data-no-greeting` on the script tag. From the site's own JavaScript:
 `window.deepAssistant.greet()` shows it again, `window.deepAssistant.config` is the live config.
 
 ## Verify after deploy
 
-* Open deependhq.com on a phone: one orange `ask` button bottom right, nothing auto-opens.
+* Open deependhq.com on a phone: one indigo Deep button bottom right, nothing auto-opens.
 * Tap it: the chat fills the screen, answers "what is ChampGraph?" with a source link, and "book a call" shows the
   three call types.
 * Browser dev tools → Application → Cookies: none from the assistant origin.

@@ -69,8 +69,8 @@ const STATES = {
   muted:  { scale: 0.90, morph: 0.00, swirl: 0.10, particles: 0, grey: 1, bright: 0.55, breathe: 0.5 },
 };
 const PALETTE = {
-  base: ['#FFD9B0', '#F28C28', '#FF6A3D', '#E9487A'],       // orange -> coral -> rose
-  speak: ['#FFF3E3', '#FFB45E', '#FF7A3D', '#FF5F8E'],      // warmer and brighter while the agent talks
+  base: ['#DCD7FF', '#7C6FFF', '#5546F7', '#3A2FC9'],       // Indigo Dream: lavender -> indigo -> deep indigo
+  speak: ['#F1EFFF', '#A196FF', '#6B5DFF', '#4B3DF0'],      // lighter and brighter while the agent talks
   grey: ['#D9D9DC', '#9A9AA0', '#6B6B72', '#4A4A52'],
 };
 const lerp = (a, b, k) => a + (b - a) * k;
