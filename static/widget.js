@@ -1,6 +1,6 @@
 /* Embed for deependhq.com. Replaces widgo-gate.js.
  *   <script src="https://assistant.deependhq.com/static/widget.js" defer></script>
- *   optional: data-theme="dark|light|auto"  data-title="…"  data-subtitle="…"  data-suggestions="a|b|c"
+ *   optional: data-theme="light|dark|auto" (default light)  data-title="…"  data-subtitle="…"  data-suggestions="a|b|c"
  *             data-delay="3000" (ms before the greeting bubble appears)  data-quick-replies="a|b|c"
  *             (without data-quick-replies the chips are the most asked questions, from GET /widget-config)
  *             data-no-greeting (disable the proactive bubble entirely)
@@ -21,19 +21,21 @@
   if (!ORIGIN || document.querySelector('deep-assistant') || document.getElementById('dh-assistant-btn')) return;
   var ds = (script && script.dataset) || {};
   var VER = (function () { try { return new URL(script.src).searchParams.get('v') || ''; } catch (e) { return ''; } })();
-  var LOGO = '<svg viewBox="0 0 22 22" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M1 7V1h6M15 1h6v6M21 15v6h-6M7 21H1v-6"/><circle cx="11" cy="11" r="3"/><path d="M11 4v3M11 15v3M4 11h3M15 11h3"/></svg>';
+  var LOGO = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden="true"><path d="M12 3.5c4.97 0 9 3.36 9 7.5s-4.03 7.5-9 7.5c-.9 0-1.77-.11-2.6-.32L5 20l.95-3.4C4.13 15.24 3 13.22 3 11c0-4.14 4.03-7.5 9-7.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 7.2l.95 2.65 2.65.95-2.65.95L12 14.4l-.95-2.65-2.65-.95 2.65-.95z" fill="currentColor"/></svg>';
+  var BOOK_RE = /\b(book|schedule|meeting|appointment|demo call|call with)\b/i;  // quick replies like these open the booking flow
+  var THEME = ds.theme || 'light';
 
   // ---------------------------------------------------------------- proactive greeting: edit here
   var PROACTIVE = {
     enabled: !('noGreeting' in ds),
     delayMs: parseInt(ds.delay, 10) || 3000,               // how long after page load the bubble appears
     botName: 'Deep',
-    title: 'Hi there 👋',
-    question: 'What would you like help with?',
-    // the bot's first message once the chat opens from the bubble or a quick reply
-    message: '👋 Hi, you\'re speaking with Deep\'s AI assistant. Share as much detail as you can so I can give you the best answer.',
+    title: 'Hi! I\'m Deep 👋',
+    question: 'Exploring LakeB2B\'s data solutions? I can answer questions or book you a meeting.',
+    // optional intro line for the chat's welcome screen; empty keeps the component's default copy
+    message: '',
     quickReplies: ds.quickReplies ? ds.quickReplies.split('|').map(function (s) { return s.trim(); }).filter(Boolean)
-      : ['Book a call with Deep', 'What is Deep working on?', 'Tell me about the companies'],
+      : ['Book a meeting', 'What data solutions does LakeB2B offer?', 'What is LakeB2B?'],
     unread: 1,
   };
   var DISMISSED_KEY = 'dh_greeting_dismissed';   // sessionStorage: once dismissed or opened, not again this session
@@ -50,7 +52,7 @@
         el = document.createElement('deep-assistant');
         el.setAttribute('api', ORIGIN);
         el.setAttribute('mode', 'launcher');
-        el.setAttribute('theme', ds.theme || 'dark');
+        el.setAttribute('theme', THEME);
         if (ds.title) el.setAttribute('title', ds.title);
         if (ds.subtitle) el.setAttribute('subtitle', ds.subtitle);
         if (ds.suggestions) el.setAttribute('suggestions', ds.suggestions);
@@ -77,8 +79,11 @@
   btn.style.cssText = [
     'position:fixed', 'right:max(20px, env(safe-area-inset-right))', 'bottom:max(20px, env(safe-area-inset-bottom))',
     'width:56px', 'height:56px', 'border:0', 'border-radius:50%', 'z-index:2147483000', 'display:flex', 'align-items:center', 'justify-content:center',
-    'background:#F28C28', 'color:#1A1208', 'cursor:pointer', 'box-shadow:0 10px 30px rgba(0,0,0,.4)', 'padding:0'
+    'background:linear-gradient(145deg,#7466FF 0%,#5546F7 55%,#3E31D4 100%)', 'color:#FFFFFF', 'cursor:pointer', 'padding:0', 'margin:0',
+    'box-shadow:0 12px 28px -10px rgba(85,70,247,.65),0 2px 6px rgba(21,27,50,.18)', 'transition:transform .18s cubic-bezier(.2,.8,.2,1)'
   ].join(';');
+  btn.addEventListener('mouseenter', function () { btn.style.transform = 'translateY(-2px)'; });
+  btn.addEventListener('mouseleave', function () { btn.style.transform = ''; });
   btn.addEventListener('mouseenter', function () { load().catch(function () {}); });
   btn.addEventListener('focus', function () { load().catch(function () {}); });
   btn.addEventListener('click', function () {
@@ -106,26 +111,28 @@
     if (document.getElementById('dh-pro-style')) return;
     var st = document.createElement('style'); st.id = 'dh-pro-style';
     st.textContent = [
-      '.dh-pro{--bg:#0F0F10;--bg2:#1C1C1E;--line:#1F1F22;--line2:#2E2E32;--text:#F2F3F5;--muted:#8A8D93;--accent:#F28C28;--shadow:0 16px 48px rgba(0,0,0,.6)}',
-      '.dh-pro[data-theme=light]{--bg:#FFFFFF;--bg2:#F1F2F4;--line:#E3E5E8;--line2:#CFD2D6;--text:#16171A;--muted:#6B7079;--shadow:0 14px 40px rgba(20,20,30,.18)}',
-      '@media (prefers-color-scheme:light){.dh-pro[data-theme=auto]{--bg:#FFFFFF;--bg2:#F1F2F4;--line:#E3E5E8;--line2:#CFD2D6;--text:#16171A;--muted:#6B7079;--shadow:0 14px 40px rgba(20,20,30,.18)}}',
-      '.dh-pro{position:fixed;z-index:2147482998;right:max(20px,env(safe-area-inset-right));bottom:calc(max(20px,env(safe-area-inset-bottom)) + 70px);display:flex;flex-direction:column;align-items:flex-end;gap:8px;max-width:min(340px,calc(100vw - 32px));font-family:inherit;font-size:14px;line-height:1.45;color:var(--text)}',
+      // Indigo Dream tokens (same as the chat component); inherited text styles are reset so the host page cannot leak in
+      '.dh-pro{--bg:#FFFFFF;--bg2:#F0F2F9;--line:#E4E7F2;--line2:#CDD2E3;--text:#151B32;--muted:#68718A;--accent:#5546F7;--lav:#EEECFF;--shadow:0 18px 44px -14px rgba(21,27,50,.28),0 0 0 1px rgba(21,27,50,.04)}',
+      '.dh-pro[data-theme=dark]{--bg:#171C33;--bg2:#1E2441;--line:#2A3152;--line2:#3A4268;--text:#ECEEF8;--muted:#9BA3C0;--lav:#26234F;--shadow:0 18px 44px -14px rgba(0,0,0,.7)}',
+      '@media (prefers-color-scheme:dark){.dh-pro[data-theme=auto]{--bg:#171C33;--bg2:#1E2441;--line:#2A3152;--line2:#3A4268;--text:#ECEEF8;--muted:#9BA3C0;--lav:#26234F;--shadow:0 18px 44px -14px rgba(0,0,0,.7)}}',
+      '.dh-pro{position:fixed;z-index:2147482998;right:max(20px,env(safe-area-inset-right));bottom:calc(max(20px,env(safe-area-inset-bottom)) + 70px);display:flex;flex-direction:column;align-items:flex-end;gap:8px;max-width:min(330px,calc(100vw - 32px));font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;font-weight:400;line-height:1.45;letter-spacing:normal;text-transform:none;text-align:left;color:var(--text);-webkit-font-smoothing:antialiased}',
       '.dh-pro *{box-sizing:border-box;margin:0}',
-      '.dh-pro-bubble{position:relative;display:flex;gap:12px;align-items:flex-start;width:100%;padding:14px 36px 12px 14px;background:var(--bg);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);cursor:pointer;text-align:left}',
+      '.dh-pro-bubble{position:relative;display:flex;gap:12px;align-items:flex-start;width:100%;padding:14px 38px 12px 14px;background:var(--bg);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);cursor:pointer;text-align:left}',
       '.dh-pro-bubble:hover{border-color:var(--line2)}',
-      '.dh-pro-avatar{flex:none;width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#1A1208}',
+      '.dh-pro-bubble:focus-visible,.dh-pro-reply:focus-visible,.dh-pro-x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
+      '.dh-pro-avatar{flex:none;width:36px;height:36px;border-radius:12px;background:linear-gradient(145deg,#7466FF,#5546F7 55%,#3E31D4);display:flex;align-items:center;justify-content:center;color:#fff}',
       '.dh-pro-avatar svg{width:20px;height:20px}',
-      '.dh-pro-title{font-weight:700;font-size:15px}',
+      '.dh-pro-title{font-weight:700;font-size:15px;letter-spacing:-.01em}',
       '.dh-pro-q{margin-top:2px;color:var(--text)}',
       '.dh-pro-meta{margin-top:6px;font-size:12px;color:var(--muted)}',
-      '.dh-pro-x{position:absolute;top:8px;right:8px;width:26px;height:26px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:18px/1 inherit;cursor:pointer}',
+      '.dh-pro-x{position:absolute;top:8px;right:8px;width:26px;height:26px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);font:18px/1 system-ui,sans-serif;cursor:pointer}',
       '.dh-pro-x:hover{background:var(--bg2);color:var(--text)}',
-      '.dh-pro-reply{align-self:flex-end;max-width:100%;padding:9px 14px;border:1px solid var(--line2);border-radius:999px;background:var(--bg);color:var(--text);font:inherit;font-size:14px;cursor:pointer;box-shadow:var(--shadow);text-align:left}',
-      '.dh-pro-reply:hover{background:var(--bg2)}',
+      '.dh-pro-reply{align-self:flex-end;max-width:100%;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--accent);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:var(--shadow);text-align:left}',
+      '.dh-pro-reply:hover{background:var(--lav);border-color:var(--accent)}',
       '.dh-pro .dh-pro-in{opacity:0;transform:translateY(8px);animation:dh-pro-in .35s cubic-bezier(.16,1,.3,1) forwards}',
       '@keyframes dh-pro-in{to{opacity:1;transform:none}}',
       '.dh-pro.dh-pro-out{opacity:0;transform:translateY(6px);transition:opacity .2s,transform .2s;pointer-events:none}',
-      '.dh-pro-badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#E5484D;color:#fff;font:700 11px/20px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #0F0F10}',
+      '.dh-pro-badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#D6345B;color:#fff;font:700 11px/20px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #fff}',
       '@media (prefers-reduced-motion:reduce){.dh-pro .dh-pro-in{animation:none;opacity:1;transform:none}.dh-pro.dh-pro-out{transition:none}}',
       '@media (max-width:480px){.dh-pro{max-width:calc(100vw - 32px)}.dh-pro-bubble{padding:12px 34px 10px 12px}}',
     ].join('\n');
@@ -151,7 +158,7 @@
     shown = true; shownAt = Date.now();
     wrap = document.createElement('div');
     wrap.className = 'dh-pro';
-    wrap.setAttribute('data-theme', ds.theme || 'dark');
+    wrap.setAttribute('data-theme', THEME);
     wrap.setAttribute('role', 'region');
     wrap.setAttribute('aria-label', PROACTIVE.botName + ' greeting');
     var bubble = document.createElement('div');
@@ -173,7 +180,7 @@
       b.style.animationDelay = (120 + i * 90) + 'ms';
       b.addEventListener('click', function () {
         wrap && wrap.querySelectorAll('button, .dh-pro-bubble').forEach(function (x) { x.style.pointerEvents = 'none'; });
-        mount(true, PROACTIVE.message).then(function (el) { el.ask(label); }).catch(function () {});
+        mount(true, PROACTIVE.message).then(function (el) { if (BOOK_RE.test(label) && el.startBooking) el.startBooking(null, label); else el.ask(label); }).catch(function () {});
       });
       wrap.appendChild(b);
     });
@@ -188,10 +195,11 @@
   var warm = function () { load().catch(function () {}); };
   if ('requestIdleCallback' in window) requestIdleCallback(warm, { timeout: 6000 }); else setTimeout(warm, 4000);
 
-  // tiny API for the site: window.deepAssistant.open() / .ask('…') / .greet()
+  // tiny API for the site: window.deepAssistant.open() / .ask('…') / .book() / .greet()
   window.deepAssistant = {
     open: function () { return mount(true); },
     ask: function (text) { return mount(true).then(function (el) { el.ask(text); return el; }); },
+    book: function (callType) { return mount(true).then(function (el) { el.book(callType || null); return el; }); },
     greet: function () { try { sessionStorage.removeItem(DISMISSED_KEY); } catch (e) {} showGreeting(); },
     config: PROACTIVE
   };
