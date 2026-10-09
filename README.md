@@ -72,3 +72,7 @@ is not running, waits for Postgres to be healthy, then starts the assistant on h
 whenever you sign out of Windows; the database container now has `restart: unless-stopped` and Docker Desktop is in the
 Startup folder, so after a reboot both come back on their own. If you still see `connection to server at "127.0.0.1",
 port 5432 failed`, Docker is not up yet: open it and wait for the whale icon to settle, or just run `run.cmd` again.
+
+## Sharing the local build with someone
+
+With the assistant running (run.cmd), run share.cmd in a second window. It prints a temporary public link (Cloudflare quick tunnel, or localhost.run over ssh when that is blocked) that works while the window stays open and the laptop is awake. Each run gets a new address; share the /site link to show it the way deependhq.com will.
