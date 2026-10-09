@@ -1,254 +1,353 @@
-/* <deep-assistant> : the Ask Deep assistant as a framework-agnostic web component (no build step, no dependencies).
+/* <deep-assistant> : the Deep assistant as a framework-agnostic web component (no build step, no dependencies).
  *
  *   <script type="module" src="https://assistant.example.com/static/deep-assistant.js"></script>
- *   <deep-assistant api="https://assistant.example.com" mode="launcher" theme="dark"></deep-assistant>
+ *   <deep-assistant api="https://assistant.example.com" mode="launcher"></deep-assistant>
  *
  * Attributes
  *   api          base URL of the assistant server (required)
- *   mode         "panel" (fills its container; default) | "launcher" (round floating button + pop-over panel)
- *   theme        "dark" (default) | "light" | "auto" (follow the OS)
+ *   mode         "panel" (fills its container; default) | "launcher" (floating button + pop-over panel)
+ *   theme        "light" (default) | "dark" | "auto" (follow the OS)
  *   open         present = pop-over open (launcher mode)
  *   token        signed-in visitor token minted by YOUR backend (HMAC) or a Clerk session JWT; see docs/WIDGET.md
  *   user-name / user-email   unverified prefill hints when no token is available
- *   title / subtitle / suggestions ("|"-separated) / greeting   copy
- *   tabs         bottom navigation, comma-separated from home,messages,help (default all; "messages" always kept)
- *   shortcut     "Label|https://…" card at the top of Messages (default: the Zoom booking page); "" hides it
+ *   title / subtitle         header copy (default "Deep" / "AI assistant")
+ *   greeting     intro line on the welcome screen
+ *   suggestions  "|"-separated welcome actions (default: picked from the host page, see page-context)
+ *   page-context "general" | "product" | "solutions" | "contact" (default: inferred from the page URL)
+ *   tabs         sections, comma-separated from home,messages,help (default all; "messages" is always kept)
+ *   shortcut     "Label|https://…" external scheduler link in Help (default: the Zoom booking page); "" hides it
  *   privacy-url  footer link (default: the server's PRIVACY_URL)
- * Methods      ask(text), open(), close(), toggle(), newChat() / reset(), openConversation(id), showView(name),
- *              setToken(token), download(), startVoice(), stopVoice()
+ * Methods      ask(text), book(callType?), open(), close(), toggle(), newChat() / reset(), openConversation(id),
+ *              showView('chat'|'history'|'help'), setToken(token), download(), startVoice(), stopVoice()
  * Events       deep-assistant:ready | :open | :close | :question | :answer | :sources | :booking | :handover
- *              | :feedback | :error | :view | :upload | :voice   (CustomEvent, bubbles + composed)
- * Theming      --da-bg --da-panel --da-bubble --da-user --da-user-text --da-text --da-muted --da-line --da-accent
- *              --da-mint --da-sky --da-font --da-radius (set on the element)
+ *              | :feedback | :error | :view | :upload | :voice | :action   (CustomEvent, bubbles + composed)
+ * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
+ *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.07.2';
-const DEFAULT_SUGGESTIONS = ['Book a call with Deep', 'What is Deep working on?', 'Tell me about the companies'];
-const DEFAULT_SHORTCUT = 'Book a call with Deep|https://scheduler.zoom.us/sreedeep';
+const VERSION = '2026.10.09.1';
+const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
+const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
+const BOOK_RE = /\b(book|schedule|meeting|appointment|demo call|call with)\b/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const EMOJI = [['😀', 'grin smile happy'], ['😂', 'laugh joy tears'], ['🙂', 'smile'], ['😉', 'wink'], ['😍', 'love heart eyes'], ['🤔', 'thinking hmm'], ['😅', 'sweat smile'], ['😎', 'cool sunglasses'], ['🥳', 'party celebrate'], ['😢', 'sad cry'], ['😡', 'angry'], ['🙏', 'thanks please pray'],
   ['👋', 'wave hello hi'], ['👍', 'thumbs up yes'], ['👎', 'thumbs down no'], ['👏', 'clap'], ['🙌', 'hands raised'], ['🤝', 'handshake deal'], ['💪', 'strong muscle'], ['✌️', 'peace'], ['🤞', 'fingers crossed'], ['👀', 'eyes look'],
   ['❤️', 'heart love'], ['🔥', 'fire hot'], ['✨', 'sparkles'], ['⭐', 'star'], ['🎉', 'tada party'], ['🚀', 'rocket launch ship'], ['💡', 'idea bulb'], ['✅', 'check done yes'], ['❌', 'cross no'], ['⚡', 'bolt fast'], ['💯', 'hundred'], ['🎯', 'target goal'],
   ['📅', 'calendar date'], ['📞', 'phone call'], ['📧', 'email mail'], ['💼', 'briefcase work'], ['📈', 'chart growth'], ['📊', 'bar chart data'], ['🧠', 'brain'], ['🤖', 'robot bot ai'], ['💬', 'chat message'], ['📝', 'note memo'], ['🔗', 'link'], ['🕒', 'clock time'],
   ['☕', 'coffee'], ['🍕', 'pizza'], ['🌍', 'world globe'], ['🏢', 'office building'], ['🏆', 'trophy win'], ['🎓', 'graduate'], ['🙈', 'monkey see no'], ['🤷', 'shrug'], ['🫡', 'salute'], ['😴', 'sleep tired'], ['🤩', 'star struck wow'], ['😬', 'grimace awkward']];
 
+// Welcome actions. Each one either asks a real question through /chat or opens the in-chat booking flow.
+const ACTIONS = {
+  explore: { icon: 'layers', label: 'Explore data solutions', ask: 'What data solutions does LakeB2B offer?' },
+  fit: { icon: 'compass', label: 'Find the right solution for my business', ask: 'Help me find the right LakeB2B solution for my business.' },
+  about: { icon: 'building', label: 'Learn about LakeB2B', ask: 'What is LakeB2B and what does it do?' },
+  book: { icon: 'cal', label: 'Book a meeting', book: true },
+  product: { icon: 'spark', label: 'Explain this product', askPage: (t) => (t ? `Tell me about ${t}.` : 'Tell me about this product.') },
+  usecases: { icon: 'target', label: 'Show me real use cases', ask: 'What are some real use cases for LakeB2B data?' },
+  demo: { icon: 'play', label: 'Book a product walkthrough', book: 'walkthrough' },
+  human: { icon: 'user', label: 'Talk to a person', ask: 'Can I talk to a real person?' },
+};
+const CONTEXT_ACTIONS = { general: ['explore', 'fit', 'about', 'book'], product: ['product', 'usecases', 'demo', 'about'], solutions: ['fit', 'explore', 'usecases', 'book'], contact: ['book', 'human', 'fit', 'about'] };
+
+const DARK = `--da-ink:#ADA4FF; --da-bg:#0F1324; --da-surface:#171C33; --da-subtle:#1E2441; --da-line:#2A3152; --da-line-strong:#3A4268; --da-text:#ECEEF8; --da-muted:#9BA3C0;
+  --da-lavender:#26234F; --da-user:#2D2A6E; --da-user-text:#F1EFFF; --da-head:#0A0D1C; --da-primary-soft:rgba(124,112,255,.16); --da-danger-soft:rgba(232,72,108,.14); --da-danger-text:#FF9DB2; --da-ok-text:#5BE0B5;
+  --da-thumb:rgba(255,255,255,.18); --da-shadow-sm:0 1px 2px rgba(0,0,0,.3); --da-shadow-md:0 10px 28px -10px rgba(0,0,0,.6); --da-shadow-lg:0 28px 64px -16px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.06)`;
+
 const CSS = `
-:host { display:block; box-sizing:border-box; font-family: var(--da-font, inherit); font-size:15px; line-height:1.5; color:var(--da-text);
-  --da-bg:#000000; --da-panel:#0F0F10; --da-bubble:#1C1C1E; --da-bubble-2:#27272A; --da-user:#F28C28; --da-user-text:#1A1208; --da-text:#F2F3F5; --da-muted:#8A8D93;
-  --da-line:#1F1F22; --da-accent:#F28C28; --da-mint:#9FE8C8; --da-sky:#8EC9F5; --da-danger:#E5484D; --da-ok:#5CCB8A; --da-radius:16px; --da-shadow:0 18px 50px rgba(0,0,0,.5); --da-thumb:rgba(255,255,255,.22);
-  --da-cbox:#121214; --da-cbox-line:rgba(255,255,255,.10); --voice-gradient-start:#F28C28; --voice-gradient-mid:#FF6A3D; --voice-gradient-end:#E9487A; --voice-glow:rgba(255,106,61,.30) }
-:host([theme="light"]) { --da-bg:#FFFFFF; --da-panel:#F7F7F8; --da-bubble:#F1F2F4; --da-bubble-2:#E7E8EB; --da-user:#F28C28; --da-user-text:#FFFFFF; --da-text:#16171A; --da-muted:#6B7079; --da-line:#E3E5E8; --da-shadow:0 18px 50px rgba(20,20,30,.18); --da-thumb:rgba(0,0,0,.25); --da-cbox:#F7F7F8; --da-cbox-line:rgba(0,0,0,.08) }
-@media (prefers-color-scheme: light) { :host([theme="auto"]) { --da-bg:#FFFFFF; --da-panel:#F7F7F8; --da-bubble:#F1F2F4; --da-bubble-2:#E7E8EB; --da-user-text:#FFFFFF; --da-text:#16171A; --da-muted:#6B7079; --da-line:#E3E5E8; --da-shadow:0 18px 50px rgba(20,20,30,.18); --da-thumb:rgba(0,0,0,.25); --da-cbox:#F7F7F8; --da-cbox-line:rgba(0,0,0,.08) } }
-*, *::before, *::after { box-sizing:border-box } button { font:inherit; color:inherit } [hidden] { display:none !important }
-:focus-visible { outline:2px solid var(--da-sky); outline-offset:2px }
-/* thin scrollbars inside the panel only (no arrows, transparent track, thumb on hover/scroll) */
-.scroll { scrollbar-width:thin; scrollbar-color:transparent transparent } .scroll:hover, .scroll.scrolling { scrollbar-color:var(--da-thumb) transparent }
-.scroll::-webkit-scrollbar { width:6px; height:6px } .scroll::-webkit-scrollbar-track { background:transparent } .scroll::-webkit-scrollbar-button { display:none; height:0; width:0 }
-.scroll::-webkit-scrollbar-thumb { background:transparent; border-radius:3px } .scroll:hover::-webkit-scrollbar-thumb, .scroll.scrolling::-webkit-scrollbar-thumb { background:var(--da-thumb) }
-.panel { display:flex; flex-direction:column; height:100%; min-height:420px; background:var(--da-bg); color:var(--da-text); border-radius:var(--da-radius); overflow:hidden; position:relative }
-:host([mode="launcher"]) { display:contents }
-:host([mode="launcher"]) .panel { position:fixed; z-index:2147482999; right:20px; bottom:92px; width:400px; height:700px; max-height:calc(100vh - 40px); box-shadow:var(--da-shadow); display:none; border:1px solid var(--da-line) }
-:host([mode="launcher"][open]) .panel { display:flex }
-@media (max-width:480px) { :host([mode="launcher"]) .panel { inset:0; width:100vw; height:100dvh; max-height:none; border-radius:0; border:0 } }
-.launcher { display:none; position:fixed; z-index:2147483000; right:max(20px, env(safe-area-inset-right)); bottom:max(20px, env(safe-area-inset-bottom)); width:56px; height:56px; border-radius:50%; border:0; background:var(--da-accent); color:#1A1208; cursor:pointer; box-shadow:0 10px 30px rgba(0,0,0,.4); align-items:center; justify-content:center }
-.launcher svg { width:26px; height:26px } :host([mode="launcher"]) .launcher { display:flex } :host([mode="launcher"][open]) .launcher { display:none }
-.lbadge { position:absolute; top:-4px; right:-4px; min-width:20px; height:20px; padding:0 6px; border-radius:999px; background:var(--da-danger); color:#fff; font:700 11px/20px system-ui,sans-serif; text-align:center; box-shadow:0 0 0 2px var(--da-bg) }
-/* header: 64px, 16px side padding, 1px divider */
-header { flex:none; display:flex; align-items:center; gap:8px; height:64px; padding:0 12px 0 16px; border-bottom:1px solid var(--da-line); background:var(--da-bg) }
-.logo { width:36px; height:36px; border-radius:50%; background:var(--da-accent); color:#1A1208; display:flex; align-items:center; justify-content:center; flex:none } .logo svg { width:18px; height:18px }
-.brand { flex:1; min-width:0; margin-left:4px } .brand h1 { margin:0; font-size:15px; font-weight:700; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis } .brand h1 span { font-family:"IBM Plex Mono", ui-monospace, monospace; font-weight:600 }
-.brand p { margin:0; font-size:12px; color:var(--da-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-.vtitle { position:absolute; left:50%; transform:translateX(-50%); font-size:16px; font-weight:700; margin:0; pointer-events:none } header { position:relative } header .spacer { flex:1 }
-.icon { width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border:0; background:transparent; border-radius:10px; cursor:pointer; color:var(--da-muted); flex:none }
-.icon:hover { color:var(--da-text); background:var(--da-bubble) } .icon svg { width:18px; height:18px }
-.menu { position:absolute; right:12px; top:60px; z-index:5; min-width:200px; background:var(--da-panel); border:1px solid var(--da-line); border-radius:12px; box-shadow:var(--da-shadow); padding:4px; display:none } .menu.open { display:block }
-.menu button { display:flex; align-items:center; gap:10px; width:100%; padding:10px 12px; border:0; background:transparent; border-radius:8px; text-align:left; cursor:pointer; font-size:14px } .menu button:hover { background:var(--da-bubble) } .menu button svg { width:16px; height:16px; color:var(--da-muted) }
-/* views: header + composer fixed, the conversation flexes and scrolls */
-.views { flex:1; min-height:0; min-width:0; display:flex } .view { flex:1; min-height:0; min-width:0; display:flex; flex-direction:column; position:relative }
-.log { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:16px; display:flex; flex-direction:column; gap:20px; scroll-behavior:smooth }
-.row { display:flex; flex-direction:column; max-width:85%; animation:da-rise .22s cubic-bezier(.16,1,.3,1) both; position:relative } .row.bot { align-self:flex-start } .row.user { align-self:flex-end; align-items:flex-end }
-@keyframes da-rise { from { opacity:0; transform:translateY(4px) } to { opacity:1; transform:none } }
-.msg { position:relative; padding:12px 16px; white-space:pre-wrap; overflow-wrap:anywhere; min-width:0; max-width:100%; border-radius:20px; background:var(--da-bubble); color:var(--da-text); font-size:15px; line-height:1.5 }
-.bot .msg { border-bottom-left-radius:6px } .user .msg { background:var(--da-user); color:var(--da-user-text); border-bottom-right-radius:6px }
-.msg a:not(.btn):not(.cite) { color:inherit; text-decoration:underline; text-underline-offset:3px }
-.msg img.gif { display:block; max-width:240px; max-height:220px; border-radius:12px; margin:2px 0 }
-.li { display:block; padding-left:14px; position:relative } .li::before { content:"•"; position:absolute; left:2px; color:var(--da-muted) }
-.meta { margin:6px 4px 0; font-size:12px; line-height:1.3; color:var(--da-muted) } .user .meta { text-align:right }
-.msg.thinking { padding:14px 16px; display:flex; gap:5px; align-items:center } .msg.thinking i { width:7px; height:7px; border-radius:50%; background:var(--da-muted); animation:da-dot 1.1s ease-in-out infinite } .msg.thinking i:nth-child(2) { animation-delay:.18s } .msg.thinking i:nth-child(3) { animation-delay:.36s }
-@keyframes da-dot { 0%,80%,100% { transform:translateY(0); opacity:.5 } 40% { transform:translateY(-4px); opacity:1 } }
-@media (prefers-reduced-motion: reduce) { .row, .fab, .wave i, .toastmsg { animation:none } .msg.thinking i { animation:none; opacity:.8 } .log { scroll-behavior:auto } }
-.cite { display:inline-block; vertical-align:super; font:600 9.5px/1 system-ui, sans-serif; color:var(--da-muted); text-decoration:none; margin-left:2px; padding:1px 4px; border:1px solid var(--da-line); border-radius:999px } a.cite:hover { color:var(--da-text); border-color:var(--da-muted) }
-/* order under a bot bubble: meta (6px) → sources row (6px) → action icons (6px) */
-.sources { margin:6px 0 0 4px; display:flex; align-items:center; gap:8px; max-width:100%; min-width:0 } .sources .lbl { flex:none; font-size:12px; color:var(--da-muted) }
-.srow { display:flex; gap:6px; overflow-x:auto; min-width:0; scrollbar-width:none } .srow::-webkit-scrollbar { display:none }
-.srow a { flex:none; display:inline-flex; align-items:center; gap:6px; height:24px; font-size:12px; line-height:1; color:var(--da-text); text-decoration:none; border:1px solid var(--da-line); border-radius:999px; padding:0 10px 0 4px; max-width:260px; background:transparent }
-.srow a b { font:600 10px/16px system-ui, sans-serif; min-width:16px; height:16px; padding:0 4px; border-radius:999px; background:var(--da-bubble-2); color:var(--da-text); text-align:center } .srow a .t { white-space:nowrap } .srow a .h { color:var(--da-muted); white-space:nowrap } .srow a:hover { border-color:var(--da-muted) }
-.tools { display:flex; gap:4px; margin:6px 0 0 0; opacity:.55; transition:opacity .15s } .row:hover .tools, .row:focus-within .tools, .tools.keep { opacity:1 }
-.tool { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border:0; background:transparent; border-radius:8px; color:var(--da-muted); cursor:pointer; position:relative } .tool:hover { color:var(--da-text); background:var(--da-bubble) } .tool svg { width:16px; height:16px } .tool.on { color:var(--da-accent) }
-.tool .tip { position:absolute; bottom:calc(100% + 4px); left:50%; transform:translateX(-50%); background:var(--da-bubble-2); color:var(--da-text); font-size:11px; padding:3px 7px; border-radius:6px; white-space:nowrap; pointer-events:none }
-/* thumbs-down popover (in flow under the icons so it never clips) + toast */
-.fbpop { margin:6px 0 0; padding:12px; width:min(300px, 100%); background:var(--da-panel); border:1px solid var(--da-line); border-radius:12px; box-shadow:var(--da-shadow); display:flex; flex-direction:column; gap:8px }
-.fbpop .reasons { display:flex; flex-wrap:wrap; gap:4px } .fbpop .reason { height:28px; padding:0 10px; border:1px solid var(--da-line); border-radius:999px; background:transparent; color:var(--da-text); font-size:12px; cursor:pointer } .fbpop .reason:hover { border-color:var(--da-muted) } .fbpop .reason.on { background:var(--da-accent); border-color:var(--da-accent); color:#1A1208 }
-.fbpop input { height:32px; padding:0 10px; border:1px solid var(--da-line); border-radius:8px; background:var(--da-bg); color:var(--da-text); font:inherit; font-size:14px } .fbpop input:focus { outline:none; border-color:var(--da-accent) }
-.fbpop .fbrow { display:flex; justify-content:flex-end; gap:12px } .textbtn { border:0; background:transparent; color:var(--da-muted); font-size:14px; cursor:pointer; padding:4px 2px } .textbtn.submit { color:var(--da-accent); font-weight:600 } .textbtn:hover { color:var(--da-text) }
-.toastmsg { position:absolute; left:50%; bottom:140px; transform:translate(-50%, 8px); z-index:8; background:var(--da-bubble-2); color:var(--da-text); font-size:14px; padding:8px 14px; border-radius:999px; box-shadow:var(--da-shadow); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s } .toastmsg.show { opacity:1; transform:translate(-50%, 0) }
-.btn { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:8px 14px; border-radius:999px; border:1px solid var(--da-line); background:var(--da-bubble); color:var(--da-text); cursor:pointer; text-decoration:none; text-align:left; line-height:1.3; font-size:14px }
-.btn:hover { border-color:var(--da-muted) } .btn.primary { background:var(--da-accent); border-color:var(--da-accent); color:#1A1208; font-weight:600 } .btn:disabled { opacity:.5; cursor:default }
-.btn small { display:block; font-size:12px; color:var(--da-muted); font-weight:400 } .btn.primary small { color:#4a3214 }
-.slots, .handoff { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 0; align-items:center } .note { font-size:12px; color:var(--da-muted); margin:8px 4px 0 } .note.warn { color:var(--da-danger) } .note.ok { color:var(--da-ok) }
-.picker { display:grid; grid-template-rows:0fr; transition:grid-template-rows .3s cubic-bezier(.16,1,.3,1); min-width:0 } .picker.open { grid-template-rows:1fr } .picker > div { min-height:0; min-width:0; overflow:hidden }
-.picker-in { display:flex; flex-direction:column; gap:8px; padding:12px 0 4px; min-width:0 } .picker label { font-size:12px; color:var(--da-muted) } .sel { position:relative; min-width:0 }
-.sel select { width:100%; max-width:100%; height:40px; padding:0 38px 0 12px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-panel); color:var(--da-text); font:inherit; font-size:14px; appearance:none; -webkit-appearance:none; cursor:pointer; text-overflow:ellipsis }
-.sel::after { content:""; position:absolute; right:14px; top:50%; width:8px; height:8px; border-right:1.5px solid var(--da-muted); border-bottom:1.5px solid var(--da-muted); transform:translateY(-70%) rotate(45deg); pointer-events:none }
-.picker .btn { align-self:flex-start } .picker.done select, .picker.done .btn { opacity:.5; pointer-events:none } .picker .hint { font-size:12px; color:var(--da-muted) }
-  .card { margin:12px 0 0; padding:12px; border:1px solid var(--da-line); border-radius:14px; background:var(--da-panel); min-width:0; max-width:100% } .card .lbl { font-size:12px; color:var(--da-muted); margin-bottom:8px }
-  .hrow { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px }
-  .ctypes { display:flex; flex-direction:column; gap:8px } .ctype { display:flex; flex-direction:column; gap:2px; text-align:left; padding:10px 12px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-bubble); color:var(--da-text); font:inherit; cursor:pointer } .ctype:hover { border-color:var(--da-muted) } .ctype.on { border-color:var(--da-accent) } .ctype b { font-size:14px; font-weight:600 } .ctype span, .ctype small { font-size:12px; color:var(--da-muted) } .picker.done .ctype:not(.on) { opacity:.5 }
-  .ahead { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:14px; flex-wrap:wrap } .ahead span { font-size:12px; color:var(--da-muted) }
-  .dates { display:flex; gap:6px; overflow-x:auto; padding:10px 0 6px; scrollbar-width:thin } .date { flex:none; width:66px; padding:8px 4px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-bubble); color:var(--da-text); font:inherit; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px } .date b { font-size:12px; font-weight:600; white-space:nowrap } .date small { font-size:10px; color:var(--da-muted); white-space:nowrap } .date:hover { border-color:var(--da-muted) } .date.on { border-color:var(--da-accent); background:rgba(242,140,40,.12) } .date.off { opacity:.45; cursor:default }
-  .times { display:grid; grid-template-columns:repeat(auto-fill, minmax(84px, 1fr)); gap:6px; margin-top:6px } .time { min-height:38px; padding:4px 6px; border:1px solid var(--da-line); border-radius:999px; background:var(--da-bubble); color:var(--da-text); font:inherit; font-size:13px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.15 } .time:hover { border-color:var(--da-accent) } .time.off { opacity:.45; cursor:default; border-style:dashed } .time.off s { color:var(--da-muted) } .time.off small { font-size:9px; text-transform:uppercase; letter-spacing:.03em; color:var(--da-muted) }
-  .tzn { margin-top:8px }
-  .bform { display:flex; flex-direction:column; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--da-line) } .bform input, .bform textarea { min-height:40px; padding:8px 12px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-bg); color:var(--da-text); font:inherit; font-size:14px; resize:vertical } .bform input:focus, .bform textarea:focus { outline:none; border-color:var(--da-accent) }
-  .bsum { margin-top:12px; padding-top:12px; border-top:1px solid var(--da-line) } .srow { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid var(--da-line); font-size:14px } .srow span { color:var(--da-muted); flex:none } .srow b { font-weight:500; text-align:right; min-width:0; overflow-wrap:anywhere }
-  .booked .bk-title { font-size:16px; font-weight:700 } .booked .bk-when { font-size:15px; margin-top:6px } .booked .bk-sub { font-size:12px; color:var(--da-muted); margin-top:2px }
-.hform { display:flex; flex-direction:column; gap:8px; margin:12px 0 0; max-width:420px } .hform .lbl { font-size:12px; color:var(--da-muted) }
-.hform input, .hform textarea { min-height:40px; padding:8px 12px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-panel); color:var(--da-text); font:inherit; font-size:14px; resize:vertical } .hform .hrow { display:flex; gap:12px; align-items:center; flex-wrap:wrap }
-.suggest { display:flex; flex-wrap:wrap; gap:8px } .chip { height:36px; padding:0 14px; border:1px solid var(--da-line); background:var(--da-bubble); border-radius:999px; color:var(--da-text); cursor:pointer; font-size:14px } .chip:hover { border-color:var(--da-muted) }
-/* composer: 12px from the edges, 12px inside, 14px radius, accent border on focus */
-.composer { flex:none; padding:8px 12px 0; background:var(--da-bg); position:relative }
-.cbox { border:1px solid var(--da-cbox-line); border-radius:14px; background:var(--da-cbox); padding:12px; transition:border-color .15s, box-shadow .15s } .cbox.focus { border-color:rgba(242,140,40,.45); box-shadow:0 0 0 3px rgba(242,140,40,.12) } .cbox.drop { border-color:var(--da-mint); background:var(--da-bubble) }
-.attach { display:flex; flex-wrap:wrap; gap:6px; padding:0 0 8px } .achip { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:4px 6px 4px 8px; border-radius:10px; background:var(--da-bubble); font-size:12px; position:relative; overflow:hidden }
-.achip img { width:28px; height:28px; border-radius:6px; object-fit:cover } .achip .nm { max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap } .achip .sz { color:var(--da-muted); font-size:11px } .achip .x { width:22px; height:22px; border:0; background:transparent; color:var(--da-muted); cursor:pointer; border-radius:6px } .achip .x:hover { color:var(--da-text); background:var(--da-bubble-2) }
-.achip .bar { position:absolute; left:0; bottom:0; height:2px; background:var(--da-mint); width:0; transition:width .2s } .achip.err { outline:1px solid var(--da-danger) }
-textarea.q { display:block; width:100%; resize:none; min-height:30px; max-height:110px; padding:10px 0 0; border:0; background:transparent; color:var(--da-text); font:inherit; font-size:14px; line-height:20px; outline:none; caret-color:#F28C28 } textarea.q::placeholder { color:var(--da-muted) }
-.crow { display:flex; align-items:center; gap:2px; margin-top:8px } .crow .sp { flex:1 } .crow .icon { width:30px; height:30px; border-radius:8px; color:#8A8D93 } .crow .icon:hover { color:#FFFFFF; background:var(--da-bubble) } .crow .icon svg { width:18px; height:18px }
-.speak { display:inline-flex; align-items:center; gap:8px; height:34px; padding:0 14px; border:0; border-radius:999px; background:linear-gradient(135deg, var(--voice-gradient-start) 0%, var(--voice-gradient-mid) 55%, var(--voice-gradient-end) 100%); color:#FFFFFF; font-weight:600; font-size:13px; cursor:pointer; white-space:nowrap; box-shadow:0 4px 14px var(--voice-glow); transition:filter .15s, transform .15s } .speak svg { width:16px; height:16px }
-.speak:hover { filter:brightness(1.08); transform:translateY(-1px) } .speak:active { transform:scale(.98) }
-.speak svg path { transform-origin:center; transform-box:fill-box } .speak:hover svg path { animation:da-bars .9s ease-in-out infinite } .speak:hover svg path:nth-child(2) { animation-delay:.1s } .speak:hover svg path:nth-child(3) { animation-delay:.2s } .speak:hover svg path:nth-child(4) { animation-delay:.3s } .speak:hover svg path:nth-child(5) { animation-delay:.4s }
-@keyframes da-bars { 0%,100% { transform:scaleY(1) } 50% { transform:scaleY(1.6) } }
-@media (prefers-reduced-motion: reduce) { .speak:hover svg path { animation:none } .speak:hover { transform:none } }
-.send { width:34px; height:34px; border-radius:50%; border:0; background:linear-gradient(135deg, var(--voice-gradient-start) 0%, var(--voice-gradient-mid) 55%, var(--voice-gradient-end) 100%); color:#FFFFFF; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; flex:none; box-shadow:0 4px 14px var(--voice-glow) } .send svg { width:18px; height:18px } .send.stop { background:var(--da-bubble-2); color:var(--da-danger); box-shadow:none }
-.rec { display:none; align-items:center; gap:8px; padding:4px 0 0; font-size:12px; color:var(--da-danger) } .rec.on { display:flex } .rec i { width:8px; height:8px; border-radius:50%; background:var(--da-danger); animation:da-blink 1s steps(2,start) infinite } @keyframes da-blink { to { visibility:hidden } }
-.khint { height:0; overflow:hidden; margin:0 12px; font-size:11px; line-height:16px; color:var(--da-muted); opacity:0; transition:opacity .15s, height .15s } .khint.show { height:16px; opacity:1; margin-top:6px }
-.foot { flex:none; text-align:center; font-size:11px; line-height:1.4; color:var(--da-muted); padding:8px 12px } .foot a { color:var(--da-muted) }
-.pop { position:absolute; left:12px; right:12px; bottom:calc(100% - 4px); z-index:6; background:var(--da-panel); border:1px solid var(--da-line); border-radius:14px; box-shadow:var(--da-shadow); padding:12px; display:none } .pop.open { display:block }
-.pop .search { width:100%; height:36px; padding:0 10px; border:1px solid var(--da-line); border-radius:10px; background:var(--da-bg); color:var(--da-text); font:inherit; font-size:14px; margin-bottom:8px }
-.egrid { display:grid; grid-template-columns:repeat(8, 1fr); gap:2px; max-height:190px; overflow-y:auto } .egrid button { height:36px; border:0; background:transparent; border-radius:8px; font-size:20px; cursor:pointer } .egrid button:hover { background:var(--da-bubble) }
-.ggrid { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; max-height:230px; overflow-y:auto } .ggrid button { padding:0; border:0; background:var(--da-bubble); border-radius:10px; overflow:hidden; cursor:pointer; aspect-ratio:4/3 } .ggrid img { width:100%; height:100%; object-fit:cover; display:block } .pop .empty { font-size:12px; color:var(--da-muted); padding:12px 4px; text-align:center }
-/* voice */
-.voice { position:absolute; inset:0; z-index:7; background:var(--da-bg); display:none; flex-direction:column; align-items:center; padding:0; text-align:center; overflow:hidden } .voice.open { display:flex }
-.voice .logo { width:72px; height:72px } .voice .logo svg { width:34px; height:34px }
-.wave { display:flex; align-items:center; gap:4px; height:40px } .wave i { width:5px; height:10px; border-radius:3px; background:linear-gradient(180deg, var(--da-mint), var(--da-sky)); animation:da-wave 1s ease-in-out infinite } .wave i:nth-child(2n) { animation-delay:.15s } .wave i:nth-child(3n) { animation-delay:.3s } .wave.idle i { animation-play-state:paused; height:6px; opacity:.5 }
-@keyframes da-wave { 0%,100% { height:8px } 50% { height:34px } }
-.vstatus { font-size:15px; color:var(--da-muted) } .vtext { font-size:14px; color:var(--da-text); max-width:320px; min-height:20px } .vbtns { display:flex; gap:12px } .vbtns .btn { min-width:110px; justify-content:center }
-/* Messages */
-.mlist { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:12px 0 64px }
-.msearch { display:block; width:calc(100% - 32px); margin:0 16px 12px; height:36px; padding:0 12px; border:1px solid var(--da-line); border-radius:10px; background:var(--da-panel); color:var(--da-text); font:inherit; font-size:14px } .msearch:focus { outline:none; border-color:var(--da-accent) } .msearch::placeholder { color:var(--da-muted) }
-.mgroup { margin:8px 16px 4px; font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--da-muted) } .mgroup:first-of-type { margin-top:0 }
-.mempty { padding:24px 16px; font-size:13px; color:var(--da-muted); text-align:center }
-.shortcut { display:flex; align-items:center; gap:12px; padding:12px 16px; margin:0 16px 12px; border:1px solid var(--da-line); border-radius:14px; background:var(--da-panel); color:var(--da-text); text-decoration:none; min-width:0 } .shortcut:hover { border-color:var(--da-muted) } .shortcut .t { flex:1; min-width:0 } .shortcut .t b { display:block; font-size:14px } .shortcut .t span { font-size:12px; color:var(--da-muted) } .shortcut svg { width:18px; height:18px; color:var(--da-muted); flex:none }
-.convo { position:relative; display:flex; align-items:center; gap:12px; width:100%; min-width:0; padding:12px 16px; border:0; border-bottom:1px solid var(--da-line); background:transparent; color:var(--da-text); cursor:pointer; text-align:left; overflow:hidden } .convo:hover { background:var(--da-panel) } .convo:last-child { border-bottom:0 }
-.avatar { flex:none; width:32px; height:32px; border-radius:50%; background:var(--da-accent); color:#1A1208; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px } .avatar svg { width:16px; height:16px } .shortcut .avatar { width:36px; height:36px } .shortcut .avatar svg { width:18px; height:18px }
-.convo .c { flex:1 1 auto; min-width:0; overflow:hidden } .convo .n { display:block; font-weight:600; font-size:14px; line-height:1.35; color:var(--da-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-.convo .p { display:block; color:var(--da-muted); font-size:12px; line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px } .convo.unread .n { color:var(--da-text) }
-.convo .r { flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:32px; align-self:flex-start; padding-top:2px } .convo .time { font-size:12px; color:var(--da-muted); white-space:nowrap } .dot { width:8px; height:8px; border-radius:50%; background:var(--da-accent) }
-.convo .more2 { position:absolute; right:40px; top:50%; transform:translateY(-50%); width:28px; height:28px; border:0; border-radius:8px; background:transparent; color:var(--da-muted); display:none; align-items:center; justify-content:center; cursor:pointer } .convo .more2 svg { width:16px; height:16px } .convo:hover .more2, .convo:focus-within .more2 { display:inline-flex } .convo .more2:hover { background:var(--da-bubble); color:var(--da-text) } .convo:hover .r, .convo:focus-within .r { visibility:hidden }
-.rename { display:flex; gap:8px; align-items:center; padding:8px 16px 8px 60px; border-bottom:1px solid var(--da-line) } .rename input { flex:1; min-width:0; height:34px; padding:0 10px; border:1px solid var(--da-accent); border-radius:8px; background:var(--da-bg); color:var(--da-text); font:inherit; font-size:14px; outline:none }
-.empty { padding:48px 16px 20px; text-align:center; color:var(--da-muted); font-size:14px } .empty b { display:block; color:var(--da-text); font-size:16px; margin-bottom:6px }
-.fab { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 16px; border-radius:999px; border:0; background:var(--da-accent); color:#1A1208; font-weight:600; font-size:14px; cursor:pointer; box-shadow:0 10px 30px rgba(0,0,0,.35); white-space:nowrap } .fab svg { width:18px; height:18px }
-.help { flex:1; min-height:0; overflow-y:auto; padding:16px } .help h2 { margin:16px 0 8px; font-size:11px; color:var(--da-muted); font-weight:500; text-transform:uppercase; letter-spacing:.05em } .help h2:first-child { margin-top:0 } .help .stack { display:flex; flex-direction:column; gap:8px } .help .btn { justify-content:space-between } .help .btn svg { width:16px; height:16px; color:var(--da-muted) }
-/* bottom tabs: 56px, Home and Messages screens only */
-.tabs { flex:none; display:flex; height:56px; border-top:1px solid var(--da-line); background:var(--da-bg); padding-bottom:env(safe-area-inset-bottom) }
-.tab { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:0 4px; border:0; background:transparent; color:var(--da-muted); cursor:pointer; font-size:11px; line-height:1; position:relative } .tab svg { width:20px; height:20px } .tab.on { color:var(--da-text) } .tab:hover { color:var(--da-text) }
-.tab .badge { position:absolute; top:6px; left:calc(50% + 6px); min-width:17px; height:17px; padding:0 5px; border-radius:999px; background:var(--da-danger); color:#fff; font:700 10.5px/17px system-ui, sans-serif; text-align:center }
-.vh { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap }
-/* ---- agent UI (docs/AGENT_UI.md) */
-.orb-mini { width:36px; height:36px; border-radius:50%; flex:none; position:relative; background:radial-gradient(circle at 35% 32%, #FFD9B0 0%, #F28C28 32%, #FF6A3D 62%, #E9487A 100%); box-shadow:0 0 0 0 rgba(242,140,40,.0), 0 4px 14px rgba(255,106,61,.25); animation:da-breathe 3.6s ease-in-out infinite }
-.orb-mini.work { animation:da-pulse 1.1s ease-in-out infinite } .orb-mini.call { animation:da-pulse 1.8s ease-in-out infinite; background:radial-gradient(circle at 35% 32%, #FFF3E3 0%, #FFB45E 32%, #FF7A3D 62%, #FF5F8E 100%) }
-@keyframes da-breathe { 0%,100% { transform:scale(1); box-shadow:0 0 0 0 rgba(242,140,40,0), 0 4px 14px rgba(255,106,61,.22) } 50% { transform:scale(1.04); box-shadow:0 0 0 4px rgba(242,140,40,.10), 0 6px 18px rgba(255,106,61,.32) } }
-@keyframes da-pulse { 0%,100% { transform:scale(1); box-shadow:0 0 0 0 rgba(242,140,40,.0) } 50% { transform:scale(1.09); box-shadow:0 0 0 6px rgba(242,140,40,.16) } }
-.st { display:inline-flex; align-items:center; gap:5px; margin-left:8px; font:500 11px/1 system-ui, sans-serif; color:var(--da-muted); vertical-align:middle; white-space:nowrap } .st i { width:6px; height:6px; border-radius:50%; background:var(--da-ok) } .st.work i { background:var(--da-accent); animation:da-blink2 1s ease-in-out infinite } .st.call i { background:var(--da-danger); animation:da-blink2 1.4s ease-in-out infinite }
-@keyframes da-blink2 { 50% { opacity:.3 } }
-.vpill { display:none; align-items:center; gap:6px; height:28px; padding:0 10px; border-radius:999px; border:1px solid var(--da-line); background:var(--da-bubble); color:var(--da-text); font-size:12px; cursor:pointer; flex:none } .vpill.show { display:inline-flex } .vpill i { width:6px; height:6px; border-radius:50%; background:var(--da-danger); animation:da-blink2 1s infinite } .vpill:hover { border-color:var(--da-muted) }
-.activity { display:inline-flex; align-items:center; gap:10px; margin:0 0 6px; padding:8px 14px; border-radius:16px; background:var(--da-bubble); font-size:13px; color:var(--da-muted); max-width:100%; animation:da-in .2s ease-out both } .activity .orb { width:14px; height:14px; border-radius:50%; flex:none; background:radial-gradient(circle at 35% 32%, #FFD9B0 0%, #F28C28 40%, #E9487A 100%); animation:da-pulse 1.1s ease-in-out infinite }
-.activity .lbl { background:linear-gradient(90deg, var(--da-muted) 0%, var(--da-text) 50%, var(--da-muted) 100%); background-size:200% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:da-shimmer 1.6s linear infinite; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+:host {
+  /* Indigo Dream design tokens */
+  --da-primary:#5546F7; --da-primary-hover:#4537E8; --da-ink:var(--da-primary); --da-navy:#151B32; --da-lavender:#EEECFF; --da-bg:#F6F7FC; --da-surface:#FFFFFF;
+  --da-success:#19B887; --da-text:#151B32; --da-muted:#68718A; --da-line:#E4E7F2; --da-line-strong:#CDD2E3; --da-subtle:#F0F2F9;
+  --da-user:var(--da-lavender); --da-user-text:var(--da-navy); --da-head:var(--da-navy); --da-head-text:#FFFFFF; --da-head-muted:rgba(255,255,255,.66);
+  --da-danger:#D6345B; --da-danger-soft:#FDEEF2; --da-danger-text:#A61E43; --da-ok-text:#0E8A64;
+  --da-primary-soft:rgba(85,70,247,.10); --da-primary-ring:rgba(85,70,247,.35); --da-thumb:rgba(21,27,50,.20);
+  --da-radius:20px; --da-r-lg:16px; --da-r-md:12px; --da-r-sm:8px;
+  --da-shadow-sm:0 1px 2px rgba(21,27,50,.06); --da-shadow-md:0 10px 28px -10px rgba(21,27,50,.22); --da-shadow-lg:0 28px 64px -16px rgba(21,27,50,.34), 0 0 0 1px rgba(21,27,50,.06);
+  --da-ease:cubic-bezier(.2,.8,.2,1); --da-grad:linear-gradient(145deg, #7466FF 0%, var(--da-primary) 55%, #3E31D4 100%);
+  /* isolation: reset everything the host page could leak in through inheritance */
+  display:block; box-sizing:border-box; font-family:var(--da-font, "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+  font-size:14px; line-height:1.5; font-weight:400; font-style:normal; letter-spacing:normal; word-spacing:normal; text-align:left; text-transform:none; text-indent:0;
+  color:var(--da-text); -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; -webkit-tap-highlight-color:transparent }
+:host([theme="dark"]) { ${DARK} }
+@media (prefers-color-scheme: dark) { :host([theme="auto"]) { ${DARK} } }
+*, *::before, *::after { box-sizing:border-box } [hidden] { display:none !important }
+button, input, textarea, select { font:inherit; color:inherit; letter-spacing:inherit; margin:0 } button { -webkit-appearance:none; appearance:none }
+:focus { outline:none } :focus-visible { outline:2px solid var(--da-primary); outline-offset:2px }
+.vh { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap }
+.scroll { scrollbar-width:thin; scrollbar-color:transparent transparent; overscroll-behavior:contain } .scroll:hover, .scroll.scrolling { scrollbar-color:var(--da-thumb) transparent }
+.scroll::-webkit-scrollbar { width:6px; height:6px } .scroll::-webkit-scrollbar-track { background:transparent } .scroll::-webkit-scrollbar-thumb { background:transparent; border-radius:3px } .scroll:hover::-webkit-scrollbar-thumb, .scroll.scrolling::-webkit-scrollbar-thumb { background:var(--da-thumb) }
+@keyframes da-in { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
+@keyframes da-pop { from { opacity:0; transform:scale(.97) } to { opacity:1; transform:none } }
+@keyframes da-blink { 50% { opacity:.35 } }
 @keyframes da-shimmer { from { background-position:200% 0 } to { background-position:-200% 0 } }
-.worked { display:inline-flex; align-items:center; gap:6px; margin:0 0 6px; padding:0; border:0; background:transparent; color:var(--da-muted); font:inherit; font-size:12px; cursor:pointer; animation:da-in .25s ease-out both } .worked:hover { color:var(--da-text) } .worked svg { width:12px; height:12px; transition:transform .2s } .worked.open svg { transform:rotate(90deg) }
-.steps { display:none; margin:-2px 0 8px 4px; font-size:12px; color:var(--da-muted); line-height:1.5 } .steps.open { display:block } .steps div { display:flex; gap:10px } .steps b { font-weight:500; min-width:40px; text-align:right; font-variant-numeric:tabular-nums; color:var(--da-muted); opacity:.8 }
-.msg.skel { padding:14px 16px; min-width:200px; max-width:260px } .skel .ln { height:10px; border-radius:6px; margin:7px 0; background:linear-gradient(90deg, var(--da-bubble-2) 25%, var(--da-line) 50%, var(--da-bubble-2) 75%); background-size:200% 100%; animation:da-shimmer 1.4s linear infinite } .skel .ln:nth-child(2) { width:85% } .skel .ln:nth-child(3) { width:60% }
-.tok { animation:da-tok .15s ease-out both } @keyframes da-tok { from { opacity:0; filter:blur(2px) } to { opacity:1; filter:blur(0) } }
-.msg.streaming::after { content:""; display:inline-block; width:2px; height:1em; margin-left:2px; vertical-align:-2px; background:var(--da-accent); animation:da-caret 1s steps(2, start) infinite } @keyframes da-caret { to { visibility:hidden } }
-@keyframes da-in { from { opacity:0; transform:translateY(4px) } to { opacity:1; transform:none } }
-.sources.in { animation:da-in .25s .06s ease-out both } .tools.in { animation:da-in .25s .12s ease-out both } .meta.in { animation:da-in .25s ease-out both } .ctx.in { animation:da-in .25s ease-out both }
-.card, .slots, .handoff, .picker, .hform, .booked, .actcard, .avail { animation:da-pop .25s cubic-bezier(.16,1,.3,1) both } @keyframes da-pop { from { opacity:0; transform:scale(.96) } to { opacity:1; transform:none } }
-.chk { width:26px; height:26px; flex:none } .chk circle { stroke:var(--da-ok); stroke-width:2; fill:none; stroke-dasharray:80; stroke-dashoffset:80; animation:da-draw .5s ease-out forwards } .chk path { stroke:var(--da-ok); stroke-width:2.4; fill:none; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:30; stroke-dashoffset:30; animation:da-draw .35s .35s ease-out forwards } @keyframes da-draw { to { stroke-dashoffset:0 } }
-.booked .bk-title { display:flex; align-items:center; gap:8px }
-.actcard { display:flex; align-items:center; gap:10px; margin:10px 0 0; padding:8px 12px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-panel); font-size:13px; max-width:100% } .actcard .ai { width:28px; height:28px; border-radius:8px; background:var(--da-bubble); display:flex; align-items:center; justify-content:center; flex:none; color:var(--da-muted) } .actcard .ai svg { width:16px; height:16px }
-.actcard .at { flex:1; min-width:0 } .actcard .at b { display:block; font-weight:600; font-size:13px } .actcard .at span { display:block; font-size:12px; color:var(--da-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-.actcard .as { flex:none; display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--da-muted) } .actcard.run .as i { width:8px; height:8px; border-radius:50%; background:var(--da-accent); animation:da-blink2 1s infinite } .actcard.ok .as { color:var(--da-ok) } .actcard.ok .ai { color:var(--da-ok) } .actcard.fail .as { color:var(--da-danger) } .actcard.fail .ai { color:var(--da-danger) }
-.ctx { display:inline-flex; align-items:center; gap:6px; margin:0 0 6px 4px; height:24px; padding:0 10px; border:1px solid var(--da-line); border-radius:999px; background:transparent; color:var(--da-muted); font:inherit; font-size:12px; cursor:pointer; align-self:flex-start } .ctx:hover { color:var(--da-text); border-color:var(--da-muted) } .ctx svg { width:12px; height:12px; transition:transform .2s } .ctx.open svg { transform:rotate(90deg) } .sources.hide { display:none }
-.caps-row { max-width:100%; width:100% } .caps { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px } .cap { display:flex; flex-direction:column; gap:6px; padding:10px 12px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-panel); color:var(--da-text); text-align:left; cursor:pointer; font:inherit; font-size:13px; line-height:1.3; min-width:0 } .cap svg { width:18px; height:18px; color:var(--da-accent) } .cap span { overflow-wrap:anywhere }
-.btn, .chip, .time, .date, .ctype, .cap, .vbtn, .tab, .worked, .ctx { position:relative; overflow:hidden } .btn, .chip, .card, .ctype, .date, .time, .cap { transition:transform .15s, border-color .15s, box-shadow .15s }
-.chip:hover, .ctype:hover, .cap:hover, .date:not(.off):hover, .time:not(.off):hover, .btn:not(:disabled):hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,.22) }
-.rip { position:absolute; border-radius:50%; transform:scale(0); background:currentColor; opacity:.18; pointer-events:none; animation:da-ripple .5s ease-out forwards } @keyframes da-ripple { to { transform:scale(2.6); opacity:0 } }
-textarea.q { transition:height .15s ease } .cbox.busy { border-color:rgba(242,140,40,.35); animation:da-glow 1.6s ease-in-out infinite } @keyframes da-glow { 0%,100% { box-shadow:0 0 0 3px rgba(242,140,40,.08), 0 0 18px rgba(242,140,40,.12) } 50% { box-shadow:0 0 0 3px rgba(242,140,40,.16), 0 0 30px rgba(242,140,40,.26) } }
-/* voice call view */
-.vhead { flex:none; width:100%; height:52px; display:flex; align-items:center; gap:8px; padding:0 8px 0 16px; border-bottom:1px solid var(--da-line); font-size:14px } .vhead b { font-family:"IBM Plex Mono", ui-monospace, monospace; font-weight:600 } .vhead .live { width:8px; height:8px; border-radius:50%; background:var(--da-ok); animation:da-live 1.6s ease-out infinite } .vhead .vtimer { margin-left:auto; font:500 13px/1 ui-monospace, monospace; color:var(--da-muted); font-variant-numeric:tabular-nums }
-@keyframes da-live { 0% { box-shadow:0 0 0 0 rgba(92,203,138,.55) } 100% { box-shadow:0 0 0 8px rgba(92,203,138,0) } }
-.vbody { flex:1; min-height:0; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:12px 16px; position:relative } .vglow { position:absolute; inset:0; pointer-events:none; background:radial-gradient(circle at 50% 44%, var(--vglow, rgba(242,140,40,.26)) 0%, transparent 52%); opacity:var(--vglow-o, .6); transition:opacity .4s }
-.vorb { position:relative; width:220px; height:220px; display:flex; align-items:center; justify-content:center } .vorb canvas { width:220px; height:220px; display:block } .vorb.static { width:160px; height:160px; border-radius:50%; background:radial-gradient(circle at 35% 32%, #FFD9B0 0%, #F28C28 32%, #FF6A3D 62%, #E9487A 100%); transition:opacity .4s, filter .4s } .voice.muted .vorb.static { filter:grayscale(1); opacity:.6 }
-.vmute-badge { position:absolute; bottom:6px; left:50%; transform:translateX(-50%); font-size:11px; padding:2px 8px; border-radius:999px; background:var(--da-bubble-2); color:var(--da-muted); display:none; z-index:1 } .voice.muted .vmute-badge { display:block }
-.voice .vstatus { font-size:15px; color:var(--da-muted); min-height:20px; transition:opacity .25s, transform .25s } .voice .vstatus.sw { opacity:0; transform:translateY(3px) }
-.vcap { width:min(360px, 100%); min-height:46px; max-height:46px; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; gap:3px; font-size:14px; line-height:1.45; text-align:center } .vcap .cu { color:var(--da-muted); font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis } .vcap .ca { color:var(--da-text) } .vcap .ca .w { opacity:.28; transition:opacity .12s } .vcap .ca .w.on { opacity:1 } .vcap.off { visibility:hidden } .vcap:empty { display:none }
-.vctl { flex:none; display:flex; justify-content:center; align-items:center; gap:16px; padding:12px 16px calc(24px + env(safe-area-inset-bottom)) }
-.vbtn { width:56px; height:56px; border-radius:50%; border:0; background:var(--da-bubble-2); color:var(--da-text); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; flex:none; transition:background .2s, color .2s, transform .15s } .vbtn svg { width:24px; height:24px } .vbtn:hover { transform:translateY(-1px) } .vbtn:active { transform:scale(.96) } .vbtn.on { background:#FFFFFF; color:#1A1208 } .vbtn.end { background:var(--da-danger); color:#FFFFFF } .vbtn.end:hover { background:#F05A5F } .vbtn.cc.off { color:var(--da-muted) }
-.vbtn .tip { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); background:var(--da-bubble-2); color:var(--da-text); font-size:11px; padding:3px 7px; border-radius:6px; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .15s } .vbtn:hover .tip, .vbtn:focus-visible .tip { opacity:1 }
-.voice.closing .vorb { animation:da-collapse .35s ease-in forwards } @keyframes da-collapse { to { transform:scale(.15); opacity:0 } }
-.callcard .cc-t { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600 } .callcard .cc-t svg { width:16px; height:16px; color:var(--da-accent) } .callcard .cc-s { font-size:12px; color:var(--da-muted); margin-top:2px }
-@media (prefers-reduced-motion: reduce) {
-  .orb-mini, .activity .orb, .activity .lbl, .skel .ln, .tok, .msg.streaming::after, .card, .slots, .handoff, .picker, .hform, .booked, .actcard, .avail, .sources.in, .tools.in, .meta.in, .ctx.in, .activity, .worked, .cbox.busy, .vhead .live, .chk circle, .chk path, .rip, .actcard.run .as i, .vpill i, .st.work i, .st.call i, .voice.closing .vorb { animation:none }
-  .tok { opacity:1; filter:none } .chk circle, .chk path { stroke-dashoffset:0 } .activity .lbl { color:var(--da-muted); background:none; -webkit-text-fill-color:var(--da-muted) } .msg.streaming::after { visibility:visible }
-  .cap:hover, .chip:hover, .ctype:hover, .date:hover, .time:hover, .vbtn:hover, .btn:hover { transform:none; box-shadow:none } textarea.q, .vstatus, .vglow, .vbtn { transition:none } .cbox.busy { box-shadow:0 0 0 3px rgba(242,140,40,.12) }
+@keyframes da-spin { to { transform:rotate(360deg) } }
+
+/* ---------------------------------------------------------------- panel + launcher */
+.panel { display:flex; flex-direction:column; height:100%; min-height:420px; background:var(--da-bg); color:var(--da-text); border-radius:var(--da-radius); overflow:hidden; position:relative; isolation:isolate }
+:host([mode="launcher"]) { display:contents }
+:host([mode="launcher"]) .panel { position:fixed; z-index:2147482999; right:max(20px, env(safe-area-inset-right)); bottom:calc(max(20px, env(safe-area-inset-bottom)) + 72px);
+  width:min(400px, calc(100vw - 40px)); height:min(700px, calc(100vh - 112px)); height:min(700px, calc(100dvh - 112px)); min-height:0; box-shadow:var(--da-shadow-lg);
+  opacity:0; visibility:hidden; transform:translateY(14px) scale(.98); transform-origin:bottom right; pointer-events:none;
+  transition:opacity .2s var(--da-ease), transform .26s var(--da-ease), visibility 0s linear .26s }
+:host([mode="launcher"][open]) .panel { opacity:1; visibility:visible; transform:none; pointer-events:auto; transition:opacity .2s var(--da-ease), transform .26s var(--da-ease), visibility 0s }
+.launcher { display:none; position:fixed; z-index:2147483000; right:max(20px, env(safe-area-inset-right)); bottom:max(20px, env(safe-area-inset-bottom)); width:56px; height:56px; padding:0; border:0; border-radius:50%;
+  background:var(--da-grad); color:#fff; cursor:pointer; align-items:center; justify-content:center; box-shadow:0 12px 28px -10px rgba(85,70,247,.65), 0 2px 6px rgba(21,27,50,.18); transition:transform .18s var(--da-ease), box-shadow .18s var(--da-ease) }
+:host([mode="launcher"]) .launcher { display:flex }
+.launcher:hover { transform:translateY(-2px); box-shadow:0 16px 32px -10px rgba(85,70,247,.75), 0 3px 8px rgba(21,27,50,.2) } .launcher:active { transform:scale(.96) }
+.launcher:focus-visible { outline:3px solid var(--da-primary-ring); outline-offset:3px }
+.launcher .lic { position:absolute; inset:0; display:grid; place-items:center; transition:opacity .18s var(--da-ease), transform .24s var(--da-ease) } .launcher svg { width:26px; height:26px }
+.launcher .lic-close { opacity:0; transform:rotate(-60deg) scale(.7) } :host([open]) .launcher .lic-open { opacity:0; transform:rotate(60deg) scale(.7) } :host([open]) .launcher .lic-close { opacity:1; transform:none }
+.ldot { position:absolute; right:2px; bottom:2px; width:13px; height:13px; border-radius:50%; background:var(--da-success); box-shadow:0 0 0 2.5px #fff } :host([open]) .ldot { display:none }
+.lbadge { position:absolute; top:-3px; right:-3px; min-width:20px; height:20px; padding:0 6px; border-radius:999px; background:var(--da-danger); color:#fff; font:700 11px/20px system-ui, sans-serif; text-align:center; box-shadow:0 0 0 2px #fff } :host([open]) .lbadge { display:none }
+@media (max-width:520px) {
+  :host([mode="launcher"]) .panel { left:0; right:0; top:var(--da-vv-top, 0px); bottom:auto; width:100%; height:100vh; height:var(--da-vvh, 100dvh); border-radius:0; box-shadow:none; transform:translateY(24px); transform-origin:bottom center }
+  :host([mode="launcher"][open]) .launcher { display:none }
+  header { padding-top:calc(10px + env(safe-area-inset-top)) !important }
+  textarea.q, .inp, .msearch, .fbpop input, .pop .search { font-size:16px !important }
 }
 
+/* ---------------------------------------------------------------- header */
+header { flex:none; position:relative; z-index:10; display:flex; align-items:center; gap:10px; min-height:64px; padding:10px 8px 10px 16px; background:var(--da-head); color:var(--da-head-text) }
+.hav { position:relative; flex:none; width:36px; height:36px; border-radius:12px; display:grid; place-items:center; background:var(--da-grad); color:#fff; box-shadow:inset 0 0 0 1px rgba(255,255,255,.16) } .hav svg { width:20px; height:20px }
+.hav::after { content:""; position:absolute; inset:-3px; border-radius:14px; border:2px solid rgba(169,159,255,.0); transition:border-color .2s } .hav.work::after { border-color:rgba(169,159,255,.75); animation:da-blink 1.2s ease-in-out infinite }
+.brand { flex:1; min-width:0 } .brand h1 { margin:0; font-size:15px; font-weight:650; line-height:1.25; letter-spacing:-.01em; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.brand p { margin:2px 0 0; display:flex; align-items:center; gap:6px; font-size:12px; line-height:1.3; color:var(--da-head-muted); white-space:nowrap; overflow:hidden } .brand .sub { overflow:hidden; text-overflow:ellipsis } .brand .sep { opacity:.6 }
+.st { display:inline-flex; align-items:center; gap:5px; flex:none } .st i { width:7px; height:7px; border-radius:50%; background:var(--da-success); box-shadow:0 0 0 3px rgba(25,184,135,.22) }
+.st.off i { background:#8C93AB; box-shadow:none } .st.work i { background:#A99FFF; box-shadow:0 0 0 3px rgba(169,159,255,.25); animation:da-blink 1s ease-in-out infinite } .st.call i { background:#FF6B8A; box-shadow:0 0 0 3px rgba(255,107,138,.25); animation:da-blink 1.4s ease-in-out infinite }
+.vtitle { flex:1; min-width:0; margin:0; font-size:15px; font-weight:650; letter-spacing:-.01em; color:#fff }
+.hbtn { position:relative; flex:none; width:34px; height:34px; display:inline-grid; place-items:center; padding:0; border:0; border-radius:10px; background:transparent; color:rgba(255,255,255,.78); cursor:pointer; transition:background .15s, color .15s }
+.hbtn:hover { background:rgba(255,255,255,.10); color:#fff } .hbtn svg { width:18px; height:18px } .hbtn:focus-visible { outline-color:#fff; outline-offset:0 } .hbtn[aria-expanded="true"] { background:rgba(255,255,255,.14); color:#fff }
+.hbadge { position:absolute; top:3px; right:3px; min-width:16px; height:16px; padding:0 4px; border-radius:999px; background:#FF5C7A; color:#fff; font:700 10px/16px system-ui, sans-serif; text-align:center; box-shadow:0 0 0 2px var(--da-head) }
+.vpill { display:none; align-items:center; gap:6px; height:28px; padding:0 10px; border:1px solid rgba(255,255,255,.2); border-radius:999px; background:rgba(255,255,255,.08); color:#fff; font-size:12px; font-weight:600; cursor:pointer; flex:none } .vpill.show { display:inline-flex } .vpill i { width:6px; height:6px; border-radius:50%; background:#FF6B8A; animation:da-blink 1s infinite }
+.menu { position:absolute; right:8px; top:calc(100% - 4px); z-index:30; min-width:224px; padding:6px; background:var(--da-surface); color:var(--da-text); border:1px solid var(--da-line); border-radius:14px; box-shadow:var(--da-shadow-md); display:none }
+.menu.open { display:block; animation:da-pop .14s var(--da-ease) both; transform-origin:top right }
+.menu button { display:flex; align-items:center; gap:10px; width:100%; padding:9px 10px; border:0; border-radius:9px; background:transparent; text-align:left; font-size:13.5px; cursor:pointer } .menu button:hover, .menu button:focus-visible { background:var(--da-subtle); outline:none } .menu svg { width:17px; height:17px; color:var(--da-muted); flex:none }
+.menu hr { border:0; border-top:1px solid var(--da-line); margin:6px 4px }
+
+/* ---------------------------------------------------------------- views + conversation */
+.views { flex:1; min-height:0; min-width:0; display:flex } .view { flex:1; min-height:0; min-width:0; display:flex; flex-direction:column; position:relative }
+.log { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:20px 16px 12px; display:flex; flex-direction:column; gap:16px }
+.welcome { display:flex; flex-direction:column; gap:14px; padding:4px 2px 0; animation:da-in .3s var(--da-ease) both }
+.wav { width:44px; height:44px; border-radius:14px; display:grid; place-items:center; background:var(--da-grad); color:#fff; box-shadow:0 10px 24px -10px rgba(85,70,247,.6) } .wav svg { width:24px; height:24px }
+.welcome h2 { margin:4px 0 0; font-size:20px; font-weight:700; line-height:1.25; letter-spacing:-.02em; color:var(--da-text) }
+.welcome p { margin:-4px 0 0; font-size:14px; line-height:1.55; color:var(--da-muted) }
+.acts-label { margin:6px 2px -4px; font-size:12px; font-weight:600; color:var(--da-muted) }
+.acts { display:flex; flex-direction:column; gap:8px }
+.act { display:flex; align-items:center; gap:12px; width:100%; min-height:52px; padding:10px 12px; border:1px solid var(--da-line); border-radius:14px; background:var(--da-surface); color:var(--da-text); font-size:14px; font-weight:550; text-align:left; text-decoration:none; cursor:pointer; box-shadow:var(--da-shadow-sm); transition:border-color .15s, box-shadow .15s, transform .15s }
+.act .ai { flex:none; width:32px; height:32px; border-radius:10px; display:grid; place-items:center; background:var(--da-lavender); color:var(--da-ink) } .act .ai svg { width:17px; height:17px }
+.act .al { flex:1; min-width:0 } .act .al small { display:block; margin-top:1px; font-size:12px; font-weight:400; color:var(--da-muted) }
+.act > svg { flex:none; width:16px; height:16px; color:var(--da-muted); transition:transform .15s, color .15s }
+.act:hover { border-color:rgba(85,70,247,.45); box-shadow:var(--da-shadow-md) } .act:hover > svg { transform:translateX(2px); color:var(--da-ink) } .act:active { transform:scale(.99) }
+.act.book .ai { background:var(--da-primary); color:#fff }
+.row { display:flex; gap:8px; max-width:100%; min-width:0; animation:da-in .22s var(--da-ease) both } .row.user { justify-content:flex-end }
+.bav { flex:none; width:28px; height:28px; margin-top:2px; border-radius:9px; display:grid; place-items:center; background:var(--da-grad); color:#fff } .bav svg { width:16px; height:16px }
+.col { display:flex; flex-direction:column; align-items:flex-start; min-width:0; max-width:calc(100% - 36px) } .row.user .col { align-items:flex-end; max-width:85% } .row.wide .col { flex:1 }
+.msg { position:relative; min-width:0; max-width:100%; padding:10px 14px; border-radius:16px; font-size:14.5px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere }
+.bot .msg { background:var(--da-surface); color:var(--da-text); border:1px solid var(--da-line); border-top-left-radius:6px; box-shadow:var(--da-shadow-sm) }
+.user .msg { background:var(--da-user); color:var(--da-user-text); border-top-right-radius:6px }
+.msg.hascard { width:100%; padding:14px } .msg.err { background:var(--da-danger-soft); border-color:rgba(214,52,91,.28); color:var(--da-danger-text) }
+.msg b { font-weight:650 } .msg .h { display:block; font-weight:650; margin:2px 0 } .msg code { font:12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding:1px 5px; border-radius:5px; background:var(--da-subtle) }
+.msg a:not(.btn):not(.cite) { color:var(--da-ink); text-decoration:underline; text-decoration-color:rgba(85,70,247,.35); text-underline-offset:3px; overflow-wrap:anywhere } .user .msg a:not(.btn) { color:inherit }
+.msg img.gif { display:block; max-width:240px; max-height:220px; border-radius:12px; margin:2px 0 }
+.li { display:block; position:relative; padding-left:16px; margin:2px 0 } .li::before { content:""; position:absolute; left:4px; top:.68em; width:5px; height:5px; border-radius:50%; background:var(--da-primary); opacity:.75 }
+.li.num { padding-left:22px } .li.num::before { content:attr(data-n) "."; top:0; left:0; width:auto; height:auto; border-radius:0; background:none; opacity:1; color:var(--da-muted); font-weight:600; font-size:13px }
+.meta { margin:5px 4px 0; font-size:11.5px; line-height:1.3; color:var(--da-muted) }
+.cite { display:inline-block; vertical-align:super; margin-left:2px; padding:1px 5px; border-radius:999px; background:var(--da-lavender); color:var(--da-ink); font:650 9.5px/1.2 system-ui, sans-serif; text-decoration:none } a.cite:hover { background:var(--da-primary); color:#fff }
+.activity { display:inline-flex; align-items:center; gap:8px; margin:0 0 6px; padding:6px 12px; border-radius:999px; background:var(--da-surface); border:1px solid var(--da-line); font-size:12.5px; color:var(--da-muted); max-width:100%; animation:da-in .2s ease-out both }
+.activity .spin { width:12px; height:12px; flex:none; border-radius:50%; border:2px solid var(--da-lavender); border-top-color:var(--da-ink); animation:da-spin .8s linear infinite }
+.activity .lbl { white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.msg.skel { min-width:200px; max-width:260px; padding:14px } .skel .ln { height:9px; margin:6px 0; border-radius:6px; background:linear-gradient(90deg, var(--da-subtle) 25%, var(--da-line) 50%, var(--da-subtle) 75%); background-size:200% 100%; animation:da-shimmer 1.4s linear infinite } .skel .ln:nth-child(2) { width:85% } .skel .ln:nth-child(3) { width:55% }
+.msg.streaming::after { content:""; display:inline-block; width:2px; height:1em; margin-left:2px; vertical-align:-2px; background:var(--da-primary); animation:da-blink .9s steps(2, start) infinite }
+.worked { display:inline-flex; align-items:center; gap:4px; margin:0 0 6px; padding:0; border:0; background:transparent; color:var(--da-muted); font-size:12px; cursor:pointer } .worked:hover { color:var(--da-text) } .worked svg { width:12px; height:12px; transition:transform .2s } .worked.open svg { transform:rotate(90deg) }
+.steps { display:none; margin:-2px 0 8px 4px; font-size:12px; line-height:1.55; color:var(--da-muted) } .steps.open { display:block } .steps div { display:flex; gap:10px } .steps b { min-width:40px; text-align:right; font-weight:500; font-variant-numeric:tabular-nums; opacity:.8 }
+.sources { display:flex; align-items:center; gap:8px; margin:8px 0 0; max-width:100%; min-width:0 } .sources .lbl { flex:none; font-size:11.5px; font-weight:600; color:var(--da-muted) }
+.srcs { display:flex; gap:6px; min-width:0; overflow-x:auto; scrollbar-width:none } .srcs::-webkit-scrollbar { display:none }
+.srcs a { flex:none; display:inline-flex; align-items:center; gap:6px; height:26px; max-width:240px; padding:0 10px 0 4px; border:1px solid var(--da-line); border-radius:999px; background:var(--da-surface); color:var(--da-text); font-size:12px; line-height:1; text-decoration:none; transition:border-color .15s }
+.srcs a b { min-width:18px; height:18px; padding:0 4px; border-radius:999px; background:var(--da-lavender); color:var(--da-ink); font:650 10.5px/18px system-ui, sans-serif; text-align:center } .srcs a .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis } .srcs a .hh { color:var(--da-muted); white-space:nowrap } .srcs a:hover { border-color:var(--da-ink) }
+.tools { display:flex; gap:2px; margin:4px 0 0; opacity:0; transition:opacity .15s } .row:hover .tools, .row:focus-within .tools, .row.last .tools, .tools.keep { opacity:1 } @media (hover:none) { .tools { opacity:1 } }
+.tool { position:relative; width:28px; height:28px; display:inline-grid; place-items:center; padding:0; border:0; border-radius:8px; background:transparent; color:var(--da-muted); cursor:pointer } .tool:hover { background:var(--da-subtle); color:var(--da-text) } .tool svg { width:15px; height:15px } .tool.on { color:var(--da-ink) }
+.tool .tip { position:absolute; bottom:calc(100% + 4px); left:50%; transform:translateX(-50%); padding:3px 7px; border-radius:6px; background:var(--da-navy); color:#fff; font-size:11px; white-space:nowrap; pointer-events:none }
+.followups { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; animation:da-in .25s .05s var(--da-ease) both }
+.fu { display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:4px 12px; border:1px solid rgba(85,70,247,.3); border-radius:999px; background:var(--da-surface); color:var(--da-ink); font-size:13px; font-weight:550; cursor:pointer; text-align:left; transition:background .15s, border-color .15s }
+.fu:hover { background:var(--da-lavender); border-color:var(--da-ink) } .fu svg { width:14px; height:14px; flex:none }
+.jump { position:absolute; left:50%; bottom:calc(100% + 8px); transform:translateX(-50%); z-index:4; display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 12px; border:1px solid var(--da-line); border-radius:999px; background:var(--da-surface); color:var(--da-text); box-shadow:var(--da-shadow-md); font-size:12px; font-weight:600; cursor:pointer; animation:da-in .18s var(--da-ease) both } .jump svg { width:14px; height:14px }
+.toastmsg { position:absolute; left:50%; bottom:128px; z-index:40; transform:translate(-50%, 8px); padding:8px 14px; border-radius:999px; background:var(--da-navy); color:#fff; font-size:13px; box-shadow:var(--da-shadow-md); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s } .toastmsg.show { opacity:1; transform:translate(-50%, 0) }
+.fbpop { display:flex; flex-direction:column; gap:8px; width:min(300px, 100%); margin:6px 0 0; padding:12px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-surface); box-shadow:var(--da-shadow-md); animation:da-pop .16s var(--da-ease) both }
+.fbpop .reasons { display:flex; flex-wrap:wrap; gap:4px } .reason { height:28px; padding:0 10px; border:1px solid var(--da-line); border-radius:999px; background:transparent; font-size:12px; cursor:pointer } .reason:hover { border-color:var(--da-ink) } .reason.on { background:var(--da-primary); border-color:var(--da-ink); color:#fff }
+.fbpop input { height:34px; padding:0 10px; border:1px solid var(--da-line); border-radius:8px; background:var(--da-surface); font-size:13px } .fbpop input:focus { border-color:var(--da-ink); box-shadow:0 0 0 3px var(--da-primary-soft) }
+.fbpop .fbrow { display:flex; justify-content:flex-end; gap:6px }
+
+/* ---------------------------------------------------------------- buttons, cards, forms */
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:38px; padding:8px 14px; border:1px solid var(--da-line); border-radius:10px; background:var(--da-surface); color:var(--da-text); font-size:13.5px; font-weight:600; line-height:1.2; text-align:center; text-decoration:none; cursor:pointer; transition:background .15s, border-color .15s, color .15s, box-shadow .15s }
+.btn:hover { border-color:var(--da-line-strong); background:var(--da-subtle) } .btn svg { width:16px; height:16px; flex:none }
+.btn.primary { background:var(--da-primary); border-color:var(--da-ink); color:#fff; box-shadow:0 6px 16px -8px rgba(85,70,247,.7) } .btn.primary:hover { background:var(--da-primary-hover); border-color:var(--da-primary-hover) }
+.btn.ghost { border-color:transparent; background:transparent; color:var(--da-muted) } .btn.ghost:hover { color:var(--da-text); background:var(--da-subtle) }
+.btn.block { width:100% } .btn.sm { min-height:32px; padding:4px 10px; font-size:12.5px } .btn:disabled { opacity:.55; cursor:not-allowed }
+.btn.loading::before { content:""; width:14px; height:14px; border-radius:50%; border:2px solid rgba(255,255,255,.4); border-top-color:#fff; animation:da-spin .8s linear infinite }
+.hrow { display:flex; flex-wrap:wrap; align-items:center; gap:8px }
+.note { margin:0; font-size:12px; line-height:1.45; color:var(--da-muted) } .note.warn { color:var(--da-danger-text) } .note.ok { color:var(--da-ok-text) }
+.banner { display:flex; gap:8px; align-items:flex-start; padding:10px 12px; border-radius:10px; background:var(--da-danger-soft); color:var(--da-danger-text); font-size:13px; line-height:1.45 } .banner svg { width:16px; height:16px; flex:none; margin-top:1px } .banner.info { background:var(--da-lavender); color:var(--da-text) }
+.card { white-space:normal; min-width:0; max-width:100% }
+.field { display:flex; flex-direction:column; gap:4px } .field > label { font-size:12px; font-weight:600; color:var(--da-text) } .field > label span { font-weight:400; color:var(--da-muted) }
+.inp { width:100%; height:40px; padding:0 12px; border:1px solid var(--da-line); border-radius:10px; background:var(--da-surface); color:var(--da-text); font-size:14px; transition:border-color .15s, box-shadow .15s }
+textarea.inp { height:auto; min-height:68px; padding:9px 12px; resize:vertical; line-height:1.45 } .inp::placeholder { color:var(--da-muted); opacity:.8 }
+.inp:focus { border-color:var(--da-ink); box-shadow:0 0 0 3px var(--da-primary-soft) } .inp[aria-invalid="true"] { border-color:var(--da-danger) } .ferr { font-size:12px; color:var(--da-danger-text) }
+
+/* booking card (docs/BOOKING.md) */
+.bk { display:flex; flex-direction:column; gap:12px } .msg > .bk.card, .msg > .hform { margin-top:12px }
+.bk-head { display:flex; align-items:center; gap:8px } .bk-back { flex:none; width:30px; height:30px; display:inline-grid; place-items:center; margin-left:-4px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--da-muted); cursor:pointer } .bk-back:hover { background:var(--da-subtle); color:var(--da-text) } .bk-back svg { width:18px; height:18px }
+.bk-t { flex:1; min-width:0; display:flex; align-items:baseline; justify-content:space-between; gap:8px } .bk-t b { font-size:14.5px; font-weight:650; letter-spacing:-.01em } .bk-t span { flex:none; font-size:11.5px; color:var(--da-muted) }
+.bk-prog { display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; margin-top:-4px } .bk-prog i { height:3px; border-radius:2px; background:var(--da-line); transition:background .2s } .bk-prog i.on { background:var(--da-primary) }
+.ctypes { display:flex; flex-direction:column; gap:8px }
+.ctype { position:relative; display:flex; align-items:flex-start; gap:12px; width:100%; padding:12px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-surface); color:var(--da-text); text-align:left; cursor:pointer; transition:border-color .15s, box-shadow .15s }
+.ctype:hover { border-color:rgba(85,70,247,.5) } .ctype.on { border-color:var(--da-ink); box-shadow:0 0 0 3px var(--da-primary-soft) }
+.ctype .ci { flex:none; width:32px; height:32px; border-radius:10px; display:grid; place-items:center; background:var(--da-lavender); color:var(--da-ink) } .ctype .ci svg { width:17px; height:17px }
+.ctype .cx { flex:1; min-width:0 } .ctype b { display:block; font-size:13.5px; font-weight:650; line-height:1.35 } .ctype .cd { display:block; margin-top:2px; font-size:12.5px; line-height:1.45; color:var(--da-muted) }
+.ctype .cm { display:inline-flex; align-items:center; gap:4px; margin-top:6px; font-size:12px; font-weight:600; color:var(--da-ink) } .ctype .cm svg { width:13px; height:13px }
+.tag { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:999px; background:var(--da-lavender); color:var(--da-ink); font-size:10.5px; font-weight:650; vertical-align:1px }
+.ahead { display:flex; flex-direction:column; gap:2px; padding:10px 12px; border-radius:12px; background:var(--da-subtle) } .ahead b { font-size:13.5px; font-weight:650 } .ahead span { font-size:12px; color:var(--da-muted); line-height:1.45 }
+.dates { display:flex; gap:6px; overflow-x:auto; padding:2px 2px 6px; margin:0 -2px; scroll-snap-type:x proximity; scrollbar-width:thin }
+.date { flex:none; min-width:64px; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 10px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-surface); color:var(--da-text); cursor:pointer; scroll-snap-align:start; transition:border-color .15s, background .15s }
+.date b { font-size:12px; font-weight:650; white-space:nowrap } .date small { font-size:10.5px; color:var(--da-muted); white-space:nowrap } .date:not(.off):hover { border-color:var(--da-ink) }
+.date.on { border-color:var(--da-ink); background:var(--da-lavender) } .date.on small { color:var(--da-ink) } .date.off { opacity:.45; cursor:not-allowed }
+.times { display:grid; grid-template-columns:repeat(auto-fill, minmax(82px, 1fr)); gap:6px }
+.time { min-height:38px; padding:4px 6px; border:1px solid var(--da-line); border-radius:10px; background:var(--da-surface); color:var(--da-text); font-size:13px; font-weight:600; cursor:pointer; transition:border-color .15s, color .15s, background .15s }
+.time:hover { border-color:var(--da-ink); color:var(--da-ink) } .time.on { background:var(--da-primary); border-color:var(--da-ink); color:#fff }
+.sumbox { border:1px solid var(--da-line); border-radius:12px; overflow:hidden } .sumrow { display:flex; justify-content:space-between; gap:12px; padding:9px 12px; border-bottom:1px solid var(--da-line); font-size:13px } .sumrow:last-child { border-bottom:0 }
+.sumrow span { flex:none; color:var(--da-muted) } .sumrow b { min-width:0; font-weight:600; text-align:right; overflow-wrap:anywhere }
+.pickd { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; background:var(--da-lavender); font-size:13px } .pickd svg { width:16px; height:16px; color:var(--da-ink); flex:none } .pickd span { flex:1; min-width:0 } .pickd b { font-weight:650 }
+.linkbtn { padding:0; border:0; background:none; color:var(--da-ink); font-size:12.5px; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:2px }
+.bform, .hform { display:flex; flex-direction:column; gap:10px }
+.booked { display:flex; flex-direction:column; gap:6px } .bk-ok { display:flex; align-items:center; gap:10px; font-size:16px; font-weight:700; letter-spacing:-.01em }
+.chk { width:30px; height:30px; flex:none } .chk circle { fill:rgba(25,184,135,.12); stroke:var(--da-success); stroke-width:2; stroke-dasharray:80; stroke-dashoffset:80; animation:da-draw .5s ease-out forwards } .chk path { fill:none; stroke:var(--da-success); stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:30; stroke-dashoffset:30; animation:da-draw .35s .35s ease-out forwards } @keyframes da-draw { to { stroke-dashoffset:0 } }
+.pend { width:30px; height:30px; flex:none; border-radius:50%; display:grid; place-items:center; background:var(--da-lavender); color:var(--da-ink) } .pend svg { width:17px; height:17px }
+.bk-when { font-size:15px; font-weight:650 } .bk-sub { font-size:12.5px; color:var(--da-muted) }
+.nexts { list-style:none; display:flex; flex-direction:column; gap:7px; margin:6px 0 0; padding:12px 0 0; border-top:1px solid var(--da-line); font-size:13px; color:var(--da-text) } .nexts li { display:flex; gap:8px; align-items:flex-start } .nexts svg { width:15px; height:15px; flex:none; margin-top:2px; color:var(--da-success) } .nexts .nx { color:var(--da-ink) }
+.callcard { padding:12px 14px; border:1px solid var(--da-line); border-radius:14px; background:var(--da-surface) } .callcard .cc-t { display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:650 } .callcard .cc-t svg { width:16px; height:16px; color:var(--da-ink) } .callcard .cc-s { margin-top:2px; font-size:12px; color:var(--da-muted) }
+
+/* ---------------------------------------------------------------- composer */
+.composer { flex:none; position:relative; padding:8px 12px 0; background:var(--da-bg) }
+.cbox { padding:5px; border:1px solid var(--da-line); border-radius:22px; background:var(--da-surface); box-shadow:var(--da-shadow-sm); transition:border-color .15s, box-shadow .15s }
+.cbox.focus { border-color:rgba(85,70,247,.6); box-shadow:0 0 0 4px var(--da-primary-soft) } .cbox.drop { border-color:var(--da-ink); background:var(--da-lavender) }
+textarea.q { display:block; flex:1; min-width:0; width:auto; min-height:34px; max-height:120px; padding:6px 4px; border:0; background:transparent; color:var(--da-text); font-size:14.5px; line-height:22px; resize:none; outline:none; caret-color:var(--da-ink) } textarea.q::placeholder { color:var(--da-muted) }
+.crow { display:flex; align-items:flex-end; gap:2px }
+.plus-wrap { position:relative; flex:none }
+.pmenu { position:absolute; left:-1px; bottom:calc(100% + 10px); z-index:7; min-width:184px; padding:6px; border:1px solid var(--da-line); border-radius:14px; background:var(--da-surface); box-shadow:var(--da-shadow-md); display:none } .pmenu.open { display:block; animation:da-pop .14s var(--da-ease) both; transform-origin:bottom left }
+.pmenu button { display:flex; align-items:center; gap:10px; width:100%; padding:8px 10px; border:0; border-radius:9px; background:transparent; color:var(--da-text); font-size:13.5px; text-align:left; cursor:pointer } .pmenu button:hover, .pmenu button:focus-visible { background:var(--da-subtle); outline:none } .pmenu svg { width:17px; height:17px; color:var(--da-muted); flex:none } .pmenu .on svg { color:var(--da-ink) }
+.cicon { width:34px; height:34px; display:inline-grid; place-items:center; padding:0; border:0; border-radius:50%; background:transparent; color:var(--da-muted); cursor:pointer; flex:none } .cicon:hover { background:var(--da-subtle); color:var(--da-text) } .cicon svg { width:18px; height:18px } .cicon.on { color:var(--da-ink); background:var(--da-lavender) }
+.cicon.speak { color:var(--da-ink) } .cicon.speak:hover { background:var(--da-lavender); color:var(--da-ink) } .b-plus[aria-expanded="true"] { background:var(--da-lavender); color:var(--da-ink) } .b-plus svg { transition:transform .18s var(--da-ease) } .b-plus[aria-expanded="true"] svg { transform:rotate(45deg) }
+.send { width:34px; height:34px; margin-left:2px; display:inline-grid; place-items:center; padding:0; border:0; border-radius:50%; background:var(--da-primary); color:#fff; cursor:pointer; flex:none; transition:background .15s, color .15s } .send svg { width:18px; height:18px }
+.send:hover { background:var(--da-primary-hover) } .send:disabled { background:var(--da-subtle); color:var(--da-muted); cursor:not-allowed } .send.stop { background:var(--da-navy); color:#fff }
+.attach { display:flex; flex-wrap:wrap; gap:6px; padding:4px 4px 6px } .achip { position:relative; display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:4px 4px 4px 8px; border-radius:10px; background:var(--da-subtle); font-size:12px; overflow:hidden }
+.achip img { width:28px; height:28px; border-radius:6px; object-fit:cover } .achip .nm { max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap } .achip .sz { color:var(--da-muted); font-size:11px }
+.achip .x { width:22px; height:22px; border:0; border-radius:6px; background:transparent; color:var(--da-muted); cursor:pointer } .achip .x:hover { background:var(--da-line); color:var(--da-text) }
+.achip .bar { position:absolute; left:0; bottom:0; height:2px; width:0; background:var(--da-primary); transition:width .2s } .achip.err { outline:1px solid var(--da-danger) }
+.rec { display:none; align-items:center; gap:8px; padding:2px 8px 4px; font-size:12px; color:var(--da-danger-text) } .rec.on { display:flex } .rec i { width:8px; height:8px; border-radius:50%; background:var(--da-danger); animation:da-blink 1s steps(2, start) infinite } .rec .cicon { width:26px; height:26px }
+.foot { flex:none; padding:6px 12px calc(8px + env(safe-area-inset-bottom)); text-align:center; font-size:11px; line-height:1.4; color:var(--da-muted) } .foot a { color:inherit; text-underline-offset:2px }
+.pop { position:absolute; left:12px; right:12px; bottom:calc(100% - 4px); z-index:6; padding:12px; border:1px solid var(--da-line); border-radius:14px; background:var(--da-surface); box-shadow:var(--da-shadow-md); display:none } .pop.open { display:block; animation:da-pop .14s var(--da-ease) both }
+.pop .search { width:100%; height:36px; margin-bottom:8px; padding:0 10px; border:1px solid var(--da-line); border-radius:10px; background:var(--da-surface); font-size:14px } .pop .search:focus { border-color:var(--da-ink) }
+.egrid { display:grid; grid-template-columns:repeat(8, 1fr); gap:2px; max-height:190px; overflow-y:auto } .egrid button { height:36px; border:0; border-radius:8px; background:transparent; font-size:20px; cursor:pointer } .egrid button:hover { background:var(--da-subtle) }
+.ggrid { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; max-height:230px; overflow-y:auto } .ggrid button { padding:0; border:0; border-radius:10px; overflow:hidden; background:var(--da-subtle); cursor:pointer; aspect-ratio:4/3 } .ggrid img { width:100%; height:100%; object-fit:cover; display:block }
+.pop .empty { padding:12px 4px; font-size:12px; color:var(--da-muted); text-align:center }
+
+/* ---------------------------------------------------------------- history + help */
+.hist, .help { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:14px 12px 20px }
+.htop { display:flex; flex-direction:column; gap:10px; margin:0 4px 6px } .searchbox { position:relative } .searchbox svg { position:absolute; left:11px; top:50%; width:16px; height:16px; transform:translateY(-50%); color:var(--da-muted); pointer-events:none }
+.msearch { width:100%; height:38px; padding:0 12px 0 34px; border:1px solid var(--da-line); border-radius:10px; background:var(--da-surface); color:var(--da-text); font-size:14px } .msearch:focus { border-color:var(--da-ink); box-shadow:0 0 0 3px var(--da-primary-soft) } .msearch::placeholder { color:var(--da-muted) }
+.mgroup { margin:14px 10px 4px; font-size:11px; font-weight:650; letter-spacing:.06em; text-transform:uppercase; color:var(--da-muted) }
+.convo { position:relative; display:flex; align-items:center; gap:12px; width:100%; min-width:0; padding:10px; border:0; border-radius:12px; background:transparent; color:var(--da-text); text-align:left; cursor:pointer; overflow:hidden; transition:background .15s, box-shadow .15s }
+.convo:hover, .convo:focus-visible { background:var(--da-surface); box-shadow:var(--da-shadow-sm) } .convo.cur { background:var(--da-surface); box-shadow:inset 0 0 0 1px var(--da-line) }
+.avatar { flex:none; width:34px; height:34px; border-radius:11px; display:grid; place-items:center; background:var(--da-lavender); color:var(--da-ink); font-weight:700; font-size:13px } .avatar svg { width:17px; height:17px }
+.convo .c { flex:1 1 auto; min-width:0 } .convo .n { display:block; font-size:13.5px; font-weight:600; line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis } .convo.unread .n { font-weight:750 }
+.convo .p { display:block; margin-top:2px; font-size:12.5px; line-height:1.35; color:var(--da-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.convo .r { flex:none; align-self:flex-start; display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:32px; padding-top:2px } .convo .ctime { font-size:11.5px; color:var(--da-muted); white-space:nowrap } .dot { width:8px; height:8px; border-radius:50%; background:var(--da-primary) }
+.cur-tag { padding:1px 7px; border-radius:999px; background:var(--da-lavender); color:var(--da-ink); font-size:10.5px; font-weight:650 }
+.more2 { position:absolute; right:8px; top:50%; transform:translateY(-50%); width:28px; height:28px; border-radius:8px; background:var(--da-surface); color:var(--da-muted); display:none; align-items:center; justify-content:center; cursor:pointer } .more2 svg { width:16px; height:16px }
+.convo:hover .more2, .convo:focus-within .more2 { display:inline-flex } .more2:hover { background:var(--da-subtle); color:var(--da-text) } @media (hover:none) { .more2 { display:none !important } }
+.rename { display:flex; gap:6px; align-items:center; padding:6px 10px 10px 56px } .rename .inp { flex:1; min-width:0; height:34px }
+.empty { display:flex; flex-direction:column; align-items:center; gap:6px; padding:40px 20px 20px; text-align:center; color:var(--da-muted); font-size:13.5px; line-height:1.5 }
+.empty .ei { width:48px; height:48px; margin-bottom:6px; border-radius:16px; display:grid; place-items:center; background:var(--da-lavender); color:var(--da-ink) } .empty .ei svg { width:22px; height:22px } .empty b { color:var(--da-text); font-size:15px } .empty .btn { margin-top:10px }
+.sk { display:flex; align-items:center; gap:12px; padding:10px } .sk .a { width:34px; height:34px; border-radius:11px } .sk .l { flex:1 } .sk .a, .sk .l i { background:linear-gradient(90deg, var(--da-subtle) 25%, var(--da-line) 50%, var(--da-subtle) 75%); background-size:200% 100%; animation:da-shimmer 1.4s linear infinite }
+.sk .l i { display:block; height:9px; border-radius:5px; margin:5px 0 } .sk .l i:last-child { width:65% }
+.help h3 { margin:20px 4px 8px; font-size:11px; font-weight:650; letter-spacing:.06em; text-transform:uppercase; color:var(--da-muted) } .help h3:first-child { margin-top:4px }
+.caplist { list-style:none; display:flex; flex-direction:column; gap:10px; margin:0; padding:12px 14px; border:1px solid var(--da-line); border-radius:14px; background:var(--da-surface); font-size:13px; line-height:1.45 } .caplist li { display:flex; gap:10px } .caplist svg { width:16px; height:16px; flex:none; margin-top:1px; color:var(--da-success) }
+.chips { display:flex; flex-wrap:wrap; gap:6px } .chip { min-height:32px; padding:5px 12px; border:1px solid var(--da-line); border-radius:999px; background:var(--da-surface); color:var(--da-text); font-size:13px; text-align:left; cursor:pointer; transition:border-color .15s, color .15s } .chip:hover { border-color:var(--da-ink); color:var(--da-ink) }
+.hfoot { margin:20px 4px 0; font-size:12px; color:var(--da-muted) } .hfoot a { color:inherit }
+
+/* ---------------------------------------------------------------- voice call view */
+.voice { position:absolute; inset:0; z-index:20; display:none; flex-direction:column; align-items:center; overflow:hidden; text-align:center; color:#fff; background:radial-gradient(120% 80% at 50% 0%, #232A4E 0%, var(--da-navy) 55%, #0C1023 100%) } .voice.open { display:flex }
+.vhead { flex:none; width:100%; height:56px; display:flex; align-items:center; gap:8px; padding:0 8px 0 16px; padding-top:env(safe-area-inset-top); font-size:14px } .vhead b { font-weight:650 }
+.vhead .live { width:8px; height:8px; border-radius:50%; background:var(--da-success); animation:da-live 1.6s ease-out infinite } @keyframes da-live { 0% { box-shadow:0 0 0 0 rgba(25,184,135,.55) } 100% { box-shadow:0 0 0 8px rgba(25,184,135,0) } }
+.vhead .vtimer { margin-left:auto; font:500 13px/1 ui-monospace, monospace; color:rgba(255,255,255,.66); font-variant-numeric:tabular-nums }
+.vbody { position:relative; flex:1; min-height:0; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:12px 16px }
+.vglow { position:absolute; inset:0; pointer-events:none; background:radial-gradient(circle at 50% 44%, var(--vglow, rgba(85,70,247,.32)) 0%, transparent 52%); opacity:var(--vglow-o, .6); transition:opacity .4s }
+.vorb { position:relative; width:220px; height:220px; display:flex; align-items:center; justify-content:center } .vorb canvas { width:220px; height:220px; display:block }
+.vorb.static { width:160px; height:160px; border-radius:50%; background:radial-gradient(circle at 35% 32%, #DCD7FF 0%, #7C6FFF 32%, #5546F7 62%, #3A2FC9 100%); transition:opacity .4s, filter .4s } .voice.muted .vorb.static { filter:grayscale(1); opacity:.6 }
+.vmute-badge { position:absolute; bottom:6px; left:50%; z-index:1; transform:translateX(-50%); display:none; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,.14); color:#fff; font-size:11px } .voice.muted .vmute-badge { display:block }
+.vstatus { min-height:20px; font-size:15px; color:rgba(255,255,255,.75); transition:opacity .25s, transform .25s } .vstatus.sw { opacity:0; transform:translateY(3px) }
+.vcap { width:min(360px, 100%); min-height:46px; max-height:46px; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; gap:3px; font-size:14px; line-height:1.45 }
+.vcap .cu { color:rgba(255,255,255,.6); font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis } .vcap .ca .w { opacity:.3; transition:opacity .12s } .vcap .ca .w.on { opacity:1 } .vcap.off { visibility:hidden }
+.vctl { flex:none; display:flex; justify-content:center; align-items:center; gap:16px; padding:12px 16px calc(24px + env(safe-area-inset-bottom)) }
+.vbtn { position:relative; flex:none; width:56px; height:56px; display:inline-grid; place-items:center; padding:0; border:0; border-radius:50%; background:rgba(255,255,255,.12); color:#fff; cursor:pointer; transition:background .2s, color .2s, transform .15s }
+.vbtn svg { width:24px; height:24px } .vbtn:hover { background:rgba(255,255,255,.2) } .vbtn:active { transform:scale(.96) } .vbtn.on { background:#fff; color:var(--da-navy) } .vbtn.end { background:#E5484D } .vbtn.end:hover { background:#F05A5F } .vbtn.cc.off { color:rgba(255,255,255,.5) } .vbtn:focus-visible { outline-color:#fff }
+.vbtn .tip { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); padding:3px 7px; border-radius:6px; background:#fff; color:var(--da-navy); font-size:11px; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .15s } .vbtn:hover .tip, .vbtn:focus-visible .tip { opacity:1 }
+.voice .hbtn { margin-left:4px }
+.voice.closing .vorb { animation:da-collapse .35s ease-in forwards } @keyframes da-collapse { to { transform:scale(.15); opacity:0 } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; animation-delay:0s !important; transition-duration:.001ms !important; transition-delay:0s !important }
+  .chk circle, .chk path { stroke-dashoffset:0 }
+}
 `;
 
+const I = (d, w = 1.8) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const SVG = {
-  mark: '<svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M1 7V1h6M15 1h6v6M21 15v6h-6M7 21H1v-6"/><circle cx="11" cy="11" r="3"/><path d="M11 4v3M11 15v3M4 11h3M15 11h3"/></svg>',
-  more: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
-  close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
-  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
-  send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
-  stop: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
-  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>',
-  up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 11v9H4v-9h3zm3 9h7.5a2 2 0 0 0 2-1.6l1.2-6A2 2 0 0 0 18.7 10H14V6a2 2 0 0 0-2-2l-2 7v9z"/></svg>',
-  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 13V4h3v9h-3zm-3-9H6.5a2 2 0 0 0-2 1.6l-1.2 6A2 2 0 0 0 5.3 14H10v4a2 2 0 0 0 2 2l2-7V4z"/></svg>',
-  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
-  messages: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg>',
-  help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"/></svg>',
-  ext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>',
-  theme: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c-5 0-9-4-9-9z"/></svg>',
-  dl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>',
-  reset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 12a8 8 0 1 1 2.3 5.7M4 20v-5h5"/></svg>',
-  clip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 11.5l-8.5 8.5a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></svg>',
-  emoji: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg>',
+  mark: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.5c4.97 0 9 3.36 9 7.5s-4.03 7.5-9 7.5c-.9 0-1.77-.11-2.6-.32L5 20l.95-3.4C4.13 15.24 3 13.22 3 11c0-4.14 4.03-7.5 9-7.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 7.2l.95 2.65 2.65.95-2.65.95L12 14.4l-.95-2.65-2.65-.95 2.65-.95z" fill="currentColor"/></svg>',
+  more: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
+  close: I('<path d="M6 6l12 12M18 6L6 18"/>', 2),
+  minus: I('<path d="M6 12h12"/>', 2),
+  chevdown: I('<path d="M6 9l6 6 6-6"/>', 2.2),
+  back: I('<path d="M15 5l-7 7 7 7"/>', 2),
+  send: I('<path d="M12 19V5M6 11l6-6 6 6"/>', 2.2),
+  stop: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>',
+  copy: I('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>'),
+  up: I('<path d="M7 11v9H4v-9h3zm3 9h7.5a2 2 0 0 0 2-1.6l1.2-6A2 2 0 0 0 18.7 10H14V6a2 2 0 0 0-2-2l-2 7v9z"/>'),
+  down: I('<path d="M17 13V4h3v9h-3zm-3-9H6.5a2 2 0 0 0-2 1.6l-1.2 6A2 2 0 0 0 5.3 14H10v4a2 2 0 0 0 2 2l2-7V4z"/>'),
+  history: I('<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4h4"/><path d="M12 8v4.5l3 2"/>'),
+  help: I('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"/>'),
+  ext: I('<path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>'),
+  theme: I('<path d="M12 3a9 9 0 1 0 9 9c-5 0-9-4-9-9z"/>'),
+  sun: I('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+  dl: I('<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>'),
+  reset: I('<path d="M4 12a8 8 0 1 1 2.3 5.7M4 20v-5h5"/>'),
+  plus: I('<path d="M12 5v14M5 12h14"/>', 2),
+  clip: I('<path d="M21 11.5l-8.5 8.5a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/>'),
+  emoji: I('<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>'),
   gif: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><text x="12" y="15.5" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor" stroke="none" font-family="system-ui, sans-serif">GIF</text></svg>',
-  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg>',
-  wave: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 11.5v1"/><path d="M8 8v8"/><path d="M12 5v14"/><path d="M16 8v8"/><path d="M20 11v2"/></svg>',
-  question: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"/></svg>',
-  mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M4 4l16 16"/></svg>',
-  end: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 14c4-3 12-3 16 0l-2 3c-3-2-9-2-12 0z"/></svg>',
+  mic: I('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/>'),
+  wave: I('<path d="M4 11.5v1"/><path d="M8 8v8"/><path d="M12 5v14"/><path d="M16 8v8"/><path d="M20 11v2"/>', 2.2),
   hangup: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 9c-2.6 0-5 .5-7.2 1.5-.6.3-.9.9-.8 1.5l.5 2.6c.1.6.7 1 1.3.9l2.8-.6c.5-.1.9-.5 1-1l.3-1.6c.7-.2 1.4-.3 2.1-.3s1.4.1 2.1.3l.3 1.6c.1.5.5.9 1 1l2.8.6c.6.1 1.2-.3 1.3-.9l.5-2.6c.1-.6-.2-1.2-.8-1.5C17 9.5 14.6 9 12 9z"/></svg>',
-  micoff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 9v5a3 3 0 0 0 5.1 2.1M15 11V6a3 3 0 0 0-6 0M5 11a7 7 0 0 0 11 5.7M19 11a7 7 0 0 1-.6 2.8M12 18v3M9 21h6M4 4l16 16"/></svg>',
-  cc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10.5 10.5a2 2 0 1 0 0 3M17 10.5a2 2 0 1 0 0 3"/></svg>',
-  min: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 10l6 6 6-6"/></svg>',
-  chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
-  cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
-  mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 8l9 6 9-6"/></svg>',
-  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
-  spark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>',
-  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
-  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
-  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h3.5l1.5 4-2 1.5a12 12 0 0 0 6.5 6.5L16 14l4 1.5V19a1 1 0 0 1-1 1A15 15 0 0 1 4 5a1 1 0 0 1 1-1z"/></svg>',
+  micoff: I('<path d="M9 9v5a3 3 0 0 0 5.1 2.1M15 11V6a3 3 0 0 0-6 0M5 11a7 7 0 0 0 11 5.7M19 11a7 7 0 0 1-.6 2.8M12 18v3M9 21h6M4 4l16 16"/>'),
+  cc: I('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10.5 10.5a2 2 0 1 0 0 3M17 10.5a2 2 0 1 0 0 3"/>'),
+  chev: I('<path d="M9 6l6 6-6 6"/>', 2.2),
+  cal: I('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
+  mail: I('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 8l9 6 9-6"/>'),
+  search: I('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'),
+  spark: I('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>'),
+  check: I('<path d="M5 12.5l4.5 4.5L19 7"/>', 2.2),
+  checkc: I('<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 10"/>'),
+  phone: I('<path d="M5 4h3.5l1.5 4-2 1.5a12 12 0 0 0 6.5 6.5L16 14l4 1.5V19a1 1 0 0 1-1 1A15 15 0 0 1 4 5a1 1 0 0 1 1-1z"/>'),
+  layers: I('<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>'),
+  compass: I('<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5 5-2z"/>'),
+  building: I('<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M3 21h18M8 8h3M8 12h3M8 16h3"/>'),
+  target: I('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>'),
+  play: I('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/>'),
+  user: I('<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/>'),
+  chat: I('<path d="M4 5h16v11H8l-4 4z"/>'),
+  clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/>', 2),
+  arrowdown: I('<path d="M12 5v14M6 13l6 6 6-6"/>', 2),
+  video: I('<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>'),
 };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -262,8 +361,11 @@ function md(text, srcs, api) {
   t = t.replace(/\[GIF\]\((https?:\/\/[^\s)]+)\)/g, (m, u) => `<img class="gif" src="${u}" alt="GIF">`);
   t = t.replace(/\[attached: ([^\]]+)\]\((\/uploads\/[^\s)]+)\)/g, (m, n, u) => `📎 <a href="${esc(api || '') + u}" target="_blank" rel="noopener">${n}</a>`);
   t = t.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+  t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>');
   t = t.replace(/(^|[^"=])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
-  t = t.replace(/^(?:[-*•]\s+)(.*)$/gm, '<span class="li">$1</span>');
+  t = t.replace(/^#{1,4}\s+(.*)$\n?/gm, '<span class="h">$1</span>');
+  t = t.replace(/^(?:[-*•]\s+)(.*)$\n?/gm, '<span class="li">$1</span>');
+  t = t.replace(/^(\d{1,2})[.)]\s+(.*)$\n?/gm, '<span class="li num" data-n="$1">$2</span>');
   t = t.replace(/\s?\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]/g, (m, ids) => ids.split(',').map((x) => { const n = parseInt(x, 10), s = (srcs || []).find((y) => y.n === n);
     return s ? `<a class="cite" href="${esc(s.url)}" target="_blank" rel="noopener" title="${esc(s.title || s.url)}">${n}</a>` : `<sup class="cite">${n}</sup>`; }).join(''));
   return t;
@@ -274,25 +376,30 @@ const relShort = (ts) => { const s = Math.max(0, (Date.now() - new Date(ts).getT
 const fmtSize = (b) => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
 const store = { get(k) { try { return sessionStorage.getItem(k); } catch { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch {} } };
 const local = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+const typeIcon = (s) => { const h = `${s.slug} ${s.name}`.toLowerCase(); return /walkthrough|demo/.test(h) ? SVG.play : /gtm|strategy/.test(h) ? SVG.target : SVG.chat; };
+const BK_STEPS = ['type', 'time', 'details', 'review'];
+const BK_TITLES = { type: 'Choose a meeting', time: 'Pick a time', details: 'Your details', review: 'Review and confirm' };
 
 class DeepAssistant extends HTMLElement {
-  static get observedAttributes() { return ['api', 'token', 'theme', 'mode', 'open', 'title', 'subtitle', 'suggestions', 'user-name', 'user-email', 'tabs', 'shortcut', 'privacy-url', 'greeting']; }
+  static get observedAttributes() { return ['api', 'token', 'theme', 'mode', 'open', 'title', 'subtitle', 'suggestions', 'user-name', 'user-email', 'tabs', 'shortcut', 'privacy-url', 'greeting', 'page-context']; }
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this._history = []; this._transcript = []; this._busy = false; this._controller = null; this._me = null; this._rendered = false; this._pickerSeq = 0;
-    this._view = 'chat'; this._fromMessages = false; this._unread = 0; this._attachments = []; this._cfg = { gif: false, stt: 'browser', tts: 'browser', upload_max_mb: 10, upload_types: [] };
-    this._voice = null; this._rec = null;
+    this._history = []; this._transcript = []; this._busy = false; this._controller = null; this._me = null; this._rendered = false; this._wasOpen = false;
+    this._view = 'chat'; this._unread = 0; this._attachments = []; this._cfg = { gif: false, stt: 'browser', tts: 'browser', upload_max_mb: 10, upload_types: [] };
+    this._voice = null; this._rec = null; this._online = undefined; this._nudged = false;
     this.tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     const rm = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null; this._reduced = !!(rm && rm.matches); if (rm && rm.addEventListener) rm.addEventListener('change', (e) => { this._reduced = e.matches; });
+    this._coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
   }
   // ---------------------------------------------------------------- public API
   get api() { return (this.getAttribute('api') || '').replace(/\/+$/, ''); }
   get busy() { return this._busy; }
   get sessionId() { return this._sid; }
   get view() { return this._view; }
-  get botName() { return this.getAttribute('title') || 'deep >_'; }
+  get botName() { return this.getAttribute('title') || 'Deep'; }
   ask(text) { this.showView('chat'); return this._send(text); }
+  book(callType) { return this.startBooking(callType || null); }
   open() { this.setAttribute('open', ''); }
   close() { this.removeAttribute('open'); }
   toggle() { this.hasAttribute('open') ? this.close() : this.open(); }
@@ -301,26 +408,27 @@ class DeepAssistant extends HTMLElement {
   newChat() {
     if (this._busy) this._stop(); this.stopVoice();
     this._sid = uuid(); store.set(this._key('sid'), this._sid);
-    this._transcript = []; this._history = []; this._fromMessages = false; this._attachments = []; this._renderAttachments();
-    this.$log.innerHTML = ''; this._restore(); this._track(); this.showView('chat'); this.$q.focus();
+    this._transcript = []; this._history = []; this._attachments = []; this._nudged = false; this._renderAttachments();
+    this._restore(); this._track(); this.showView('chat');
   }
   download() {
     const lines = this._transcript.map((m) => `[${new Date(m.ts).toLocaleString()}] ${m.role === 'user' ? 'You' : this.botName}: ${plain(m.text)}${m.sources && m.sources.length ? '\n  sources: ' + m.sources.map((s) => s.url).join(', ') : ''}`);
     const blob = new Blob([`${this.botName} transcript · ${new Date().toLocaleString()} · conversation ${this._sid}\n\n` + lines.join('\n\n')], { type: 'text/plain' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `deep-chat-${new Date().toISOString().slice(0, 10)}.txt`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
-  switchTheme() { const cur = this.getAttribute('theme') || 'dark'; const next = cur === 'light' ? 'dark' : 'light'; this.setAttribute('theme', next); local.set('da_theme', next); }
+  switchTheme() { const next = this._isDark() ? 'light' : 'dark'; this.setAttribute('theme', next); local.set('da_theme', next); this._syncThemeItem(); }
   showView(name) {
-    if (!['chat', 'messages', 'help'].includes(name)) return;
-    this._view = name; this.$panel.dataset.view = name; const sh = this.shadowRoot;
+    if (name === 'history') name = 'messages';
+    if (!['chat', 'messages', 'help'].includes(name) || (name === 'help' && !this._tabs().includes('help'))) return;
+    const sh = this.shadowRoot, sub = name !== 'chat', changed = name !== this._view;
+    this._view = name; this.$panel.dataset.view = name;
     sh.querySelector('.view-chat').hidden = name !== 'chat'; sh.querySelector('.view-messages').hidden = name !== 'messages'; sh.querySelector('.view-help').hidden = name !== 'help';
-    sh.querySelector('.orb-mini.hl').hidden = name !== 'chat'; sh.querySelector('.brand').hidden = name !== 'chat'; sh.querySelector('.more').hidden = name !== 'chat'; sh.querySelector('.spacer').hidden = name === 'chat';
-    this._updateChrome();
-    const vt = sh.querySelector('.vtitle'); vt.hidden = name === 'chat'; vt.textContent = name === 'messages' ? 'Messages' : 'Help';
-    sh.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', (t.dataset.tab === 'home' && name === 'chat') || t.dataset.tab === name));
+    ['.hav', '.brand', '.b-history', '.more'].forEach((s) => { sh.querySelector(s).hidden = sub; });
+    this.$back.hidden = !sub; const vt = sh.querySelector('.vtitle'); vt.hidden = !sub; vt.textContent = name === 'messages' ? 'History' : 'Help';
     this._closePops();
     if (name === 'messages') this._renderConversations();
-    if (name === 'chat') setTimeout(() => this.$q.focus(), 30);
+    if (name === 'help') this._renderHelp();
+    if (name === 'chat') setTimeout(() => { if (!this._voice) this._focusInput(); }, 30); else if (changed) setTimeout(() => this.$back.focus({ preventScroll: true }), 30);
     this._emit('view', { view: name });
   }
   async openConversation(sid) {
@@ -329,46 +437,46 @@ class DeepAssistant extends HTMLElement {
       if (this._busy) this._stop();
       let h = null;
       try { const r = await fetch(this._url('/conversations/' + encodeURIComponent(sid)), { headers: this._headers(false) }); if (r.ok) h = await r.json(); } catch {}
-      if (!h) return;
-      this._sid = sid; store.set(this._key('sid'), sid);
+      if (!h) { this._toast("Couldn't open that conversation"); return; }
+      this._sid = sid; store.set(this._key('sid'), sid); this._nudged = false;
       this.$log.innerHTML = ''; this._transcript = []; this._history = [];
-      h.messages.forEach((m) => {
+      (h.messages || []).forEach((m) => {
         const el = this._add(m.role === 'user' ? 'user' : 'bot', '', m.ts);
         if (m.role === 'user') { this._setText(el, m.text); this._transcript.push({ role: 'user', text: m.text, ts: new Date(m.ts).getTime() }); }
         else { const srcs = usedSources(m.text, m.sources || []); this._setText(el, m.text, m.sources || []); this._addSources(el, srcs); this._addTools(el, () => plain(m.text), null, m.id, m.feedback);
           this._transcript.push({ role: 'bot', text: m.text, sources: srcs, ts: new Date(m.ts).getTime(), mid: m.id, fb: m.feedback }); }
       });
+      if (!this._transcript.length) this._renderWelcome();
       this._history = this._transcript.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })).slice(-12);
-      this._persist();
+      this._persist(); this._markLast();
     }
-    this._fromMessages = true; this.showView('chat'); this._markRead(sid).then(() => this._refreshBadge());
+    this.showView('chat'); this._scroll(true); this._markRead(sid).then(() => this._refreshBadge());
   }
   // ---------------------------------------------------------------- lifecycle
   connectedCallback() { if (!this._rendered) this._render(); }
+  disconnectedCallback() { this._bindViewport(false); clearTimeout(this._hT); if (this._onVis) document.removeEventListener('visibilitychange', this._onVis); this._onVis = null; }
   attributeChangedCallback(name) {
     if (!this._rendered) return;
     if (name === 'open') this._applyOpen();
-    else if (name === 'token' || name === 'user-name' || name === 'user-email') this._loadMe().then(() => this._refreshBadge());
+    else if (name === 'mode') { this._applyMode(); this._applyOpen(); }
+    else if (name === 'token' || name === 'user-name' || name === 'user-email') this._loadMe().then(() => { this._refreshBadge(); this._refreshWelcome(); });
     else if (name === 'title' || name === 'subtitle') this._applyCopy();
     else if (name === 'api') { this._health(); this._loadConfig(); }
-    else if (name === 'tabs') this._renderTabs();
+    else if (name === 'tabs') this._applyTabs();
     else if (name === 'privacy-url') this._applyFooter();
-    else if (name === 'shortcut' && this._view === 'messages') this._renderConversations();
-  }
-  _updateChrome() {
-    const inConvo = this._view === 'chat' && this._transcript.some((m) => m.role === 'user');
-    this.$back.hidden = !inConvo;
-    const nav = this.shadowRoot.querySelector('.tabs'); nav.hidden = this._tabs().length < 2 || inConvo;
+    else if (name === 'theme') this._syncThemeItem();
+    else if (name === 'suggestions' || name === 'greeting' || name === 'page-context') this._refreshWelcome();
+    else if (name === 'shortcut' && this._view === 'help') this._renderHelp();
   }
   _toast(text) { let el = this.shadowRoot.querySelector('.toastmsg'); if (!el) { el = document.createElement('div'); el.className = 'toastmsg'; el.setAttribute('role', 'status'); this.$panel.appendChild(el); } el.textContent = text; el.classList.add('show'); clearTimeout(this._toastT); this._toastT = setTimeout(() => el.classList.remove('show'), 1800); }
   _fbPopover(anchor, submit) {
     this.shadowRoot.querySelectorAll('.fbpop').forEach((p) => p.remove());
     const pop = document.createElement('form'); pop.className = 'fbpop'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'What was wrong?');
-    pop.innerHTML = '<div class="reasons">' + ['Not accurate', 'Not helpful', 'Missing info', 'Other'].map((r) => '<button type="button" class="reason">' + r + '</button>').join('') + '</div><input maxlength="300" placeholder="Tell us more (optional)" aria-label="Details"><div class="fbrow"><button type="button" class="textbtn cancel">Cancel</button><button type="submit" class="textbtn submit">Submit</button></div>';
+    pop.innerHTML = '<div class="reasons">' + ['Not accurate', 'Not helpful', 'Missing info', 'Other'].map((r) => '<button type="button" class="reason">' + r + '</button>').join('') + '</div><input maxlength="300" placeholder="Tell us more (optional)" aria-label="Details"><div class="fbrow"><button type="button" class="btn ghost sm cancel">Cancel</button><button type="submit" class="btn primary sm">Submit</button></div>';
     let reason = ''; pop.querySelectorAll('.reason').forEach((r) => r.onclick = () => { reason = r.textContent; pop.querySelectorAll('.reason').forEach((x) => x.classList.toggle('on', x === r)); });
     pop.querySelector('.cancel').onclick = () => pop.remove();
     pop.onsubmit = async (e) => { e.preventDefault(); const note = [reason, pop.querySelector('input').value.trim()].filter(Boolean).join(': '); pop.remove(); await submit(note); };
-    anchor.closest('.row').appendChild(pop); pop.querySelector('.reason').focus(); this._scroll();
+    anchor.closest('.col').appendChild(pop); pop.querySelector('.reason').focus(); this._scroll();
   }
   _emit(name, detail) { this.dispatchEvent(new CustomEvent('deep-assistant:' + name, { detail: detail || {}, bubbles: true, composed: true })); }
   _key(s) { return 'da:' + this.api + ':' + s; }
@@ -376,58 +484,76 @@ class DeepAssistant extends HTMLElement {
   _headers(json = true) { const h = { 'X-Session-Id': this._sid }; if (json) h['Content-Type'] = 'application/json'; if (this._vid) h['X-Visitor-Id'] = this._vid; const t = this.getAttribute('token'); if (t) h['X-Visitor-Token'] = t; return h; }
   _tabs() { const raw = (this.getAttribute('tabs') || ALL_TABS.join(',')).split(',').map((s) => s.trim().toLowerCase()).filter((s) => ALL_TABS.includes(s)); if (!raw.includes('messages')) raw.push('messages'); return ALL_TABS.filter((t) => raw.includes(t)); }
   _shortcut() { const a = this.getAttribute('shortcut'); if (a === '') return null; const [label, href] = (a || DEFAULT_SHORTCUT).split('|'); return href ? { label: label.trim(), href: href.trim() } : null; }
+  _isDark() { const t = this.getAttribute('theme'); return t === 'dark' || (t === 'auto' && !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)); }
+  _focusInput() { if (this._coarse || this._view !== 'chat') return; try { this.$q.focus({ preventScroll: true }); } catch {} }
+  _canListen() { return !!this._speechApi() || (this._cfg.stt === 'server' && !!navigator.mediaDevices && typeof MediaRecorder !== 'undefined'); }
   _render() {
     this._rendered = true; const sh = this.shadowRoot;
-    if (!this.hasAttribute('theme')) this.setAttribute('theme', local.get('da_theme') || 'dark');
+    if (!this.hasAttribute('theme')) this.setAttribute('theme', local.get('da_theme') || 'light');
     sh.innerHTML = `<style>${CSS}</style>
-<button class="launcher" part="launcher" type="button" aria-label="Open the assistant" aria-expanded="false">${SVG.mark}<span class="lbadge" hidden></span></button>
-<section class="panel" part="panel" data-view="chat">
+<button class="launcher" part="launcher" type="button" aria-label="Open the Deep assistant" aria-expanded="false"><span class="lic lic-open">${SVG.mark}</span><span class="lic lic-close">${SVG.chevdown}</span><span class="ldot" hidden></span><span class="lbadge" hidden></span></button>
+<section class="panel" part="panel" data-view="chat" role="dialog" aria-label="Deep assistant">
   <header>
-    <button class="icon back" type="button" aria-label="Back to messages" title="Back" hidden>${SVG.back}</button>
-    <span class="orb-mini hl" aria-hidden="true"></span>
-    <div class="brand"><h1><span class="ttl"></span><span class="st"><i></i><span class="stt">Online</span></span></h1><p class="sub">Deep can also help directly</p></div>
+    <button class="hbtn back" type="button" aria-label="Back to chat" title="Back to chat" hidden>${SVG.back}</button>
+    <span class="hav" aria-hidden="true">${SVG.mark}</span>
+    <div class="brand"><h1 class="ttl"></h1><p><span class="sub"></span><span class="sep" aria-hidden="true">·</span><span class="st"><i aria-hidden="true"></i><span class="stt">Connecting…</span></span></p></div>
+    <h2 class="vtitle" hidden></h2>
     <button class="vpill" type="button" aria-label="Return to the voice call" title="Return to the call"><i></i><span>In a call</span></button>
-    <h2 class="vtitle" hidden>Messages</h2><span class="spacer" hidden></span>
-    <button class="icon more" type="button" aria-label="More options" title="More" aria-haspopup="menu" aria-expanded="false">${SVG.more}</button>
-    <button class="icon close" type="button" aria-label="Close" title="Close">${SVG.close}</button>
-    <div class="menu" role="menu">
-      <button type="button" role="menuitem" data-act="theme">${SVG.theme}<span>Switch theme</span></button>
+    <button class="hbtn b-history" type="button" aria-label="Conversation history" title="History">${SVG.history}<span class="hbadge" hidden></span></button>
+    <button class="hbtn more" type="button" aria-label="More options" title="More" aria-haspopup="menu" aria-expanded="false">${SVG.more}</button>
+    <button class="hbtn min" type="button" aria-label="Minimize" title="Minimize">${SVG.minus}</button>
+    <button class="hbtn close" type="button" aria-label="Close" title="Close">${SVG.close}</button>
+    <div class="menu" role="menu" aria-label="More options">
+      <button type="button" role="menuitem" data-act="new">${SVG.plus}<span>New conversation</span></button>
+      <button type="button" role="menuitem" data-act="help">${SVG.help}<span>Help &amp; contact</span></button>
+      <hr>
       <button type="button" role="menuitem" data-act="download">${SVG.dl}<span>Download transcript</span></button>
-      <button type="button" role="menuitem" data-act="new">${SVG.reset}<span>New chat</span></button>
+      <button type="button" role="menuitem" data-act="theme"><span class="ti"></span><span class="tl"></span></button>
     </div>
   </header>
   <div class="views">
-    <section class="view view-chat">
-      <div class="log scroll" role="log" aria-live="polite" aria-label="Conversation"></div>
+    <section class="view view-chat" aria-label="Chat">
+      <div class="log scroll" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation"></div>
       <div class="composer">
+        <button class="jump" type="button" hidden>${SVG.arrowdown}<span>Latest</span></button>
         <div class="pop pop-emoji" role="dialog" aria-label="Emoji"><input class="search" placeholder="Search emoji" aria-label="Search emoji"><div class="egrid"></div></div>
         <div class="pop pop-gif" role="dialog" aria-label="GIFs"><input class="search" placeholder="Search GIFs" aria-label="Search GIFs"><div class="ggrid"></div><div class="empty" hidden></div></div>
         <form class="cbox">
           <div class="attach" hidden></div>
-          <label class="vh" for="q">Your message</label>
-          <textarea id="q" class="q" rows="1" placeholder="Ask about Deep, or say “book a call”"></textarea>
-          <div class="rec" aria-live="polite"><i></i><span class="rlabel">Listening…</span><span class="rtime">0:00</span><button type="button" class="icon rstop" aria-label="Stop dictation" title="Stop">${SVG.stop}</button></div>
+          <div class="rec" aria-live="polite"><i></i><span class="rlabel">Listening…</span><span class="rtime">0:00</span><button type="button" class="cicon rstop" aria-label="Stop dictation" title="Stop">${SVG.stop}</button></div>
           <div class="crow">
             <input type="file" class="file" multiple hidden>
-            <button type="button" class="icon b-clip" aria-label="Attach a file" title="Attach a file">${SVG.clip}</button>
-            <button type="button" class="icon b-emoji" aria-label="Insert emoji" title="Emoji" aria-haspopup="dialog">${SVG.emoji}</button>
-            <button type="button" class="icon b-gif" aria-label="Send a GIF" title="GIF" aria-haspopup="dialog">${SVG.gif}</button>
-            <button type="button" class="icon b-mic" aria-label="Dictate with your microphone" title="Dictate">${SVG.mic}</button>
-            <span class="sp"></span>
-            <button type="button" class="speak" aria-label="Speak to Deep: start a voice conversation" title="Speak to Deep">${SVG.wave}<span>Speak to Deep</span></button>
-            <button type="submit" class="send" aria-label="Send" title="Send" hidden><span class="i-send">${SVG.send}</span><span class="i-stop" hidden>${SVG.stop}</span></button>
+            <div class="plus-wrap">
+              <button type="button" class="cicon b-plus" aria-label="Attach a file, emoji or dictation" title="Add" aria-haspopup="menu" aria-expanded="false">${SVG.plus}</button>
+              <div class="pmenu" role="menu" aria-label="Add to your message">
+                <button type="button" role="menuitem" class="b-clip">${SVG.clip}<span>Attach a file</span></button>
+                <button type="button" role="menuitem" class="b-emoji" aria-haspopup="dialog">${SVG.emoji}<span>Emoji</span></button>
+                <button type="button" role="menuitem" class="b-gif" aria-haspopup="dialog" hidden>${SVG.gif}<span>GIF</span></button>
+                <button type="button" role="menuitem" class="b-mic">${SVG.mic}<span>Dictate</span></button>
+              </div>
+            </div>
+            <label class="vh" for="q">Message Deep</label>
+            <textarea id="q" class="q" rows="1" placeholder="Ask anything…" enterkeyhint="send"></textarea>
+            <button type="button" class="cicon speak" aria-label="Start a voice conversation with Deep" title="Voice conversation">${SVG.wave}</button>
+            <button type="submit" class="send" aria-label="Send" title="Send" disabled><span class="i-send">${SVG.send}</span><span class="i-stop" hidden>${SVG.stop}</span></button>
           </div>
         </form>
-        <div class="khint" aria-hidden="true">Enter to send · Shift+Enter for a new line · Esc to stop</div>
       </div>
-      <div class="foot">By chatting with us, you agree to our <a class="privacy" href="#" target="_blank" rel="noopener">Privacy Policy</a></div>
+      <div class="foot">By chatting, you agree to our <a class="privacy" href="#" target="_blank" rel="noopener">Privacy Policy</a></div>
     </section>
-    <section class="view view-messages" hidden><div class="mlist scroll"><label class="vh" for="msearch">Search conversations</label><input id="msearch" class="msearch" type="search" placeholder="Search conversations" autocomplete="off"><div class="mhead"></div><div class="mrows" role="list" aria-label="Conversations"></div></div><button class="fab" type="button">${SVG.question}<span>Ask a question</span></button></section>
-    <section class="view view-help" hidden><div class="help scroll"></div></section>
+    <section class="view view-messages" aria-label="History" hidden>
+      <div class="hist scroll">
+        <div class="htop">
+          <div class="searchbox">${SVG.search}<label class="vh" for="msearch">Search conversations</label><input id="msearch" class="msearch" type="search" placeholder="Search conversations" autocomplete="off"></div>
+          <button class="btn primary block newconvo" type="button">${SVG.plus}<span>New conversation</span></button>
+        </div>
+        <div class="mrows" role="list" aria-label="Conversations"></div>
+      </div>
+    </section>
+    <section class="view view-help" aria-label="Help" hidden><div class="help scroll"></div></section>
   </div>
-  <nav class="tabs" aria-label="Assistant sections"></nav>
   <div class="voice" role="dialog" aria-label="Voice conversation">
-    <div class="vhead"><b>ask deep &gt;_</b><span class="live" aria-hidden="true"></span><span class="vtimer" aria-label="Call duration">00:00</span><button type="button" class="icon v-min" aria-label="Minimize the call view (the call continues)" title="Minimize">${SVG.min}</button></div>
+    <div class="vhead"><b>Deep · Voice</b><span class="live" aria-hidden="true"></span><span class="vtimer" aria-label="Call duration">00:00</span><button type="button" class="hbtn v-min" aria-label="Minimize the call view (the call continues)" title="Back to chat">${SVG.chevdown}</button></div>
     <div class="vbody"><div class="vglow" aria-hidden="true"></div>
       <div class="vorb"><canvas width="440" height="440" aria-hidden="true"></canvas><span class="vmute-badge">muted</span></div>
       <div class="vstatus" aria-live="off">Connecting…</div>
@@ -438,25 +564,45 @@ class DeepAssistant extends HTMLElement {
   <div class="vh sr" role="status" aria-live="polite"></div>
 </section>`;
     this.$panel = sh.querySelector('.panel'); this.$log = sh.querySelector('.log'); this.$q = sh.querySelector('.q'); this.$send = sh.querySelector('.send'); this.$speak = sh.querySelector('.speak');
-    this.$launcher = sh.querySelector('.launcher'); this.$close = sh.querySelector('.close'); this.$back = sh.querySelector('.back'); this.$cbox = sh.querySelector('.cbox'); this.$menu = sh.querySelector('.menu');
+    this.$launcher = sh.querySelector('.launcher'); this.$close = sh.querySelector('.close'); this.$min = sh.querySelector('.min'); this.$back = sh.querySelector('.back'); this.$cbox = sh.querySelector('.cbox'); this.$menu = sh.querySelector('.menu'); this.$jump = sh.querySelector('.jump');
     this._sid = store.get(this._key('sid')) || uuid(); store.set(this._key('sid'), this._sid);
     this._vid = local.get('dh_vid') || (local.set('dh_vid', uuid()), local.get('dh_vid'));
-    this._applyCopy(); this._applyOpen(); this._applyFooter(); this._renderTabs(); this._renderHelp(); this._renderEmoji('');
-    this.$launcher.onclick = () => this.toggle(); this.$close.onclick = () => { if (this.getAttribute('mode') === 'launcher') this.close(); else { this._emit('close'); this.newChat(); } }; this.$back.onclick = () => this.showView('messages');
-    const more = sh.querySelector('.more'); more.onclick = (e) => { e.stopPropagation(); const o = !this.$menu.classList.contains('open'); this._closePops(); this.$menu.classList.toggle('open', o); more.setAttribute('aria-expanded', String(o)); };
-    this.$menu.querySelectorAll('button').forEach((b) => b.onclick = () => { this._closePops(); if (b.dataset.act === 'theme') this.switchTheme(); else if (b.dataset.act === 'download') this.download(); else this.newChat(); });
-    sh.addEventListener('click', (e) => { if (!e.composedPath().some((n) => n.classList && (n.classList.contains('menu') || n.classList.contains('more') || n.classList.contains('pop') || n.classList.contains('b-emoji') || n.classList.contains('b-gif')))) this._closePops(); });
-    sh.querySelector('.fab').onclick = () => this.newChat();
+    this._applyCopy(); this._applyMode(); this._applyOpen(); this._applyFooter(); this._applyTabs(); this._renderEmoji(''); this._syncThemeItem(); this._applyComposerCaps();
+    // header
+    this.$launcher.onclick = () => this.toggle(); this.$min.onclick = () => this.close();
+    this.$close.onclick = () => { if (this.getAttribute('mode') === 'launcher') { this.stopVoice(); if (this._busy) this._stop(); this.close(); } else { this._emit('close'); this.newChat(); } };
+    this.$back.onclick = () => this.showView('chat');
+    sh.querySelector('.b-history').onclick = () => this.showView('messages');
+    const more = sh.querySelector('.more'); more.onclick = (e) => { e.stopPropagation(); const o = !this.$menu.classList.contains('open'); this._closePops(); this.$menu.classList.toggle('open', o); more.setAttribute('aria-expanded', String(o)); if (o) this.$menu.querySelector('button').focus(); };
+    this.$menu.querySelectorAll('button').forEach((b) => b.onclick = () => { this._closePops(); const a = b.dataset.act; if (a === 'theme') this.switchTheme(); else if (a === 'download') this.download(); else if (a === 'help') this.showView('help'); else this.newChat(); });
+    this.$menu.addEventListener('keydown', (e) => { const items = [...this.$menu.querySelectorAll('button')]; const i = items.indexOf(sh.activeElement);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
+      else if (e.key === 'Escape' || e.key === 'Tab') { this._closePops(); if (e.key === 'Escape') { e.stopPropagation(); more.focus(); } } });
+    sh.addEventListener('click', (e) => { if (!e.composedPath().some((n) => n.classList && (n.classList.contains('menu') || n.classList.contains('more') || n.classList.contains('pop') || n.classList.contains('b-emoji') || n.classList.contains('b-gif') || n.classList.contains('plus-wrap')))) this._closePops(); });
+    this.$panel.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (this.$menu.classList.contains('open') || sh.querySelector('.pop.open, .pmenu.open')) { this._closePops(); return; }
+      if (sh.querySelector('.voice.open')) { this._showVoice(false); return; }
+      if (this._view !== 'chat') { this.showView('chat'); return; }
+      if (this.getAttribute('mode') === 'launcher') this.close(); });
+    // history
+    sh.querySelector('.newconvo').onclick = () => this.newChat();
     sh.querySelector('.msearch').addEventListener('input', (e) => { this._mquery = e.target.value; this._paintConversations(); });
+    // composer
     this.$cbox.addEventListener('submit', (e) => { e.preventDefault(); if (this._busy) this._stop(); else this._send(); });
-    this.$send.addEventListener('click', (e) => { if (this._busy) { e.preventDefault(); this._stop(); } });
-    this.$q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!this._busy) this._send(); } if (e.key === 'Escape') { if (this._busy) this._stop(); this._closePops(); } });
+    this.$q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!this._busy) this._send(); } if (e.key === 'Escape' && (this._busy || this.shadowRoot.querySelector('.pop.open'))) { e.preventDefault(); if (this._busy) this._stop(); this._closePops(); } });
     this.$q.addEventListener('input', () => { this._autosize(); this._syncSend(); });
+    this.$q.addEventListener('focus', () => this.$cbox.classList.add('focus'));
+    this.$q.addEventListener('blur', () => this.$cbox.classList.remove('focus'));
+    const plus = sh.querySelector('.b-plus'), pmenu = sh.querySelector('.pmenu');
+    plus.onclick = (e) => { e.stopPropagation(); const o = !pmenu.classList.contains('open'); this._closePops(); pmenu.classList.toggle('open', o); plus.setAttribute('aria-expanded', String(o)); if (o) pmenu.querySelector('button:not([hidden])').focus(); };
+    pmenu.addEventListener('keydown', (e) => { const items = [...pmenu.querySelectorAll('button:not([hidden])')]; const i = items.indexOf(sh.activeElement);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
+      else if (e.key === 'Escape') { e.preventDefault(); this._closePops(); plus.focus(); } });
+    this.$jump.onclick = () => this._scroll(true, true);
+    this.$log.addEventListener('scroll', () => { if (this._atBottom()) this.$jump.hidden = true; }, { passive: true });
     sh.querySelectorAll('.scroll').forEach((s) => { let t = null; s.addEventListener('scroll', () => { s.classList.add('scrolling'); clearTimeout(t); t = setTimeout(() => s.classList.remove('scrolling'), 700); }, { passive: true }); });
-    this.$q.addEventListener('focus', () => { this.$cbox.classList.add('focus'); sh.querySelector('.khint').classList.add('show'); });
-    this.$q.addEventListener('blur', () => { this.$cbox.classList.remove('focus'); sh.querySelector('.khint').classList.remove('show'); });
     // attachments: picker + drag and drop
-    const file = sh.querySelector('.file'); sh.querySelector('.b-clip').onclick = () => file.click(); file.onchange = () => { [...file.files].forEach((f) => this._upload(f)); file.value = ''; };
+    const file = sh.querySelector('.file'); sh.querySelector('.b-clip').onclick = () => { this._closePops(); file.click(); }; file.onchange = () => { [...file.files].forEach((f) => this._upload(f)); file.value = ''; };
     ['dragenter', 'dragover'].forEach((ev) => this.$panel.addEventListener(ev, (e) => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); this.$cbox.classList.add('drop'); } }));
     ['dragleave', 'drop'].forEach((ev) => this.$panel.addEventListener(ev, (e) => { this.$cbox.classList.remove('drop'); if (ev === 'drop' && e.dataTransfer.files.length) { e.preventDefault(); this.showView('chat'); [...e.dataTransfer.files].forEach((f) => this._upload(f)); } }));
     // emoji + gif popovers
@@ -464,93 +610,136 @@ class DeepAssistant extends HTMLElement {
     sh.querySelector('.pop-emoji .search').addEventListener('input', (e) => this._renderEmoji(e.target.value));
     let gt = null; sh.querySelector('.pop-gif .search').addEventListener('input', (e) => { clearTimeout(gt); gt = setTimeout(() => this._searchGifs(e.target.value), 350); });
     // dictation + voice
-    sh.querySelector('.b-mic').onclick = () => this._toggleDictation(); sh.querySelector('.rstop').onclick = () => this._stopDictation();
+    sh.querySelector('.b-mic').onclick = () => { this._closePops(); this._toggleDictation(); this.$q.focus(); }; sh.querySelector('.rstop').onclick = () => this._stopDictation();
     this.$speak.onclick = () => this.startVoice(); sh.querySelector('.v-end').onclick = () => this.stopVoice(); sh.querySelector('.v-mute').onclick = () => this._toggleMute();
     sh.querySelector('.v-min').onclick = () => this._showVoice(false); sh.querySelector('.vpill').onclick = () => this.startVoice(); sh.querySelector('.v-cc').onclick = () => this._toggleCaptions();
-    sh.addEventListener('pointerdown', (e) => this._ripple(e), { passive: true });
-    document.addEventListener('visibilitychange', () => { const v = this._voice; if (v && v.orb) { if (document.visibilityState === 'hidden') v.orb.pause(); else if (this.hasAttribute('open') || this.getAttribute('mode') !== 'launcher') v.orb.resume(); } });
+    this._onVis = () => { const v = this._voice; if (v && v.orb) { if (document.visibilityState === 'hidden') v.orb.pause(); else if (this.hasAttribute('open') || this.getAttribute('mode') !== 'launcher') v.orb.resume(); } };
+    document.addEventListener('visibilitychange', this._onVis);
     this._loadMe().then(() => { this._restore(); this._refreshBadge(); }); this._autosize(); this._syncSend(); this._track(); this._health(); this._loadConfig();
     console.info('deep-assistant v' + VERSION + ' ready (api ' + this.api + ')');
     this._emit('ready', { sessionId: this._sid, version: VERSION });
   }
-  _closePops() { const sh = this.shadowRoot; this.$menu.classList.remove('open'); sh.querySelector('.more').setAttribute('aria-expanded', 'false'); sh.querySelectorAll('.pop').forEach((p) => p.classList.remove('open')); }
-  _togglePop(which) { const p = this.shadowRoot.querySelector('.pop-' + which); const o = !p.classList.contains('open'); this._closePops(); p.classList.toggle('open', o); if (o) { p.querySelector('.search').focus(); if (which === 'gif' && !p.querySelector('.ggrid').children.length) this._searchGifs(''); } }
-  _applyCopy() { this.shadowRoot.querySelector('.ttl').innerHTML = this.getAttribute('title') ? esc(this.getAttribute('title')) : 'ask <span>deep &gt;_</span>'; this.shadowRoot.querySelector('.sub').textContent = this.getAttribute('subtitle') || 'Deep can also help directly'; }
+  _closePops() { const sh = this.shadowRoot; this.$menu.classList.remove('open'); sh.querySelector('.more').setAttribute('aria-expanded', 'false'); sh.querySelectorAll('.pop').forEach((p) => p.classList.remove('open')); sh.querySelectorAll('.b-emoji, .b-gif').forEach((b) => b.classList.remove('on')); sh.querySelector('.pmenu').classList.remove('open'); sh.querySelector('.b-plus').setAttribute('aria-expanded', 'false'); }
+  _togglePop(which) { const p = this.shadowRoot.querySelector('.pop-' + which); const o = !p.classList.contains('open'); this._closePops(); p.classList.toggle('open', o); this.shadowRoot.querySelector('.b-' + which).classList.toggle('on', o); if (o) { p.querySelector('.search').focus(); if (which === 'gif' && !p.querySelector('.ggrid').children.length) this._searchGifs(''); } }
+  _applyCopy() { const sh = this.shadowRoot; sh.querySelector('.ttl').textContent = this.botName; sh.querySelector('.sub').textContent = this.getAttribute('subtitle') || 'AI assistant'; this.$panel.setAttribute('aria-label', this.botName + ' assistant'); }
+  _applyMode() { const launcher = this.getAttribute('mode') === 'launcher'; this.$min.hidden = !launcher; this.$close.hidden = !launcher; this.$panel.setAttribute('role', launcher ? 'dialog' : 'region'); }
   _applyFooter() { const a = this.shadowRoot.querySelector('.privacy'); a.href = this.getAttribute('privacy-url') || this._cfg.privacy_url || 'https://deependhq.com/privacy'; this.shadowRoot.querySelector('.foot').title = 'deep-assistant v' + VERSION + (this._cfg.version ? ' · server ' + this._cfg.version : ''); }
+  _applyTabs() { const help = this._tabs().includes('help'); this.$menu.querySelector('[data-act="help"]').hidden = !help; if (!help && this._view === 'help') this.showView('chat'); }
+  _syncThemeItem() { const b = this.$menu && this.$menu.querySelector('[data-act="theme"]'); if (!b) return; const dark = this._isDark(); b.querySelector('.ti').outerHTML = `<span class="ti">${dark ? SVG.sun : SVG.theme}</span>`; b.querySelector('.tl').textContent = dark ? 'Light theme' : 'Dark theme'; }
+  _applyComposerCaps() { const sh = this.shadowRoot; sh.querySelector('.b-gif').hidden = !this._cfg.gif; const listen = this._canListen(); sh.querySelector('.b-mic').hidden = !listen; this.$speak.dataset.off = listen ? '' : '1'; this._syncSend(); }
   _applyOpen() {
     const launcher = this.getAttribute('mode') === 'launcher', open = this.hasAttribute('open');
-    this.$launcher.setAttribute('aria-expanded', String(open));
-    if (launcher) { this._emit(open ? 'open' : 'close'); if (open) { setTimeout(() => { if (!this._voice) this.$q.focus(); }, 50); this._refreshBadge(); if (this._voice && this._voice.orb) this._voice.orb.resume(); } else if (this._voice && this._voice.orb) this._voice.orb.pause(); }
+    this.$launcher.setAttribute('aria-expanded', String(open)); this.$launcher.setAttribute('aria-label', open ? 'Minimize the assistant' : 'Open the ' + this.botName + ' assistant');
+    if (!launcher || open === this._wasOpen) return; this._wasOpen = open;
+    this._emit(open ? 'open' : 'close');
+    if (open) { this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); if (this._voice && this._voice.orb) this._voice.orb.resume(); }
+    else { this._bindViewport(false); this._closePops(); if (this._voice && this._voice.orb) this._voice.orb.pause(); if (this.shadowRoot.activeElement && this.shadowRoot.activeElement !== this.$launcher) this.$launcher.focus({ preventScroll: true }); }
   }
-  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); this._applyFooter(); this._refreshSuggestions(); } } catch {} }
-  _setBusy(on) { this._busy = on; this.shadowRoot.querySelector('.i-send').hidden = on; this.shadowRoot.querySelector('.i-stop').hidden = !on; this.$send.classList.toggle('stop', on); this.$send.setAttribute('aria-label', on ? 'Stop' : 'Send'); this.$cbox.classList.toggle('busy', on); this._setStatus(on ? 'work' : (this._voice ? 'call' : 'idle')); this._syncSend(); }
-  _setStatus(mode) { const sh = this.shadowRoot, orb = sh.querySelector('.orb-mini'), st = sh.querySelector('.st'); if (!orb || !st) return; orb.classList.toggle('work', mode === 'work'); orb.classList.toggle('call', mode === 'call'); st.classList.toggle('work', mode === 'work'); st.classList.toggle('call', mode === 'call'); const t = mode === 'work' ? 'Working…' : mode === 'call' ? 'In a call' : 'Online'; const el = st.querySelector('.stt'); if (el.textContent !== t) { el.textContent = t; this._announce('Deep is ' + (mode === 'work' ? 'working' : mode === 'call' ? 'in a call' : 'online')); } }
+  _bindViewport(on) {  // phones: size the full-screen panel to the visual viewport so the composer stays above the keyboard
+    const vv = window.visualViewport; if (!vv) return;
+    if (on && !this._vvH) { this._vvH = () => { this.$panel.style.setProperty('--da-vvh', Math.round(vv.height) + 'px'); this.$panel.style.setProperty('--da-vv-top', Math.round(vv.offsetTop) + 'px'); }; vv.addEventListener('resize', this._vvH); vv.addEventListener('scroll', this._vvH); this._vvH(); }
+    else if (!on && this._vvH) { vv.removeEventListener('resize', this._vvH); vv.removeEventListener('scroll', this._vvH); this._vvH = null; }
+  }
+  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); this._applyFooter(); this._applyComposerCaps(); if (this._view === 'help') this._renderHelp(); } } catch {} }
+  _setBusy(on) { this._busy = on; this.shadowRoot.querySelector('.i-send').hidden = on; this.shadowRoot.querySelector('.i-stop').hidden = !on; this.$send.classList.toggle('stop', on); this.$send.setAttribute('aria-label', on ? 'Stop generating' : 'Send'); this.$send.title = on ? 'Stop' : 'Send'; this.$log.setAttribute('aria-busy', String(on)); this._setStatus(on ? 'work' : (this._voice ? 'call' : 'idle')); this._syncSend(); }
+  _setStatus(mode) {
+    const sh = this.shadowRoot, st = sh.querySelector('.st'); if (!st) return;
+    const pending = mode === 'idle' && this._online === undefined, off = mode === 'idle' && this._online === false;
+    st.classList.toggle('work', mode === 'work'); st.classList.toggle('call', mode === 'call'); st.classList.toggle('off', pending || off); sh.querySelector('.hav').classList.toggle('work', mode === 'work');
+    const t = mode === 'work' ? 'Working…' : mode === 'call' ? 'In a call' : off ? 'Offline' : pending ? 'Connecting…' : 'Online';
+    const el = st.querySelector('.stt'); if (el.textContent !== t) { el.textContent = t; if (mode !== 'idle' || off) this._announce('Deep is ' + t.replace('…', '').toLowerCase()); }
+    const dot = sh.querySelector('.ldot'); if (dot) dot.hidden = this._online !== true;
+  }
   _announce(text) { const sr = this.shadowRoot.querySelector('.sr'); if (!sr) return; clearTimeout(this._srT); this._srT = setTimeout(() => { sr.textContent = ''; sr.textContent = text; }, 60); }
-  _ripple(e) { if (this._reduced || e.button) return; const t = e.composedPath().find((n) => n.classList && (n.classList.contains('btn') || n.classList.contains('chip') || n.classList.contains('time') || n.classList.contains('date') || n.classList.contains('ctype') || n.classList.contains('cap') || n.classList.contains('vbtn') || n.classList.contains('tab'))); if (!t || t.disabled) return; const r = t.getBoundingClientRect(); const d = Math.max(r.width, r.height); const sp = document.createElement('span'); sp.className = 'rip'; sp.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX - r.left - d / 2}px;top:${e.clientY - r.top - d / 2}px`; t.appendChild(sp); setTimeout(() => sp.remove(), 520); }
-  _syncSend() { const has = !!this.$q.value.trim() || this._attachments.length > 0 || this._busy; this.$send.hidden = !has; this.$speak.hidden = has; }
-  _autosize() { const q = this.$q, prev = q.style.height; q.style.height = 'auto'; const h = Math.max(30, Math.min(q.scrollHeight, 110)) + 'px'; if (this._reduced || !prev || prev === h) { q.style.height = h; return; } q.style.height = prev; requestAnimationFrame(() => { q.style.height = h; }); }
-  _scroll() { this.$log.scrollTop = this.$log.scrollHeight; }
-  _atBottom() { return this.$log.scrollHeight - this.$log.scrollTop - this.$log.clientHeight < 40; }
-  async _health() { if (!this.api) return; try { const r = await fetch(this._url('/healthz'), { cache: 'no-store' }); this._online = r.ok; } catch { this._online = false; } }
+  _syncSend() { const ready = (!!this.$q.value.trim() || this._attachments.some((a) => a.id)) && !this._attachments.some((a) => a.xhr); const typing = !!this.$q.value.trim() || this._attachments.length > 0;
+    this.$send.disabled = !this._busy && !ready; this.$speak.hidden = typing || this._busy || this.$speak.dataset.off === '1'; }
+  _autosize() { const q = this.$q; q.style.height = 'auto'; q.style.height = Math.max(22, Math.min(q.scrollHeight, 120)) + 'px'; }
+  _scroll(force, smooth) { if (!force && !this._stick) { if (this._busy || force === false) this.$jump.hidden = false; return; } const l = this.$log; if (smooth && !this._reduced) l.scrollTo({ top: l.scrollHeight, behavior: 'smooth' }); else l.scrollTop = l.scrollHeight; this.$jump.hidden = true; }
+  _reveal(el) {  // scroll the conversation (never the host page) so el is in view
+    const l = this.$log, r = el.getBoundingClientRect(), lr = l.getBoundingClientRect(); let d = 0;
+    if (r.height > lr.height - 24 || r.top < lr.top) d = r.top - lr.top - 12; else if (r.bottom > lr.bottom) d = r.bottom - lr.bottom + 12;
+    if (d) l.scrollTo({ top: l.scrollTop + d, behavior: this._reduced ? 'auto' : 'smooth' });
+  }
+  _atBottom() { return this.$log.scrollHeight - this.$log.scrollTop - this.$log.clientHeight < 48; }
+  async _health() {
+    if (!this.api) return; clearTimeout(this._hT);
+    try { const r = await fetch(this._url('/healthz'), { cache: 'no-store' }); this._online = r.ok; } catch { this._online = false; }
+    this._setStatus(this._busy ? 'work' : (this._voice ? 'call' : 'idle'));
+    if (!this._online && this.isConnected) this._hT = setTimeout(() => this._health(), 20000);
+  }
   async _loadMe() {
     const hintName = this.getAttribute('user-name'), hintEmail = this.getAttribute('user-email');
     this._me = { signed_in: false, name: hintName, email: hintEmail, verified: false };
     if (this.getAttribute('token') && this.api) { try { const r = await fetch(this._url('/me'), { headers: this._headers(false) }); if (r.ok) this._me = await r.json(); } catch {} }
     if (!this._me.name && hintName) this._me.name = hintName; if (!this._me.email && hintEmail) this._me.email = hintEmail;
   }
-  _greeting() {
-    if (this.getAttribute('greeting')) return this.getAttribute('greeting');
-    const first = (this._me && this._me.name) ? String(this._me.name).trim().split(/\s+/)[0] : '';
-    return first ? `👋 Hey ${first}, you're speaking with Deep's AI assistant. Share as much detail as you can so I can give you the best answer.`
-                 : `👋 Hi, you're speaking with Deep's AI assistant. Share as much detail as you can so I can give you the best answer.`;
-  }
+  _firstName() { return (this._me && this._me.name) ? String(this._me.name).trim().split(/\s+/)[0] : ''; }
   _track() {
     if (!this.api || store.get(this._key('tracked')) === this._sid) return;
     const body = { session_id: this._sid, visitor_id: this._vid, page: location.href, referrer: document.referrer || null, timezone: this.tz, lang: navigator.language || null, screen: screen && screen.width ? `${screen.width}x${screen.height}` : null };
     fetch(this._url('/track'), { method: 'POST', headers: this._headers(), body: JSON.stringify(body), keepalive: true }).then(() => store.set(this._key('tracked'), this._sid)).catch(() => {});
   }
-  // ---------------------------------------------------------------- tabs, messages, help
-  _renderTabs() {
-    const nav = this.shadowRoot.querySelector('.tabs'); const tabs = this._tabs();
-    nav.innerHTML = tabs.map((t) => `<button class="tab" type="button" data-tab="${t}" aria-label="${t === 'home' ? 'Home' : t === 'messages' ? 'Messages' : 'Help'}">${SVG[t]}<span>${t === 'home' ? 'Home' : t === 'messages' ? 'Messages' : 'Help'}</span>${t === 'messages' ? '<span class="badge" hidden></span>' : ''}</button>`).join('');
-    nav.querySelectorAll('.tab').forEach((b) => b.onclick = () => this.showView(b.dataset.tab === 'home' ? 'chat' : b.dataset.tab));
-    nav.hidden = tabs.length < 2; this.showView(this._view); this._setBadge(this._unread);
+  // ---------------------------------------------------------------- welcome + page context
+  _pageContext() {
+    const forced = (this.getAttribute('page-context') || '').trim().toLowerCase(); if (CONTEXT_ACTIONS[forced]) return forced;
+    const p = (location.pathname || '').toLowerCase();
+    if (/contact|book|schedule|pricing|get-started|request-demo/.test(p)) return 'contact';
+    if (/solution|service|use-case|usecase|industr/.test(p)) return 'solutions';
+    if (/product|platform|feature/.test(p)) return 'product';
+    return 'general';
   }
-  _renderHelp() {
-    const h = this.shadowRoot.querySelector('.help'); const sc = this._shortcut();
-    h.innerHTML = `<h2>Things I can do</h2><div class="stack">
-      <button class="btn" type="button" data-ask="I want to book a call with Deep"><span>Book a call with Deep</span>${SVG.ext}</button>
-      <button class="btn" type="button" data-ask="Can I talk to a real person?"><span>Ask Deep directly (reply by email)</span>${SVG.ext}</button>
-      ${sc ? `<a class="btn" href="${esc(sc.href)}" target="_blank" rel="noopener"><span>${esc(sc.label)}</span>${SVG.ext}</a>` : ''}
-    </div><h2>Common questions</h2><div class="suggest"></div>`;
-    h.querySelectorAll('button[data-ask]').forEach((b) => b.onclick = () => { this.newChat(); this._send(b.dataset.ask); });
-    const s = h.querySelector('.suggest'); this._suggestions().forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = x; b.onclick = () => { this.newChat(); this._send(x); }; s.appendChild(b); });
+  _pageTitle() { const t = (document.title || '').split(/\s[|–—-]\s/)[0].trim(); return t && t.length <= 60 ? t : ''; }
+  _actions() {
+    const a = this.getAttribute('suggestions');
+    if (a) return a.split('|').map((s) => s.trim()).filter(Boolean).slice(0, 4).map((label) => (BOOK_RE.test(label) ? { icon: 'cal', label, book: true } : { icon: 'spark', label, ask: label }));
+    const title = this._pageTitle();
+    return CONTEXT_ACTIONS[this._pageContext()].map((k) => { const x = ACTIONS[k]; return x.askPage ? { ...x, ask: x.askPage(title) } : x; });
   }
-  _setBadge(n) { this._unread = n; const b = this.shadowRoot.querySelector('.tab[data-tab="messages"] .badge'); if (b) { b.hidden = !n; b.textContent = String(n); } const lb = this.shadowRoot.querySelector('.lbadge'); lb.hidden = !n; lb.textContent = String(n); }
-  async _conversations() { if (!this.api || (!this._vid && !this.getAttribute('token'))) return { items: [], unread_conversations: 0 }; try { const r = await fetch(this._url('/conversations'), { headers: this._headers(false) }); return r.ok ? await r.json() : { items: [], unread_conversations: 0 }; } catch { return { items: [], unread_conversations: 0 }; } }
-  async _refreshBadge() { const d = await this._conversations(); this._setBadge(d.unread_conversations || 0); return d; }
+  _renderWelcome() {
+    const w = document.createElement('div'); w.className = 'welcome'; const first = this._firstName(); const ctx = this.getAttribute('suggestions') ? 'custom' : this._pageContext();
+    w.innerHTML = `<div class="wav" aria-hidden="true">${SVG.mark}</div><h2>${esc(first ? `Hi ${first}! I'm Deep 👋` : "Hi! I'm Deep 👋")}</h2><p>${esc(this.getAttribute('greeting') || INTRO)}</p>
+      <div class="acts-label">${ctx === 'general' || ctx === 'custom' ? 'Popular ways to start' : 'Suggested for this page'}</div><div class="acts" role="group" aria-label="Suggested actions"></div>`;
+    const acts = w.querySelector('.acts');
+    this._actions().forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'act' + (x.book ? ' book' : ''); b.innerHTML = `<span class="ai">${SVG[x.icon] || SVG.spark}</span><span class="al">${esc(x.label)}</span>${SVG.chev}`; b.onclick = () => this._runAction(x, 'suggestion'); acts.appendChild(b); });
+    this.$log.appendChild(w);
+  }
+  _refreshWelcome() { if (!this._rendered || this._transcript.length) return; const w = this.$log.querySelector('.welcome'); if (w) { w.remove(); this._renderWelcome(); } }
+  _runAction(x, source) {
+    this._emit('action', { action: source, label: x.label, kind: x.book ? 'booking' : 'question' });
+    if (x.book) return this.startBooking(typeof x.book === 'string' ? x.book : null, x.label);
+    return this._send(x.ask || x.label);
+  }
+  // ---------------------------------------------------------------- history + help
+  _setBadge(n) { this._unread = n; const b = this.shadowRoot.querySelector('.hbadge'); b.hidden = !n; b.textContent = String(n); this.shadowRoot.querySelector('.b-history').setAttribute('aria-label', n ? `Conversation history, ${n} unread` : 'Conversation history'); const lb = this.shadowRoot.querySelector('.lbadge'); lb.hidden = !n; lb.textContent = String(n); }
+  async _conversations() {
+    if (!this.api || (!this._vid && !this.getAttribute('token'))) return { items: [], unread_conversations: 0 };
+    try { const r = await fetch(this._url('/conversations'), { headers: this._headers(false) }); return r.ok ? await r.json() : { items: [], unread_conversations: 0, error: true }; } catch { return { items: [], unread_conversations: 0, error: true }; }
+  }
+  async _refreshBadge() { const d = await this._conversations(); if (!d.error) this._setBadge(d.unread_conversations || 0); return d; }
   async _markRead(sid) { try { await fetch(this._url('/conversations/' + encodeURIComponent(sid) + '/read'), { method: 'POST', headers: this._headers() }); } catch {} }
   async _renderConversations() {
-    const sh = this.shadowRoot; const sc = this._shortcut();
-    sh.querySelector('.mhead').innerHTML = sc ? `<a class="shortcut" href="${esc(sc.href)}" target="_blank" rel="noopener"><span class="avatar" aria-hidden="true">${SVG.mark}</span><span class="t"><b>${esc(sc.label)}</b><span>${esc(host(sc.href))}</span></span>${SVG.ext}</a>` : '';
-    sh.querySelector('.mrows').innerHTML = '<div class="mempty">Loading…</div>';
-    const d = await this._refreshBadge(); this._convos = d.items || []; this._paintConversations();
+    const rows = this.shadowRoot.querySelector('.mrows'); rows.setAttribute('aria-busy', 'true');
+    if (!this._convos) rows.innerHTML = '<div class="sk"><span class="a"></span><span class="l"><i></i><i></i></span></div>'.repeat(4);
+    const d = await this._refreshBadge(); rows.setAttribute('aria-busy', 'false');
+    this._convErr = !!d.error; if (!d.error || !this._convos) this._convos = d.items || []; this._paintConversations();
   }
   _group(ts) { const d = new Date(ts), now = new Date(); const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); const diff = Math.round((day(now) - day(d)) / 86400000);
     return diff <= 0 ? 'Today' : diff === 1 ? 'Yesterday' : diff <= 7 ? 'Previous 7 days' : 'Older'; }
   _paintConversations() {
-    const sh = this.shadowRoot, rows = sh.querySelector('.mrows'); const q = (this._mquery || '').trim().toLowerCase();
-    const items = (this._convos || []).filter((c) => !q || (c.title || '').toLowerCase().includes(q) || plain(c.preview).toLowerCase().includes(q));
-    sh.querySelector('.msearch').hidden = !(this._convos || []).length;
-    if (!(this._convos || []).length) { rows.innerHTML = `<div class="empty"><b>No conversations yet</b>Ask anything about deependhq.com, or book a call with Deep.</div>`; return; }
-    if (!items.length) { rows.innerHTML = '<div class="mempty">No conversations match your search.</div>'; return; }
+    const sh = this.shadowRoot, rows = sh.querySelector('.mrows'); const q = (this._mquery || '').trim().toLowerCase(); const all = this._convos || [];
+    const items = all.filter((c) => !q || (c.title || '').toLowerCase().includes(q) || plain(c.preview).toLowerCase().includes(q));
+    sh.querySelector('.searchbox').hidden = !all.length;
+    if (!all.length && this._convErr) { rows.innerHTML = `<div class="empty"><span class="ei">${SVG.alert}</span><b>Couldn't load your conversations</b>Check your connection and try again.<button class="btn" type="button">${SVG.reset}<span>Try again</span></button></div>`; rows.querySelector('.btn').onclick = () => this._renderConversations(); return; }
+    if (!all.length) { rows.innerHTML = `<div class="empty"><span class="ei">${SVG.chat}</span><b>No conversations yet</b>Your chats with Deep will appear here, so you can pick them up later.</div>`; return; }
+    if (!items.length) { rows.innerHTML = `<div class="empty"><span class="ei">${SVG.search}</span><b>No matches</b>No conversations match “${esc(this._mquery.trim())}”.</div>`; return; }
     let html = '', last = null;
     for (const c of items) {
-      const g = this._group(c.last_ts); if (g !== last) { html += `<div class="mgroup">${g}</div>`; last = g; }
-      html += `<button class="convo ${c.unread ? 'unread' : ''}" type="button" role="listitem" data-sid="${esc(c.session_id)}" aria-label="${esc(c.title)}">
-        <span class="avatar" aria-hidden="true">${c.handovers ? 'D' : SVG.mark}</span>
+      const g = this._group(c.last_ts); if (g !== last) { html += `<div class="mgroup" role="presentation">${g}</div>`; last = g; }
+      const cur = c.session_id === this._sid;
+      html += `<button class="convo${c.unread ? ' unread' : ''}${cur ? ' cur' : ''}" type="button" role="listitem" data-sid="${esc(c.session_id)}" aria-label="${esc(c.title)}${cur ? ', current conversation' : ''}${c.unread ? ', unread' : ''}">
+        <span class="avatar" aria-hidden="true">${c.handovers ? SVG.user : SVG.mark}</span>
         <span class="c"><span class="n" title="${esc(c.title)}">${esc(c.title)}</span><span class="p">${esc(plain(c.preview) || '…')}</span></span>
-        <span class="r"><span class="time">${relShort(c.last_ts).replace('just now', 'now')}</span>${c.unread ? '<span class="dot" aria-label="unread"></span>' : ''}</span>
+        <span class="r">${cur ? '<span class="cur-tag">Current</span>' : `<span class="ctime">${relShort(c.last_ts).replace('just now', 'now')}</span>`}${c.unread ? '<span class="dot" aria-hidden="true"></span>' : ''}</span>
         <span class="more2" role="button" tabindex="0" aria-label="Rename conversation" title="Rename">${SVG.more}</span></button>`;
     }
     rows.innerHTML = html;
@@ -563,24 +752,53 @@ class DeepAssistant extends HTMLElement {
   }
   _renameRow(btn) {
     const sid = btn.dataset.sid, c = (this._convos || []).find((x) => x.session_id === sid); if (!c || btn.nextElementSibling?.classList.contains('rename')) return;
-    const f = document.createElement('form'); f.className = 'rename'; f.innerHTML = `<input maxlength="80" aria-label="Conversation title"><button type="submit" class="textbtn submit">Save</button><button type="button" class="textbtn cancel">Cancel</button>`;
+    const f = document.createElement('form'); f.className = 'rename'; f.innerHTML = `<input class="inp" maxlength="80" aria-label="Conversation title"><button type="submit" class="btn primary sm">Save</button><button type="button" class="btn ghost sm cancel">Cancel</button>`;
     const input = f.querySelector('input'); input.value = c.title || ''; btn.insertAdjacentElement('afterend', f); input.focus(); input.select();
-    f.querySelector('.cancel').onclick = () => f.remove(); input.addEventListener('keydown', (e) => { if (e.key === 'Escape') f.remove(); });
-    f.onsubmit = async (e) => { e.preventDefault(); const title = input.value.trim(); if (!title) return;
-      try { const r = await fetch(this._url('/conversations/' + encodeURIComponent(sid)), { method: 'PATCH', headers: this._headers(), body: JSON.stringify({ title }) }); if (r.ok) { const d = await r.json(); c.title = d.title; c.title_source = 'user'; this._toast('Renamed'); } } catch {}
-      f.remove(); this._paintConversations(); };
+    f.querySelector('.cancel').onclick = () => { f.remove(); btn.focus(); }; input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); f.remove(); btn.focus(); } });
+    f.onsubmit = async (e) => { e.preventDefault(); const title = input.value.trim(); if (!title) return; let ok = false;
+      try { const r = await fetch(this._url('/conversations/' + encodeURIComponent(sid)), { method: 'PATCH', headers: this._headers(), body: JSON.stringify({ title }) }); if (r.ok) { const d = await r.json(); c.title = d.title; c.title_source = 'user'; ok = true; } } catch {}
+      this._toast(ok ? 'Renamed' : "Couldn't rename it. Try again."); f.remove(); this._paintConversations(); };
+  }
+  _renderHelp() {
+    const h = this.shadowRoot.querySelector('.help'); const sc = this._shortcut(); const listen = this._canListen();
+    const common = ((this._cfg && Array.isArray(this._cfg.suggestions)) ? this._cfg.suggestions : []).filter((s) => s && !BOOK_RE.test(s));
+    const qs = (common.length ? common : [ACTIONS.explore.ask, ACTIONS.about.ask, ACTIONS.usecases.ask]).slice(0, 5);
+    const item = (cls, icon, label, small, tail) => `<span class="ai">${icon}</span><span class="al">${label}<small>${small}</small></span>${tail || SVG.chev}`;
+    h.innerHTML = `<h3>Get in touch</h3><div class="acts">
+        <button class="act book h-book" type="button">${item('', SVG.cal, 'Book a meeting', 'Pick a time that suits you, right here')}</button>
+        <button class="act h-human" type="button">${item('', SVG.user, 'Talk to a person', 'Leave a message, the team replies by email')}</button>
+        ${listen ? `<button class="act h-voice" type="button">${item('', SVG.wave, 'Voice conversation', 'Talk with Deep hands-free')}</button>` : ''}
+        ${sc ? `<a class="act" href="${esc(sc.href)}" target="_blank" rel="noopener">${item('', SVG.video, esc(sc.label), esc(host(sc.href)) + ' · opens in a new tab', SVG.ext)}</a>` : ''}
+      </div>
+      <h3>What Deep can do</h3><ul class="caplist">
+        <li>${SVG.checkc}<span>Answer questions about LakeB2B, with links to the pages it used</span></li>
+        <li>${SVG.checkc}<span>Book a meeting with live availability, without leaving this chat</span></li>
+        <li>${SVG.checkc}<span>Pass your question to the team when it can't answer confidently</span></li>
+        <li>${SVG.checkc}<span>Keep your conversations in History so you can pick them up later</span></li>
+      </ul>
+      <h3>Common questions</h3><div class="chips"></div>
+      <p class="hfoot">Deep is an AI assistant and can make mistakes. <a href="${esc(this.shadowRoot.querySelector('.privacy').href)}" target="_blank" rel="noopener">Privacy policy</a></p>`;
+    h.querySelector('.h-book').onclick = () => { this._emit('action', { action: 'help', label: 'Book a meeting', kind: 'booking' }); this.startBooking(); };
+    h.querySelector('.h-human').onclick = () => { this._emit('action', { action: 'handover_requested', label: 'Talk to a person' }); this._send('Can I talk to a real person?'); };
+    const hv = h.querySelector('.h-voice'); if (hv) hv.onclick = () => this.startVoice();
+    const chips = h.querySelector('.chips'); qs.forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = x; b.onclick = () => { this._emit('action', { action: 'help_question', label: x, kind: 'question' }); this._send(x); }; chips.appendChild(b); });
   }
   // ---------------------------------------------------------------- rendering
   _add(role, text, ts) {
+    const stick = role === 'user' || this._atBottom();
+    const w = this.$log.querySelector('.welcome'); if (w) w.remove();
     const row = document.createElement('div'); row.className = 'row ' + role; row.dataset.role = role; row.dataset.ts = String(ts || Date.now());
-    const d = document.createElement('div'); d.className = 'msg'; d.textContent = text; row.appendChild(d);
-    const meta = document.createElement('div'); meta.className = 'meta'; meta.textContent = role === 'bot' ? `Deep • AI Agent • ${relShort(ts || Date.now())}` : relShort(ts || Date.now()); row.appendChild(meta);
-    this.$log.appendChild(row); this._scroll(); return d;
+    if (role === 'bot') row.insertAdjacentHTML('beforeend', `<span class="bav" aria-hidden="true">${SVG.mark}</span>`);
+    const col = document.createElement('div'); col.className = 'col';
+    const d = document.createElement('div'); d.className = 'msg'; d.textContent = text; col.appendChild(d);
+    const meta = document.createElement('div'); meta.className = 'meta'; const when = relShort(ts || Date.now());
+    meta.innerHTML = role === 'bot' ? `<span class="vh">${esc(this.botName)} said, </span>${esc(this.botName)} · ${when}` : `<span class="vh">You said, </span>${when}`; col.appendChild(meta);
+    row.appendChild(col); this.$log.appendChild(row); this._stick = stick; this._scroll(); return d;
   }
-  _thinking(el) { el.classList.add('thinking'); el.innerHTML = '<i></i><i></i><i></i>'; }
-  _activity(bot) {  // the agent at work: skeleton bubble + activity row fed by real 'status' events; collapses into "Worked for …"
-    const row = bot.parentElement; bot.classList.add('skel'); bot.innerHTML = '<div class="ln"></div><div class="ln"></div><div class="ln"></div>';
-    const a = document.createElement('div'); a.className = 'activity'; a.setAttribute('aria-hidden', 'true'); a.innerHTML = '<span class="orb"></span><span class="lbl">Thinking…</span>'; row.insertBefore(a, bot);
+  _markLast() { this.$log.querySelectorAll('.row.last').forEach((r) => r.classList.remove('last')); const rows = this.$log.querySelectorAll('.row.bot'); if (rows.length) rows[rows.length - 1].classList.add('last'); }
+  _activity(bot) {  // the agent at work: skeleton bubble + a status pill fed by real 'status' events; collapses into "Worked for …"
+    const col = bot.parentElement; bot.classList.add('skel'); bot.innerHTML = '<div class="ln"></div><div class="ln"></div><div class="ln"></div>';
+    const a = document.createElement('div'); a.className = 'activity'; a.setAttribute('aria-hidden', 'true'); a.innerHTML = '<span class="spin"></span><span class="lbl">Thinking…</span>'; col.insertBefore(a, bot);
     const act = { el: a, t0: performance.now(), steps: [], label: a.querySelector('.lbl'), last: 'Thinking…' };
     act.set = (step, label) => { act.label.textContent = label; act.last = label; act.steps.push({ step, label, at: performance.now() - act.t0 }); this._announce(label); };
     act.done = (sourcesN) => { const ms = performance.now() - act.t0; a.remove(); bot.classList.remove('skel');
@@ -589,230 +807,291 @@ class DeepAssistant extends HTMLElement {
       w.innerHTML = `${SVG.chev}<span>Worked for ${secs}${sourcesN ? ' · ' + sourcesN + ' source' + (sourcesN === 1 ? '' : 's') : ''}</span>`; w.setAttribute('aria-expanded', 'false');
       const st = document.createElement('div'); st.className = 'steps'; st.innerHTML = act.steps.map((x) => `<div><b>${(x.at / 1000).toFixed(1)}s</b><span>${esc(x.label.replace(/…$/, ''))}</span></div>`).join('') + `<div><b>${secs}</b><span>Done</span></div>`;
       w.onclick = () => { const o = !st.classList.contains('open'); st.classList.toggle('open', o); w.classList.toggle('open', o); w.setAttribute('aria-expanded', String(o)); };
-      row.insertBefore(w, bot); row.insertBefore(st, bot); };
+      col.insertBefore(w, bot); col.insertBefore(st, bot); };
     return act;
   }
-  _setText(el, text, srcs, tail) {
-    el.classList.remove('thinking'); el.classList.remove('skel'); const extras = Array.from(el.querySelectorAll(':scope > div, :scope > form'));
-    el.innerHTML = md(text, srcs, this.api); if (tail) this._wrapTail(el, tail); extras.forEach((x) => el.appendChild(x)); el.dataset.raw = plain(text);
-  }
-  _wrapTail(el, n) {  // the newest streamed chunk fades in (opacity + 2px blur → sharp): wrap the last n characters of the last text node
-    if (this._reduced || !n) return; let node = el; while (node && node.lastChild) node = node.lastChild; if (!node || node.nodeType !== 3) return;
-    const len = node.data.length, k = Math.min(n, len); if (k <= 0) return; const tail = node.splitText(len - k); const sp = document.createElement('span'); sp.className = 'tok'; tail.parentNode.insertBefore(sp, tail); sp.appendChild(tail);
-  }
-  _contextChip(row, items) {  // "Using 3 sources from deependhq.com", above the answer; toggles the source list below it
-    if (!items || !items.length || row.querySelector('.ctx')) return; const hosts = [...new Set(items.map((x) => host(x.url)).filter(Boolean))];
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'ctx in'; b.setAttribute('aria-expanded', 'true');
-    b.innerHTML = `${SVG.chev}<span>Using ${items.length} source${items.length === 1 ? '' : 's'}${hosts.length === 1 ? ' from ' + esc(hosts[0]) : ''}</span>`; b.classList.add('open');
-    b.onclick = () => { const src = row.querySelector('.sources'); const o = !b.classList.contains('open'); b.classList.toggle('open', o); b.setAttribute('aria-expanded', String(o)); if (src) src.classList.toggle('hide', !o); };
-    row.insertBefore(b, row.querySelector('.msg'));
-  }
-  _actionCard(el, key, icon, title, detail, state) {  // the agent acting, not just talking: calendar checked, slot booked, email sent
-    let c = el.querySelector(`.actcard[data-key="${key}"]`); if (!c) { c = document.createElement('div'); c.className = 'actcard'; c.dataset.key = key; c.innerHTML = `<span class="ai"></span><span class="at"><b></b><span></span></span><span class="as"></span>`; el.appendChild(c); }
-    c.className = 'actcard ' + (state || 'run'); c.querySelector('.ai').innerHTML = icon; c.querySelector('.at b').textContent = title; c.querySelector('.at span').textContent = detail || '';
-    c.querySelector('.as').innerHTML = state === 'ok' ? `${SVG.check}<span>done</span>` : state === 'fail' ? `${SVG.x}<span>failed</span>` : '<i></i><span>in progress</span>';
-    c.setAttribute('role', 'status'); this._announce(title + (state === 'ok' ? ' done' : state === 'fail' ? ' failed' : '')); this._scroll(); return c;
-  }
-  _renderCaps() {
-    const row = document.createElement('div'); row.className = 'row bot caps-row'; const g = document.createElement('div'); g.className = 'caps';
-    const caps = [
-      [SVG.search, 'Answers from Deep\'s work', () => this._send('What is Deep working on?')],
-      [SVG.cal, 'Books calls on Deep\'s calendar', () => this._send('I want to book a call with Deep')],
-      [SVG.mail, 'Sends Zoom invites by email', () => this._send('Book a call with Deep and send me the Zoom invite')],
-      [SVG.phone, 'Voice conversation', () => this.startVoice()],
-    ];
-    caps.forEach(([icon, label, fn]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'cap'; b.innerHTML = `${icon}<span>${esc(label)}</span>`; b.onclick = fn; g.appendChild(b); });
-    row.appendChild(g); this.$log.appendChild(row);
+  _setText(el, text, srcs) {
+    el.classList.remove('skel'); const extras = Array.from(el.querySelectorAll(':scope > div:not(.ln), :scope > form'));
+    el.innerHTML = md(text, srcs, this.api); extras.forEach((x) => el.appendChild(x)); el.dataset.raw = plain(text);
   }
   _addSources(el, items) {
     if (!items || !items.length) return; const s = document.createElement('div'); s.className = 'sources';
-    s.innerHTML = '<span class="lbl">Sources</span><div class="srow">' + items.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title || x.url)}"><b>${x.n}</b><span class="t">${esc(trunc(x.title || x.url, 28))}</span><span class="h">${esc(host(x.url))}</span></a>`).join('') + '</div>';
+    s.innerHTML = '<span class="lbl">Sources</span><div class="srcs">' + items.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title || x.url)}"><b>${x.n}</b><span class="t">${esc(trunc(x.title || x.url, 28))}</span><span class="hh">${esc(host(x.url))}</span></a>`).join('') + '</div>';
     el.parentElement.appendChild(s);
   }
-  async _rate(mid, rating, note) { try { const r = await fetch(this._url('/feedback'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ message_id: mid, rating, note: note || null }) }); const ok = r.ok && (await r.json()).ok; if (ok) this._emit('feedback', { messageId: mid, rating, note: note || null }); return ok; } catch { return false; } }
+  async _rate(mid, rating, note) { try { const r = await fetch(this._url('/feedback'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ message_id: mid, rating, note: note || null }) }); const ok = r.ok && (await r.json()).ok; if (ok) this._emit('feedback', { messageId: mid, rating, note: note || null }); else this._toast("Couldn't send feedback"); return ok; } catch { this._toast("Couldn't send feedback"); return false; } }
   _addTools(el, raw, retryText, mid, fb) {
-    const row = el.parentElement, t = document.createElement('div'); t.className = 'tools';
+    const col = el.parentElement, t = document.createElement('div'); t.className = 'tools';
     const tool = (label, icon, cls) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tool ' + (cls || ''); b.setAttribute('aria-label', label); b.title = label; b.innerHTML = icon; return b; };
     if (mid) {
-      const mark = (rating) => { t.querySelectorAll('.thumb').forEach((x) => x.classList.toggle('on', x.classList.contains(rating === 1 ? 'up' : 'down'))); const tr = this._transcript.find((m) => m.mid === mid); if (tr) { tr.fb = rating; this._persist(); } this._toast('Thanks for the feedback'); };
-      const mk = (rating, label, icon) => { const b = tool(label, icon, 'thumb ' + (rating === 1 ? 'up' : 'down') + (fb === rating ? ' on' : ''));
+      const mark = (rating) => { t.querySelectorAll('.thumb').forEach((x) => { const on = x.classList.contains(rating === 1 ? 'up' : 'down'); x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); const tr = this._transcript.find((m) => m.mid === mid); if (tr) { tr.fb = rating; this._persist(); } this._toast('Thanks for the feedback'); };
+      const mk = (rating, label, icon) => { const b = tool(label, icon, 'thumb ' + (rating === 1 ? 'up' : 'down') + (fb === rating ? ' on' : '')); b.setAttribute('aria-pressed', String(fb === rating));
         b.onclick = async () => { if (rating === 1) { if (await this._rate(mid, 1)) mark(1); return; } this._fbPopover(b, async (reason) => { if (await this._rate(mid, -1, reason)) mark(-1); }); };
         return b; };
       t.appendChild(mk(1, 'Helpful', SVG.up)); t.appendChild(mk(-1, 'Not helpful', SVG.down));
     }
-    const copy = tool('Copy answer', SVG.copy);
-    copy.onclick = async () => { try { await navigator.clipboard.writeText(raw()); } catch {} const tip = document.createElement('span'); tip.className = 'tip'; tip.textContent = 'Copied'; copy.appendChild(tip); t.classList.add('keep'); setTimeout(() => { tip.remove(); t.classList.remove('keep'); }, 1200); };
-    t.appendChild(copy);
-    if (retryText) { const r = tool('Retry', SVG.reset); r.onclick = () => { row.remove(); const u = this.$log.lastElementChild; if (u && u.dataset.role === 'user') u.remove(); this._history = this._history.slice(0, -2); this._transcript = this._transcript.slice(0, -2); this._persist(); this._send(retryText); }; t.appendChild(r); }
-    row.appendChild(t);
+    if (raw() && !retryText) {
+      const copy = tool('Copy answer', SVG.copy);
+      copy.onclick = async () => { let ok = true; try { await navigator.clipboard.writeText(raw()); } catch { ok = false; } const tip = document.createElement('span'); tip.className = 'tip'; tip.textContent = ok ? 'Copied' : 'Copy failed'; copy.appendChild(tip); t.classList.add('keep'); this._announce(tip.textContent); setTimeout(() => { tip.remove(); t.classList.remove('keep'); }, 1200); };
+      t.appendChild(copy);
+    }
+    if (retryText) { const r = tool('Try again', SVG.reset); r.onclick = () => this._retry(el, retryText); t.appendChild(r); }
+    if (t.children.length) col.appendChild(t);
   }
-  _suggestions() { const a = this.getAttribute('suggestions'); if (a) return a.split('|').map((s) => s.trim()).filter(Boolean); const c = this._cfg && Array.isArray(this._cfg.suggestions) ? this._cfg.suggestions.filter(Boolean) : []; return c.length ? c : DEFAULT_SUGGESTIONS; }
-  _refreshSuggestions() { /* the server's smart suggestions (most asked questions) arrive after first paint: swap the chips while nothing has been asked yet */
-    const s = this.shadowRoot.querySelector('.suggest-row .suggest'); if (s && !this._transcript.length) { s.innerHTML = ''; this._suggestions().forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = x; b.onclick = () => this._send(x); s.appendChild(b); }); }
-    if (typeof this._renderHelp === 'function') this._renderHelp();
+  _retry(bot, text) {
+    const row = bot.closest('.row'); const u = row.previousElementSibling; row.remove(); if (u && u.dataset.role === 'user') u.remove();
+    this._history = this._history.slice(0, -2); this._transcript = this._transcript.slice(0, -2); this._persist(); this._send(text);
   }
-  _renderSuggestions() { const row = document.createElement('div'); row.className = 'row bot suggest-row'; const s = document.createElement('div'); s.className = 'suggest'; this._suggestions().forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = x; b.onclick = () => this._send(x); s.appendChild(b); }); row.appendChild(s); this.$log.appendChild(row); }
+  _clearFollowups() { this.$log.querySelectorAll('.followups').forEach((f) => f.remove()); }
+  _followups(bot, items) {  // contextual next steps under one answer; never generic, never more than two
+    if (!items.length) return; const f = document.createElement('div'); f.className = 'followups'; f.setAttribute('role', 'group'); f.setAttribute('aria-label', 'Suggested next steps');
+    items.slice(0, 2).forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'fu'; b.innerHTML = `${SVG[x.icon] || SVG.spark}<span>${esc(x.label)}</span>`;
+      b.onclick = () => { this._emit('action', { action: 'followup', label: x.label, kind: x.kind || 'question' }); f.remove(); x.fn(); }; f.appendChild(b); });
+    bot.parentElement.appendChild(f); this._scroll();
+  }
+  _answerFollowups(bot, question, answer, nSources) {
+    if (this._nudged || !answer || !nSources) return [];
+    const t = (question + ' ' + answer).toLowerCase(); let item = null;
+    if (/\b(pric(e|ing)|cost|quote|demo|trial|walkthrough|how (does|do) (it|this|that) work)\b/.test(t)) item = { icon: 'play', label: 'See it in a walkthrough', kind: 'booking', fn: () => this.startBooking('walkthrough', 'Book a product walkthrough') };
+    else if (/\b(data|solution|platform|product|intent|leads?|campaigns?|gtm|go-to-market|abm|prospect)/.test(t) && this._transcript.filter((m) => m.role === 'user').length >= 2) item = { icon: 'user', label: 'Talk to an expert', kind: 'booking', fn: () => this.startBooking(null, 'Talk to an expert') };
+    if (item) this._nudged = true;
+    return item ? [item] : [];
+  }
   _persist() { store.set(this._key('tx:' + this._sid), JSON.stringify(this._transcript.slice(-40))); }
   _restore() {
     try { this._transcript = JSON.parse(store.get(this._key('tx:' + this._sid)) || '[]'); } catch { this._transcript = []; }
     this.$log.innerHTML = '';
-    if (!this._transcript.length) { this._add('bot', this._greeting()); this._renderCaps(); this._renderSuggestions(); this._updateChrome(); return; }
-    this._transcript.forEach((m) => { const el = this._add(m.role === 'user' ? 'user' : 'bot', '', m.ts); this._setText(el, m.text, m.sources); if (m.role === 'bot') { this._addSources(el, m.sources); this._addTools(el, () => plain(m.text), null, m.mid, m.fb); } });
+    if (!this._transcript.length) { this._history = []; this._renderWelcome(); this.$log.scrollTop = 0; return; }
+    this._transcript.forEach((m) => { const el = this._add(m.role === 'user' ? 'user' : 'bot', '', m.ts); this._setText(el, m.text, m.sources); if (m.role === 'bot') { if (m.err) el.classList.add('err'); this._addSources(el, m.sources); this._addTools(el, () => plain(m.text), null, m.mid, m.fb); } });
     this._history = this._transcript.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })).slice(-12);
-    this._updateChrome();
+    this._markLast(); this._scroll(true);
   }
   // ---------------------------------------------------------------- in-chat booking (docs/BOOKING.md)
-  _renderPicker(el, items) {
-    if (el.querySelector('.picker')) return;
-    const wrap = document.createElement('div'); wrap.className = 'picker card';
-    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = items.length > 1 ? 'Which call suits you?' : 'Call type';
-    const list = document.createElement('div'); list.className = 'ctypes';
-    items.forEach((c) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'ctype';
-      b.innerHTML = `<b>${esc(c.name)}</b><span>${c.duration_min} min · with Deep</span>${c.description ? `<small>${esc(c.description)}</small>` : ''}`;
-      b.onclick = () => { list.querySelectorAll('.ctype').forEach((x) => x.classList.toggle('on', x === b)); this._openAvailability(el, c.slug); }; list.appendChild(b); });
-    wrap.append(lbl, list); el.appendChild(wrap);
-    if (items.length === 1) this._openAvailability(el, items[0].slug);
-    requestAnimationFrame(() => requestAnimationFrame(() => { wrap.classList.add('open'); this._scroll(); }));
+  // One card per bot message walks through type -> time -> details -> review -> done. The state lives on the card, so
+  // going back keeps every choice; nothing is booked until POST /booking/confirm answers "confirmed" / "pending_zoom".
+  async startBooking(prefer, label) {
+    if (this._busy) return; this.showView('chat'); this._clearFollowups();
+    const text = label || 'Book a meeting', intro = 'Happy to set that up. Pick the meeting that fits best and I\'ll show you the open times.';
+    const user = this._add('user', '', Date.now()); this._setText(user, text);
+    const bot = this._add('bot', '', Date.now()); this._setText(bot, intro);
+    this._transcript.push({ role: 'user', text, ts: Date.now() }, { role: 'bot', text: intro, ts: Date.now() });
+    this._history.push({ role: 'user', content: text }, { role: 'assistant', content: intro }); this._history = this._history.slice(-12); this._persist(); this._markLast();
+    this._emit('booking', { status: 'started', schedule: prefer || null });
+    const f = this._bkFlow(bot); f.prefer = prefer || null; this._bkRender(f); this._bkLoadTypes(f);
   }
-  _availBox(el) { let box = el.querySelector('.avail'); if (!box) { box = document.createElement('div'); box.className = 'avail card'; el.appendChild(box); } return box; }
-  async _openAvailability(el, slug, prefer) {
-    const box = this._availBox(el); box.dataset.slug = slug; box.innerHTML = '<div class="note">Loading Deep\'s availability…</div>'; this._scroll();
-    let d = { ok: false, message: "Deep's availability couldn't be loaded right now." };
-    try { const r = await fetch(this._url(`/booking/availability?schedule=${encodeURIComponent(slug)}&tz=${encodeURIComponent(this.tz)}`), { headers: this._headers(false) }); if (r.ok) d = await r.json(); } catch {}
-    this._renderAvailability(box, d, prefer);
+  _bkFlow(el) {
+    if (el._bk && el.contains(el._bk.card)) return el._bk;
+    el.querySelectorAll(':scope > .ln').forEach((x) => x.remove()); el.classList.add('hascard'); el.closest('.row').classList.add('wide');
+    const card = document.createElement('div'); card.className = 'bk card avail'; card.setAttribute('role', 'group'); card.setAttribute('aria-label', 'Book a meeting'); el.appendChild(card);
+    const f = { el, card, step: 'type', types: null, schedule: null, avail: null, day: null, slot: null, who: null, prefill: {}, prefer: null, notice: null, alts: null };
+    el._bk = f; return f;
   }
-  _renderAvailability(box, d, prefer) {
-    box.innerHTML = '';
-    if (!d.ok) {
-      box.innerHTML = `<div class="note warn">${esc(d.message || "Deep's availability couldn't be loaded right now.")}</div><div class="hrow">` +
-        `<button type="button" class="btn retry">Try again</button>${d.fallback_link ? `<a class="btn" href="${esc(d.fallback_link)}" target="_blank" rel="noopener">Open Deep's scheduler</a>` : ''}</div>`;
-      box.querySelector('.retry').onclick = () => this._openAvailability(box.parentElement, box.dataset.slug || (d.schedule && d.schedule.slug) || ''); this._scroll(); return;
+  _bkGo(f, step, focus = true) { f.step = step; this._bkRender(f, focus); }
+  _bkRender(f, focus) {
+    const c = f.card, i = BK_STEPS.indexOf(f.step); c.innerHTML = '';
+    if (f.step !== 'done') {
+      const head = document.createElement('div'); head.className = 'bk-head';
+      head.innerHTML = `${i > 0 ? `<button type="button" class="bk-back" aria-label="Back to ${BK_TITLES[BK_STEPS[i - 1]].toLowerCase()}" title="Back">${SVG.back}</button>` : ''}<div class="bk-t"><b tabindex="-1">${BK_TITLES[f.step]}</b><span>Step ${i + 1} of 4</span></div>`;
+      const back = head.querySelector('.bk-back'); if (back) back.onclick = () => { f.notice = null; this._bkGo(f, BK_STEPS[i - 1]); if (BK_STEPS[i - 1] === 'type' && !f.types) this._bkLoadTypes(f); if (BK_STEPS[i - 1] === 'time' && !f.avail) this._bkLoadAvail(f); };
+      c.appendChild(head); c.insertAdjacentHTML('beforeend', `<div class="bk-prog" aria-hidden="true">${BK_STEPS.map((s, j) => `<i class="${j <= i ? 'on' : ''}"></i>`).join('')}</div>`);
     }
-    box.dataset.slug = d.schedule.slug;
-    const head = document.createElement('div'); head.className = 'ahead'; head.innerHTML = `<b>${esc(d.schedule.name)}</b><span>${d.schedule.duration_min} min · with Deep</span>`;
-    const dates = document.createElement('div'); dates.className = 'dates'; const times = document.createElement('div'); times.className = 'times';
-    const tzn = document.createElement('div'); tzn.className = 'note tzn'; tzn.textContent = `Times shown in ${d.timezone}`;
-    const show = (day) => { times.innerHTML = ''; dates.querySelectorAll('.date').forEach((x) => x.classList.toggle('on', x.dataset.date === day.date));
-      day.slots.forEach((sl) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'time' + (sl.available ? '' : ' off'); b.dataset.start = sl.start_iso;
-        if (sl.available) { b.textContent = sl.time; b.onclick = () => this._renderDetails(box, d, sl); }
-        else { b.disabled = true; b.innerHTML = `<s>${esc(sl.time)}</s><small>Not available</small>`; b.title = sl.reason === 'booked' ? 'Already booked' : sl.reason === 'past' ? 'Already passed' : 'Not available on Deep\'s scheduler'; }
-        times.appendChild(b); });
-      if (!day.slots.length) times.innerHTML = '<div class="note">No times on this day.</div>'; };
-    let first = null;
-    d.days.forEach((day) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'date' + (day.open ? '' : ' off'); b.dataset.date = day.date;
-      b.innerHTML = `<b>${esc(day.label)}</b><small>${day.open ? day.open + ' open' : 'Not available'}</small>`;
-      if (day.open) { b.onclick = () => show(day); if (!first) first = day; } else { b.disabled = true; b.setAttribute('aria-label', day.label + ', not available'); }
+    if (f.notice) c.insertAdjacentHTML('beforeend', `<div class="banner" role="alert">${SVG.alert}<span>${esc(f.notice)}</span></div>`);
+    const body = document.createElement('div'); body.className = 'bk'; c.appendChild(body);
+    ({ type: () => this._bkType(f, body), time: () => this._bkTime(f, body), details: () => this._bkDetails(f, body), review: () => this._bkReview(f, body), done: () => this._bkDone(f, body) })[f.step]();
+    if (focus) { const t = c.querySelector('.bk-t b, .bk-ok'); if (t) { t.setAttribute('tabindex', '-1'); t.focus({ preventScroll: true }); } }
+    requestAnimationFrame(() => this._reveal(c));
+  }
+  async _bkLoadTypes(f) {
+    if (f.loadingTypes) return; f.loadingTypes = true; let d = null;
+    try { const r = await fetch(this._url(`/booking/availability?schedule=&tz=${encodeURIComponent(this.tz)}`), { headers: this._headers(false) }); if (r.ok) d = await r.json(); } catch {}
+    f.loadingTypes = false;
+    const choices = d && Array.isArray(d.choices) ? d.choices : null;
+    if (choices && choices.length) { const by = Object.fromEntries(choices.map((x) => [x.slug, x])); f.types = f.types ? f.types.map((x) => ({ ...by[x.slug], ...x, description: x.description || (by[x.slug] || {}).description })) : choices; f.typesError = null; }
+    else if (!f.types) { f.types = []; f.typesError = (d && d.message && d.error !== 'unknown_schedule') ? d.message : "Meeting types couldn't be loaded right now."; f.fallback = (d && d.fallback_link) || null; }
+    if (f.step === 'type') this._bkRender(f, false);
+  }
+  _bkType(f, body) {
+    if (!f.types) { body.innerHTML = '<div class="ctypes">' + '<div class="sk"><span class="a"></span><span class="l"><i></i><i></i></span></div>'.repeat(3) + '</div>'; return; }
+    if (!f.types.length) {
+      body.innerHTML = `<div class="banner">${SVG.alert}<span>${esc(f.typesError || 'No meeting types are available right now.')}</span></div><div class="hrow"><button type="button" class="btn retry">${SVG.reset}<span>Try again</span></button>${f.fallback ? `<a class="btn" href="${esc(f.fallback)}" target="_blank" rel="noopener">Open the scheduler ${SVG.ext}</a>` : ''}</div>`;
+      body.querySelector('.retry').onclick = () => { f.types = null; this._bkRender(f, false); this._bkLoadTypes(f); }; return;
+    }
+    const list = document.createElement('div'); list.className = 'ctypes'; list.setAttribute('role', 'list');
+    const pref = f.prefer ? f.types.find((x) => `${x.slug} ${x.name}`.toLowerCase().includes(f.prefer.toLowerCase())) : null;
+    f.types.forEach((c) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'ctype' + (f.schedule && f.schedule.slug === c.slug ? ' on' : ''); b.setAttribute('role', 'listitem');
+      b.innerHTML = `<span class="ci">${typeIcon(c)}</span><span class="cx"><b>${esc(c.name)}${pref === c ? '<span class="tag">Suggested</span>' : ''}</b>${c.description ? `<span class="cd">${esc(c.description)}</span>` : ''}<span class="cm">${SVG.clock}${c.duration_min} min · Zoom video call</span></span>`;
+      b.onclick = () => { const same = f.schedule && f.schedule.slug === c.slug; f.schedule = { ...c }; if (!same) { f.avail = null; f.day = null; f.slot = null; f.alts = null; } f.notice = null; this._bkGo(f, 'time'); if (!f.avail) this._bkLoadAvail(f); this._emit('action', { action: 'booking_type', label: c.name, kind: 'booking' }); };
+      list.appendChild(b); });
+    body.appendChild(list);
+  }
+  async _bkLoadAvail(f, prefer) {
+    if (!f.schedule || !f.schedule.slug) { this._bkGo(f, 'type', false); if (!f.types) this._bkLoadTypes(f); return; }
+    const seq = (f.seq = (f.seq || 0) + 1); f.avail = null; if (f.step === 'time') this._bkRender(f, false);
+    let d = { ok: false, message: "Availability couldn't be loaded right now." };
+    try { const r = await fetch(this._url(`/booking/availability?schedule=${encodeURIComponent(f.schedule.slug)}&tz=${encodeURIComponent(this.tz)}`), { headers: this._headers(false) }); if (r.ok) d = await r.json(); else if (r.status === 429) d = { ok: false, message: 'Too many requests. Please wait a moment and try again.' }; } catch {}
+    if (seq !== f.seq) return;
+    this._bkSetAvail(f, d, prefer); if (f.step === 'time' || f.step === 'type') this._bkRender(f, false);
+  }
+  _bkSetAvail(f, d, prefer) {
+    f.avail = d; if (d.ok && d.schedule) f.schedule = { ...(f.schedule || {}), ...d.schedule };
+    if (!d.ok) { if (d.error === 'unknown_schedule' && d.choices) { f.types = d.choices; f.step = 'type'; } return; }
+    const days = d.days || []; const want = prefer || (f.slot && f.slot.start_iso);
+    const pre = want && days.find((x) => x.slots.some((s) => s.start_iso === want && s.available));
+    if (pre) f.day = pre.date; else if (!f.day || !days.some((x) => x.date === f.day && x.open)) { const first = days.find((x) => x.open); f.day = first ? first.date : null; }
+  }
+  _bkTime(f, body) {
+    const s = f.schedule || {};
+    body.insertAdjacentHTML('beforeend', `<div class="ahead"><b>${esc(s.name || 'Meeting')}</b><span>${s.duration_min ? s.duration_min + ' min · ' : ''}Zoom video call${s.description ? ' · ' + esc(s.description) : ''}</span></div>`);
+    const d = f.avail;
+    if (!d) { body.insertAdjacentHTML('beforeend', '<div class="sk" style="padding:0"><span class="l"><i></i><i></i></span></div><p class="note" role="status">Loading open times…</p>'); return; }
+    if (!d.ok) {
+      body.insertAdjacentHTML('beforeend', `<div class="banner">${SVG.alert}<span>${esc(d.message || "Availability couldn't be loaded right now.")}</span></div><div class="hrow"><button type="button" class="btn retry">${SVG.reset}<span>Try again</span></button>${d.fallback_link ? `<a class="btn" href="${esc(d.fallback_link)}" target="_blank" rel="noopener">Open the scheduler ${SVG.ext}</a>` : ''}</div>`);
+      body.querySelector('.retry').onclick = () => this._bkLoadAvail(f); return;
+    }
+    const pick = (sl) => { f.slot = sl; f.notice = null; this._bkGo(f, 'details'); this._emit('action', { action: 'booking_time', label: sl.label_visitor, kind: 'booking' }); };
+    if (f.alts && f.alts.length) {
+      const alt = document.createElement('div'); alt.innerHTML = `<p class="note" style="margin-bottom:6px">Nearest open times</p>`; const row = document.createElement('div'); row.className = 'hrow';
+      f.alts.forEach((sl) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn sm'; b.textContent = sl.label_visitor; b.onclick = () => pick(sl); row.appendChild(b); }); alt.appendChild(row); body.appendChild(alt);
+    }
+    const days = d.days || []; const open = days.filter((x) => x.open);
+    if (!open.length) {
+      body.insertAdjacentHTML('beforeend', `<div class="banner info">${SVG.cal}<span>No open times in the next ${days.length || 14} days.</span></div>${d.fallback_link ? `<div class="hrow"><a class="btn" href="${esc(d.fallback_link)}" target="_blank" rel="noopener">Open the scheduler ${SVG.ext}</a></div>` : ''}`); return;
+    }
+    const dates = document.createElement('div'); dates.className = 'dates scroll'; dates.setAttribute('role', 'listbox'); dates.setAttribute('aria-label', 'Dates');
+    const times = document.createElement('div'); times.className = 'times'; times.setAttribute('role', 'group'); times.setAttribute('aria-label', 'Open times');
+    const show = (day, user) => { f.day = day.date; times.innerHTML = '';
+      dates.querySelectorAll('.date').forEach((x) => { const on = x.dataset.date === day.date; x.classList.toggle('on', on); x.setAttribute('aria-selected', String(on)); });
+      const avail = day.slots.filter((x) => x.available);
+      avail.forEach((sl) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'time' + (f.slot && f.slot.start_iso === sl.start_iso ? ' on' : ''); b.dataset.start = sl.start_iso; b.textContent = sl.time; b.setAttribute('aria-label', `${day.label}, ${sl.time}`); b.onclick = () => pick(sl); times.appendChild(b); });
+      if (!avail.length) times.innerHTML = '<p class="note">No open times on this day.</p>';
+      if (user) this._announce(`${avail.length} open time${avail.length === 1 ? '' : 's'} on ${day.label}`); };
+    days.forEach((day) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'date' + (day.open ? '' : ' off'); b.dataset.date = day.date; b.setAttribute('role', 'option');
+      b.innerHTML = `<b>${esc(day.label)}</b><small>${day.open ? day.open + ' open' : 'Full'}</small>`;
+      if (day.open) b.onclick = () => show(day, true); else { b.disabled = true; b.setAttribute('aria-label', day.label + ', no open times'); }
       dates.appendChild(b); });
-    box.append(head, dates, times, tzn);
-    const pre = prefer && d.days.find((dd) => dd.slots.some((x) => x.start_iso === prefer));
-    if (pre) show(pre); else if (first) show(first);
-    else { times.innerHTML = '<div class="note warn">No open times in the next two weeks.</div>'; if (d.fallback_link) times.insertAdjacentHTML('beforeend', `<div class="hrow"><a class="btn" href="${esc(d.fallback_link)}" target="_blank" rel="noopener">Open Deep's scheduler</a></div>`); }
-    if (d.alternatives && d.alternatives.length) { const alt = document.createElement('div'); alt.className = 'note'; alt.textContent = 'Nearest open times:'; const row = document.createElement('div'); row.className = 'hrow';
-      d.alternatives.forEach((sl) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.textContent = sl.label_visitor; b.onclick = () => this._renderDetails(box, d, sl); row.appendChild(b); }); box.append(alt, row); }
-    this._scroll();
+    body.append(dates, times); body.insertAdjacentHTML('beforeend', `<p class="note">Times shown in ${esc(d.timezone || this.tz)}</p>`);
+    show(days.find((x) => x.date === f.day && x.open) || open[0]);
+    requestAnimationFrame(() => { const on = dates.querySelector('.date.on'); if (on) dates.scrollLeft = Math.max(0, on.offsetLeft - dates.offsetLeft - 8); });
   }
-  _renderDetails(box, d, sl, prefill) {
-    const me = this._me || {}; const known = !!(me.signed_in && me.verified && me.email); prefill = prefill || {};
-    box.querySelectorAll('.bform, .bsum').forEach((x) => x.remove());
-    const f = document.createElement('form'); f.className = 'bform';
-    f.innerHTML = `<div class="lbl">Your details · ${esc(sl.label_visitor)}</div>
-      <input name="name" placeholder="Full name" maxlength="120" required autocomplete="name" ${known ? 'hidden' : ''}>
-      <input name="email" type="email" placeholder="Email" maxlength="200" required autocomplete="email" ${known ? 'hidden' : ''}>
-      <input name="company" placeholder="Company (optional)" maxlength="120" autocomplete="organization">
-      <textarea name="notes" rows="2" placeholder="What would you like to discuss? (optional)" maxlength="1000"></textarea>
-      <div class="hrow"><button class="btn primary" type="submit">Continue</button><button class="btn" type="button" data-back>Change time</button>${known ? `<span class="note">Booking as ${esc(me.email)}</span>` : ''}</div>`;
-    const field = (n) => f.elements[n];
-    field('name').value = prefill.name || me.name || ''; field('email').value = prefill.email || me.email || ''; field('notes').value = prefill.reason || prefill.notes || ''; if (prefill.company) field('company').value = prefill.company;
-    f.querySelector('[data-back]').onclick = () => { f.remove(); if (!box.querySelector('.dates')) this._openAvailability(box.parentElement, d.schedule.slug, sl.start_iso); };
-    f.onsubmit = (e) => { e.preventDefault(); this._renderSummary(box, d, sl, { name: field('name').value.trim(), email: field('email').value.trim(), company: field('company').value.trim(), notes: field('notes').value.trim() }); };
-    box.appendChild(f); requestAnimationFrame(() => { this._scroll(); (known ? field('notes') : field('name')).focus(); });
+  _bkDetails(f, body) {
+    const me = this._me || {}; const known = !!(me.signed_in && me.verified && me.email); const p = f.prefill || {}; const w = f.who || {};
+    body.innerHTML = `<div class="pickd">${SVG.cal}<span><b>${esc(f.slot.label_visitor)}</b><br>${esc((f.schedule || {}).name || '')}</span><button type="button" class="linkbtn chg">Change</button></div>
+      <form class="bform" novalidate>
+        ${known ? `<p class="note">Booking as <b>${esc(me.name || me.email)}</b> · ${esc(me.email)}</p>` : `
+        <div class="field"><label for="bk-name">Full name</label><input class="inp" id="bk-name" name="name" maxlength="120" required autocomplete="name"><span class="ferr" hidden></span></div>
+        <div class="field"><label for="bk-email">Work email</label><input class="inp" id="bk-email" name="email" type="email" maxlength="200" required autocomplete="email" inputmode="email"><span class="ferr" hidden></span></div>`}
+        <div class="field"><label for="bk-company">Company <span>(optional)</span></label><input class="inp" id="bk-company" name="company" maxlength="120" autocomplete="organization"></div>
+        <div class="field"><label for="bk-notes">What would you like to discuss? <span>(optional)</span></label><textarea class="inp" id="bk-notes" name="notes" rows="2" maxlength="1000"></textarea></div>
+        <button class="btn primary block" type="submit">Continue ${SVG.chev}</button>
+      </form>`;
+    const form = body.querySelector('form'), field = (n) => form.elements[n];
+    if (!known) { field('name').value = w.name ?? p.name ?? me.name ?? ''; field('email').value = w.email ?? p.email ?? me.email ?? ''; }
+    field('company').value = w.company ?? p.company ?? ''; field('notes').value = w.notes ?? p.reason ?? p.notes ?? '';
+    const read = () => ({ name: known ? (me.name || '') : field('name').value.trim(), email: known ? me.email : field('email').value.trim(), company: field('company').value.trim(), notes: field('notes').value.trim() });
+    form.addEventListener('input', () => { f.who = read(); });
+    body.querySelector('.chg').onclick = () => { f.who = read(); this._bkGo(f, 'time'); if (!f.avail) this._bkLoadAvail(f); };
+    form.onsubmit = (e) => { e.preventDefault(); const who = read(); f.who = who; let bad = null;
+      const err = (n, msg) => { const el = field(n); if (!el) return; const fe = el.parentElement.querySelector('.ferr'); el.setAttribute('aria-invalid', String(!!msg)); fe.hidden = !msg; fe.textContent = msg || ''; if (msg) { fe.id = 'e-' + n; el.setAttribute('aria-describedby', fe.id); if (!bad) bad = el; } else el.removeAttribute('aria-describedby'); };
+      if (!known) { err('name', who.name.length < 2 ? 'Please enter your name.' : null); err('email', !EMAIL_RE.test(who.email) ? 'Please enter a valid email address.' : null); }
+      if (bad) { bad.focus(); return; }
+      this._bkGo(f, 'review'); };
   }
-  _renderSummary(box, d, sl, who) {
-    box.querySelectorAll('.bsum').forEach((x) => x.remove());
-    const c = document.createElement('div'); c.className = 'bsum';
-    c.innerHTML = `<div class="lbl">Confirm your booking</div>
-      <div class="srow"><span>Call</span><b>${esc(d.schedule.name)}</b></div>
-      <div class="srow"><span>When</span><b>${esc(sl.label_visitor)}</b></div>
-      <div class="srow"><span>Duration</span><b>${d.schedule.duration_min} min · with Deep</b></div>
-      <div class="srow"><span>You</span><b>${esc(who.name)} · ${esc(who.email)}${who.company ? ' · ' + esc(who.company) : ''}</b></div>
-      <div class="hrow"><button class="btn primary" type="button" data-confirm>Confirm booking</button><button class="btn" type="button" data-change>Change slot</button></div><div class="note sstat">Nothing is booked until you confirm.</div>`;
-    c.querySelector('[data-change]').onclick = () => { box.querySelectorAll('.bform, .bsum').forEach((x) => x.remove()); if (!box.querySelector('.dates')) this._openAvailability(box.parentElement, d.schedule.slug); };
-    c.querySelector('[data-confirm]').onclick = () => this._confirmBooking(box, d, sl, who, c);
-    box.appendChild(c); this._scroll();
+  _bkReview(f, body) {
+    const s = f.schedule || {}, w = f.who || {};
+    const rows = [['Meeting', s.name], ['When', f.slot.label_visitor], ['Duration', s.duration_min ? `${s.duration_min} min · Zoom` : 'Zoom'], ['Name', w.name], ['Email', w.email], ['Company', w.company], ['Topic', w.notes && trunc(w.notes, 120)]].filter((r) => r[1]);
+    body.innerHTML = `<div class="sumbox">${rows.map(([k, v]) => `<div class="sumrow"><span>${k}</span><b>${esc(v)}</b></div>`).join('')}</div>
+      <button class="btn primary block confirm" type="button">Confirm booking</button><p class="note sstat" role="status">Nothing is booked until you confirm.</p>`;
+    const btn = body.querySelector('.confirm'); btn.onclick = () => this._bkConfirm(f, btn, body.querySelector('.sstat'));
   }
-  async _confirmBooking(box, d, sl, who, sum) {
-    const btns = sum.querySelectorAll('button'); btns.forEach((b) => b.disabled = true); const stat = sum.querySelector('.sstat'); stat.className = 'note sstat'; stat.textContent = 'Checking the time with Zoom and booking…';
-    const host = box.parentElement; const card = this._actionCard(host, 'book', SVG.cal, 'Booking your slot', `${d.schedule.name} · ${sl.label_visitor}`, 'run');
-    let res = null, status = 0;
-    try { const r = await fetch(this._url('/booking/confirm'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ schedule_slug: d.schedule.slug, start: sl.start_iso, name: who.name, email: who.email, company: who.company, notes: who.notes, timezone: this.tz }) }); status = r.status; res = r.ok ? await r.json() : null; } catch {}
-    if (status === 429) { this._actionCard(host, 'book', SVG.cal, 'Booking your slot', 'Too many attempts', 'fail'); stat.classList.add('warn'); stat.textContent = 'Too many booking attempts. Please wait a minute and try again.'; btns.forEach((b) => b.disabled = false); return; }
-    if (!res) { this._actionCard(host, 'book', SVG.cal, 'Booking your slot', 'Server not reachable', 'fail'); stat.classList.add('warn'); stat.textContent = 'Could not reach the server. Please try again.'; btns.forEach((b) => b.disabled = false); return; }
-    if (res.status === 'confirmed' || res.status === 'pending_zoom') { this._actionCard(host, 'book', SVG.cal, res.status === 'confirmed' ? 'Booked on Deep\'s calendar' : 'Time held, finish on Zoom', `${d.schedule.name} · ${sl.label_visitor}`, 'ok'); if (res.emails_queued) this._actionCard(host, 'mail', SVG.mail, 'Sending confirmation', `Invite emailed to ${who.email}`, 'ok'); this._renderBooked(box, res); return; }
-    this._actionCard(host, 'book', SVG.cal, 'Booking your slot', res.message || 'That did not work.', 'fail');
-    btns.forEach((b) => b.disabled = false); stat.classList.add('warn'); stat.textContent = res.message || 'That did not work.';
-    if (res.status === 'slot_taken') { sum.remove(); box.querySelectorAll('.bform').forEach((x) => x.remove()); const el = box.parentElement; this._openAvailability(el, d.schedule.slug).then(() => { const b2 = el.querySelector('.avail'); if (b2) { const n = document.createElement('div'); n.className = 'note warn'; n.textContent = res.message; b2.prepend(n); if (res.alternatives && res.alternatives.length) this._renderAvailability(b2, Object.assign({}, { ok: true, schedule: d.schedule, timezone: this.tz, days: [] }, JSON.parse(b2.dataset.last || 'null') || {}, { alternatives: res.alternatives })); } }); }
-    else if (res.status === 'unavailable' && res.fallback_link) { stat.insertAdjacentHTML('afterend', `<div class="hrow"><a class="btn" href="${esc(res.fallback_link)}" target="_blank" rel="noopener">Book directly on Zoom</a></div>`); }
-    else if (res.status === 'error' || res.retry) { stat.textContent = (res.message || 'Zoom did not respond.') + ' Use the button to try again.'; }
+  async _bkConfirm(f, btn, stat) {
+    const back = f.card.querySelector('.bk-back'); const lock = (on) => { btn.disabled = on; btn.classList.toggle('loading', on); btn.textContent = on ? 'Booking…' : 'Confirm booking'; if (back) back.disabled = on; };
+    lock(true); stat.className = 'note sstat'; stat.textContent = 'Checking the time with Zoom and booking…';
+    const s = f.schedule, w = f.who || {}; let res = null, status = 0;
+    try { const r = await fetch(this._url('/booking/confirm'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ schedule_slug: s.slug, start: f.slot.start_iso, name: w.name, email: w.email, company: w.company, notes: w.notes, timezone: this.tz }) }); status = r.status; res = r.ok ? await r.json() : null; } catch {}
+    const fail = (msg) => { lock(false); stat.className = 'note sstat warn'; stat.textContent = msg; };
+    if (status === 429) return fail('Too many booking attempts. Please wait a minute and try again. Nothing was booked.');
+    if (!res) return fail("Couldn't reach the server. Nothing was booked. Please try again.");
+    if (res.status === 'confirmed' || res.status === 'pending_zoom') { f.result = res; this._bkGo(f, 'done'); this._bkBooked(res); return; }
+    if (res.status === 'slot_taken') { f.notice = res.message || 'That time was just taken. Please pick another.'; f.alts = res.alternatives || null; f.slot = null; this._bkGo(f, 'time'); this._bkLoadAvail(f); this._emit('booking', { status: 'slot_taken', schedule: s.slug }); return; }
+    if (res.status === 'unavailable') { fail(res.message || "The scheduler isn't responding right now. Nothing was booked."); if (res.fallback_link) stat.insertAdjacentHTML('afterend', `<div class="hrow"><a class="btn" href="${esc(res.fallback_link)}" target="_blank" rel="noopener">Book directly on Zoom ${SVG.ext}</a></div>`); this._emit('booking', { status: 'unavailable', schedule: s.slug }); return; }
+    if (res.status === 'invalid') { f.notice = res.message || 'Please check your details.'; this._bkGo(f, 'details'); return; }
+    fail((res.message || "That didn't work.") + ' Nothing was booked; please try again.');
   }
-  _renderBooked(box, res) {
-    const b = res.booking; const pending = res.status !== 'confirmed'; box.innerHTML = '';
-    const c = document.createElement('div'); c.className = 'booked' + (pending ? ' pending' : '');
-    c.innerHTML = `<div class="bk-title">${pending ? '⏳ One last step on Zoom' : '<svg class="chk" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12"/><path d="M8 14.5l4 4 8-8"/></svg>You\'re booked with Deep'}</div>
+  _bkDone(f, body) {
+    const res = f.result, b = res.booking, pending = res.status !== 'confirmed';
+    body.innerHTML = `<div class="booked">
+      <div class="bk-ok" tabindex="-1">${pending ? `<span class="pend">${SVG.clock}</span><span>One last step on Zoom</span>` : `<svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>You're booked</span>`}</div>
       <div class="bk-when">${esc(b.label_visitor)}</div><div class="bk-sub">${esc(b.schedule_name)} · ${b.duration_min} min · ${esc(b.visitor_tz)}</div>
-      ${pending ? `<div class="note">Your time is held in this chat. Confirm it on Deep's scheduler (your details are prefilled) to make it final.</div>` : ''}
-      <div class="hrow">${pending && b.handoff_url ? `<a class="btn primary" href="${esc(b.handoff_url)}" target="_blank" rel="noopener">Confirm on Zoom</a>` : ''}${b.join_url ? `<a class="btn primary" href="${esc(b.join_url)}" target="_blank" rel="noopener">Join Zoom</a>` : ''}${b.ics_url ? `<a class="btn" href="${esc(b.ics_url)}" download>Add to calendar</a>` : ''}</div>
-      <div class="note ok">A confirmation email${b.join_url ? ' with the Zoom link and invite' : ' with the invite'} is on its way to ${esc(b.email)}.</div>`;
-    box.appendChild(c); this._scroll();
+      ${pending ? `<p class="note">Your time is held. Confirm it on the Zoom scheduler (your details are prefilled) to make it final.</p>` : ''}
+      <div class="hrow" style="margin-top:6px">${pending && b.handoff_url ? `<a class="btn primary" href="${esc(b.handoff_url)}" target="_blank" rel="noopener">Confirm on Zoom ${SVG.ext}</a>` : ''}${b.join_url ? `<a class="btn primary" href="${esc(b.join_url)}" target="_blank" rel="noopener">${SVG.video}Join Zoom</a>` : ''}${b.ics_url ? `<a class="btn" href="${esc(b.ics_url)}" download>${SVG.cal}Add to calendar</a>` : ''}</div>
+      <ul class="nexts">
+        ${res.emails_queued ? `<li>${SVG.checkc}<span>A confirmation${b.join_url ? ' with the Zoom link' : ''} is on its way to <b>${esc(b.email)}</b></span></li>` : ''}
+        ${b.ics_url ? `<li>${SVG.checkc}<span>Add it to your calendar so it doesn't slip</span></li>` : ''}
+        <li>${SVG.spark.replace('aria-hidden', 'class="nx" aria-hidden')}<span>Want to prepare? Ask me anything before the call.</span></li>
+      </ul></div>`;
+  }
+  _bkBooked(res) {
+    const b = res.booking, pending = res.status !== 'confirmed';
     const line = pending ? `Time held: ${b.schedule_name} on ${b.label_visitor}; confirm on Zoom to make it final.` : `Booking confirmed: ${b.schedule_name} on ${b.label_visitor}.`;
     this._history.push({ role: 'assistant', content: line }); this._history = this._history.slice(-12);
-    this._transcript.push({ role: 'bot', text: line, ts: Date.now() }); this._persist();
+    this._transcript.push({ role: 'bot', text: line, ts: Date.now() }); this._persist(); this._announce(pending ? 'Time held. One last step on Zoom.' : 'Booking confirmed.');
     this._emit('booking', { status: res.status, bookingId: b.id, joinUrl: b.join_url || null, handoffUrl: b.handoff_url || null, slot: b.start_iso, schedule: b.schedule_slug, email: b.email });
   }
-  _renderReview(el, ev) {
-    const box = this._availBox(el); const d = { ok: true, schedule: ev.schedule || {}, timezone: ev.timezone || this.tz, days: [] };
-    if (ev.status === 'review' && ev.slot) { box.innerHTML = ''; box.dataset.slug = d.schedule.slug || ''; this._renderDetails(box, d, ev.slot, ev.prefill || {}); return; }
-    if (ev.status === 'unavailable' && ev.alternatives) { box.innerHTML = `<div class="note warn">${esc(ev.wanted ? ev.wanted + ' is not open on Deep\'s scheduler.' : 'That time is not open.')}</div>`; const row = document.createElement('div'); row.className = 'hrow';
-      ev.alternatives.forEach((sl) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.textContent = sl.label_visitor; b.onclick = () => this._renderDetails(box, d, sl, ev.prefill || {}); row.appendChild(b); });
-      const all = document.createElement('button'); all.type = 'button'; all.className = 'btn'; all.textContent = 'See all times'; all.onclick = () => this._openAvailability(el, d.schedule.slug); row.appendChild(all); box.appendChild(row); this._scroll(); return; }
-    if (ev.fallback_link) box.innerHTML = `<div class="note warn">${esc(ev.message || 'Availability could not be loaded.')}</div><div class="hrow"><a class="btn" href="${esc(ev.fallback_link)}" target="_blank" rel="noopener">Open Deep's scheduler</a></div>`;
+  _onSchedules(bot, items) { const f = this._bkFlow(bot); f.types = items; this._bkGo(f, 'type', false); if (items.some((x) => !x.description)) this._bkLoadTypes(f); }
+  _onAvailability(bot, ev) {
+    const f = this._bkFlow(bot); if (ev.schedule) f.schedule = { ...(f.schedule || {}), ...ev.schedule };
+    if (!ev.ok && ev.error === 'unknown_schedule') { this._onSchedules(bot, ev.choices || []); return; }
+    this._bkSetAvail(f, ev); f.step = 'time'; this._bkRender(f, false);
   }
-  _renderSlots(el, ev) {  // legacy 3-slot buttons: only when the grid did not render (e.g. no_slots / unavailable without a schedule)
-    if (el.querySelector('.avail')) return;
-    if (!ev.ok && ev.error === 'unknown_schedule') { this._renderPicker(el, ev.choices || []); return; }
-    const box = this._availBox(el);
-    if (!ev.ok) { this._renderAvailability(box, { ok: false, message: ev.error === 'no_slots' ? 'No open times in that window.' : "Zoom's scheduler isn't responding right now.", fallback_link: ev.fallback_link, schedule: ev.schedule }); return; }
-    this._openAvailability(el, ev.schedule ? ev.schedule.slug : '');
+  _onReview(bot, ev) {
+    const f = this._bkFlow(bot); if (ev.schedule) f.schedule = { ...(f.schedule || {}), ...ev.schedule }; f.prefill = ev.prefill || {};
+    if (ev.status === 'review' && ev.slot) { f.slot = ev.slot; f.notice = null; this._bkGo(f, 'details', false); return; }
+    if (ev.status === 'unavailable' && ev.alternatives) { f.notice = (ev.wanted ? ev.wanted + ' is not open.' : 'That time is not open.') + ' Here are the nearest open times.'; f.alts = ev.alternatives; this._bkGo(f, 'time', false); if (!f.avail) this._bkLoadAvail(f); return; }
+    f.avail = { ok: false, message: ev.message || 'Availability could not be loaded.', fallback_link: ev.fallback_link }; this._bkGo(f, 'time', false);
+  }
+  _onSlots(bot, ev) {  // legacy 3-slot event: only when the grid did not render
+    if (bot._bk) return;
+    if (!ev.ok && ev.error === 'unknown_schedule') { this._onSchedules(bot, ev.choices || []); return; }
+    const f = this._bkFlow(bot); if (ev.schedule) f.schedule = ev.schedule;
+    if (!ev.ok) { f.avail = { ok: false, message: ev.error === 'no_slots' ? 'No open times in that window.' : "The scheduler isn't responding right now.", fallback_link: ev.fallback_link }; this._bkGo(f, 'time', false); return; }
+    this._bkGo(f, 'time', false); this._bkLoadAvail(f);
   }
   _renderBooking(el, ev) {  // legacy event, kept for older servers
-    const box = document.createElement('div'); box.className = 'handoff';
-    if (ev.handoff_url) box.innerHTML = `<a class="btn primary" href="${esc(ev.handoff_url)}" target="_blank" rel="noopener">Confirm on Zoom</a>`;
-    if (ev.status === 'slot_taken') { const p = document.createElement('div'); p.className = 'note warn'; p.textContent = 'That slot was just taken.'; box.appendChild(p); }
+    const box = document.createElement('div'); box.className = 'card hrow'; box.style.marginTop = '10px';
+    if (ev.handoff_url) box.innerHTML = `<a class="btn primary" href="${esc(ev.handoff_url)}" target="_blank" rel="noopener">Confirm on Zoom ${SVG.ext}</a>`;
+    if (ev.status === 'slot_taken') box.insertAdjacentHTML('beforeend', '<p class="note warn">That slot was just taken.</p>');
     el.appendChild(box); this._emit('booking', { status: ev.status, leadId: ev.lead_id || null, handoffUrl: ev.handoff_url || null, slot: ev.slot || null, schedule: ev.schedule || null });
   }
   _renderHandover(el, prefill) {
     if (el.querySelector('.hform')) return; const me = this._me || {}; const known = !!(me.signed_in && me.verified && me.email);
-    const f = document.createElement('form'); f.className = 'hform';
-    f.innerHTML = `<div class="lbl">Message for Deep</div>
-      <input name="name" placeholder="Your name" maxlength="120" required autocomplete="name" ${known ? 'hidden' : ''}>
-      <input name="email" type="email" placeholder="Your email" maxlength="200" required autocomplete="email" ${known ? 'hidden' : ''}>
-      <textarea name="message" rows="3" placeholder="What would you like to ask?" maxlength="2000" required></textarea>
-      <div class="hrow"><button class="btn primary" type="submit">Send to Deep</button><span class="note">${known ? 'Replies go to ' + esc(me.email) + '.' : 'Replies come by email.'}</span></div>`;
-    const field = (n) => f.elements[n]; field('message').value = prefill || ''; if (me.name) field('name').value = me.name; if (me.email) field('email').value = me.email;
-    f.onsubmit = async (e) => { e.preventDefault(); const b = f.querySelector('button'); b.disabled = true; const email = field('email').value.trim();
-      try { const r = await fetch(this._url('/handover'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ session_id: this._sid, name: field('name').value.trim(), email, message: field('message').value.trim() }) });
+    el.classList.add('hascard'); el.closest('.row').classList.add('wide');
+    const f = document.createElement('form'); f.className = 'hform card'; f.noValidate = true; f.style.marginTop = '12px'; const id = 'h' + Math.random().toString(36).slice(2, 7);
+    f.innerHTML = `<div class="bk-t"><b>Message the team</b></div>
+      ${known ? '' : `<div class="field"><label for="${id}n">Your name</label><input class="inp" id="${id}n" name="name" maxlength="120" required autocomplete="name"></div>
+      <div class="field"><label for="${id}e">Email for the reply</label><input class="inp" id="${id}e" name="email" type="email" maxlength="200" required autocomplete="email" inputmode="email"></div>`}
+      <div class="field"><label for="${id}m">Your message</label><textarea class="inp" id="${id}m" name="message" rows="3" maxlength="2000" required></textarea></div>
+      <button class="btn primary block" type="submit">${SVG.mail}Send message</button><p class="note" role="status">${known ? 'Replies go to ' + esc(me.email) + '.' : 'A real person replies by email.'}</p>`;
+    const field = (n) => f.elements[n]; field('message').value = prefill || ''; if (!known) { if (me.name) field('name').value = me.name; if (me.email) field('email').value = me.email; }
+    const note = f.querySelector('.note');
+    f.onsubmit = async (e) => { e.preventDefault(); const b = f.querySelector('button[type=submit]'); const name = known ? (me.name || '') : field('name').value.trim(); const email = known ? me.email : field('email').value.trim(); const message = field('message').value.trim();
+      const bad = !known && name.length < 2 ? field('name') : !known && !EMAIL_RE.test(email) ? field('email') : message.length < 2 ? field('message') : null;
+      f.querySelectorAll('.inp').forEach((x) => x.setAttribute('aria-invalid', String(x === bad)));
+      if (bad) { note.className = 'note warn'; note.textContent = bad.name === 'email' ? 'Please enter a valid email address.' : bad.name === 'name' ? 'Please enter your name.' : 'Please write a short message.'; bad.focus(); return; }
+      b.disabled = true; b.classList.add('loading'); note.className = 'note'; note.textContent = 'Sending…';
+      try { const r = await fetch(this._url('/handover'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ session_id: this._sid, name, email, message }) });
         const d = r.ok ? await r.json() : null;
-        if (d && d.ok) { f.innerHTML = `<div class="note ok">Sent. Deep will reply to ${esc(email)}.${d.visitor_mailed ? ' A copy is in your inbox.' : ''}</div>`; this._actionCard(el, 'handover', SVG.mail, 'Sent to Deep', `Reply comes to ${email}`, 'ok'); this._emit('handover', { leadId: d.lead_id, email, briefSent: d.brief_sent }); }
-        else { b.disabled = false; f.querySelector('.note').textContent = r.status === 422 ? 'Please check the email address.' : 'Could not send right now. Please try again.'; } }
-      catch { b.disabled = false; f.querySelector('.note').textContent = 'Connection problem. Please try again.'; } };
-    el.appendChild(f); requestAnimationFrame(() => { this._scroll(); (known ? field('message') : field('name')).focus(); });
+        if (d && d.ok) { f.innerHTML = `<div class="booked"><div class="bk-ok" tabindex="-1"><svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>Message sent</span></div><p class="note">The team will reply to <b>${esc(email)}</b>.${d.visitor_mailed ? ' A copy is in your inbox.' : ''}</p></div>`; f.querySelector('.bk-ok').focus({ preventScroll: true }); this._announce('Message sent'); this._emit('handover', { leadId: d.lead_id, email, briefSent: d.brief_sent }); }
+        else { b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = r.status === 422 ? 'Please check the email address.' : "Couldn't send right now. Please try again."; } }
+      catch { b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = 'Connection problem. Please try again.'; } };
+    el.appendChild(f); this._emit('action', { action: 'handover_form' });
+    requestAnimationFrame(() => { this._stick = true; this._scroll(); if (!this._coarse) (known ? field('message') : field('name')).focus({ preventScroll: true }); });
   }
-  _renderHandoverOffer(el, question) { const d = document.createElement('div'); d.className = 'handoff'; const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.textContent = 'Ask Deep directly'; b.onclick = () => { d.remove(); this._renderHandover(el, question); }; d.appendChild(b); el.appendChild(d); }
   // ---------------------------------------------------------------- attachments
   _renderAttachments() {
     const box = this.shadowRoot.querySelector('.attach'); box.hidden = !this._attachments.length; box.innerHTML = '';
     this._attachments.forEach((a) => { const c = document.createElement('span'); c.className = 'achip' + (a.error ? ' err' : ''); c.title = a.error || a.name;
       c.innerHTML = `${a.image && a.preview ? `<img src="${a.preview}" alt="">` : '📎'}<span class="nm">${esc(a.name)}</span><span class="sz">${a.error ? esc(a.error) : a.id ? fmtSize(a.size) : 'uploading…'}</span><button type="button" class="x" aria-label="Remove ${esc(a.name)}">×</button><span class="bar" style="width:${a.id ? 100 : a.progress || 10}%"></span>`;
-      c.querySelector('.x').onclick = () => { if (a.xhr) a.xhr.abort(); this._attachments = this._attachments.filter((x) => x !== a); this._renderAttachments(); this._syncSend(); }; box.appendChild(c); });
+      c.querySelector('.x').onclick = () => { if (a.xhr) a.xhr.abort(); this._attachments = this._attachments.filter((x) => x !== a); this._renderAttachments(); this.$q.focus(); }; box.appendChild(c); });
     this._syncSend();
   }
   _upload(file) {
@@ -843,9 +1122,9 @@ class DeepAssistant extends HTMLElement {
   _speechApi() { return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
   _toggleDictation() { if (this._rec) this._stopDictation(); else this._startDictation(); }
   async _startDictation() {
-    const sh = this.shadowRoot, rec = sh.querySelector('.rec'), label = rec.querySelector('.rlabel'), time = rec.querySelector('.rtime');
+    const sh = this.shadowRoot, rec = sh.querySelector('.rec'), label = rec.querySelector('.rlabel'), time = rec.querySelector('.rtime'), mic = sh.querySelector('.b-mic');
     const t0 = Date.now(); const tick = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); time.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 500);
-    const show = (msg) => { label.textContent = msg; rec.classList.add('on'); }; const done = () => { clearInterval(tick); rec.classList.remove('on'); time.textContent = '0:00'; this._rec = null; };
+    const show = (msg) => { label.textContent = msg; rec.classList.add('on'); mic.classList.add('on'); mic.setAttribute('aria-pressed', 'true'); }; const done = () => { clearInterval(tick); rec.classList.remove('on'); mic.classList.remove('on'); mic.setAttribute('aria-pressed', 'false'); time.textContent = '0:00'; this._rec = null; };
     const Api = this._speechApi();
     if (Api && this._cfg.stt !== 'server') {
       const r = new Api(); r.lang = navigator.language || 'en-US'; r.interimResults = true; r.continuous = true; let finalText = '';
@@ -865,7 +1144,7 @@ class DeepAssistant extends HTMLElement {
     } catch (e) { show(e && e.name === 'NotAllowedError' ? 'Microphone access was denied. Allow it in your browser settings and try again.' : 'Could not access the microphone.'); setTimeout(done, 2500); }
   }
   _stopDictation() { if (this._rec) this._rec.stop(); }
-  // ---------------------------------------------------------------- voice conversation ("Speak to Deep"): living orb + audio analysers (docs/AGENT_UI.md)
+  // ---------------------------------------------------------------- voice conversation: living orb + audio analysers (docs/AGENT_UI.md)
   async startVoice() {
     const sh = this.shadowRoot;
     if (this._voice) { this._showVoice(true); return; }
@@ -879,11 +1158,10 @@ class DeepAssistant extends HTMLElement {
     const canvas = sh.querySelector('.vorb canvas'), orbWrap = sh.querySelector('.vorb');
     try {
       const m = await import('./deep-orb.js?v=' + VERSION); if (v.ended) return;
-      v.meter = new m.AudioMeter(); v.orb = new m.Orb(canvas, { reduced: this._reduced, onGlow: (b, grey) => { const body = sh.querySelector('.vbody'); body.style.setProperty('--vglow-o', String(Math.min(1, b * 0.7))); body.style.setProperty('--vglow', grey > 0.5 ? 'rgba(150,150,160,.18)' : 'rgba(242,140,40,.28)'); } });
+      v.meter = new m.AudioMeter(); v.orb = new m.Orb(canvas, { reduced: this._reduced, onGlow: (b, grey) => { const body = sh.querySelector('.vbody'); body.style.setProperty('--vglow-o', String(Math.min(1, b * 0.7))); body.style.setProperty('--vglow', grey > 0.5 ? 'rgba(150,150,160,.18)' : 'rgba(85,70,247,.34)'); } });
       v.orb.setMeter(v.meter); v.orb.setState('idle'); v.orb.start(); orbWrap.classList.remove('static');
     } catch (e) { orbWrap.classList.add('static'); canvas.hidden = true; console.warn('deep-assistant: orb unavailable', e); }
-    const Api = this._speechApi(); const canListen = !!Api || (this._cfg.stt === 'server' && !!navigator.mediaDevices);
-    if (!canListen) { this._vstate('Voice is not available in this browser.', 'idle'); return; }
+    if (!this._canListen()) { this._vstate('Voice is not available in this browser.', 'idle'); return; }
     if (v.meter && navigator.mediaDevices) v.meter.listenMic().then((ok) => { v.mic = ok; });  // levels for the orb while you speak
     this._vstate('Listening…', 'listen'); this._vListen();
   }
@@ -891,7 +1169,7 @@ class DeepAssistant extends HTMLElement {
     const sh = this.shadowRoot, el = sh.querySelector('.voice'), pill = sh.querySelector('.vpill'); const v = this._voice;
     el.classList.toggle('open', open); pill.classList.toggle('show', !open && !!v);
     if (v && v.orb) { if (open) v.orb.resume(); else v.orb.pause(); }
-    if (!open) { this._setStatus(this._busy ? 'work' : (v ? 'call' : 'idle')); this.$q.focus(); } else this.$q.blur();
+    if (!open) { this._setStatus(this._busy ? 'work' : (v ? 'call' : 'idle')); this._focusInput(); } else { this.$q.blur(); setTimeout(() => sh.querySelector('.v-end').focus({ preventScroll: true }), 50); }
   }
   stopVoice() {
     const v = this._voice; if (!v) return; v.ended = true; const sh = this.shadowRoot, el = sh.querySelector('.voice');
@@ -902,15 +1180,16 @@ class DeepAssistant extends HTMLElement {
     if (el.classList.contains('open') && !this._reduced) { el.classList.add('closing'); setTimeout(finish, 360); } else finish();
     this._voice = null; this._setStatus(this._busy ? 'work' : 'idle'); this._emit('voice', { state: 'end', seconds: secs, turns: v.lines.length });
     if (v.lines.length || secs >= 1) this._callSummary(secs, v.lines);
-    this.$q.focus();
+    this._focusInput();
   }
   _callSummary(secs, lines) {
-    const row = document.createElement('div'); row.className = 'row bot'; const c = document.createElement('div'); c.className = 'card callcard';
+    const w = this.$log.querySelector('.welcome'); if (w) w.remove();
+    const row = document.createElement('div'); row.className = 'row bot'; row.innerHTML = `<span class="bav" aria-hidden="true">${SVG.mark}</span>`; const col = document.createElement('div'); col.className = 'col'; const c = document.createElement('div'); c.className = 'card callcard';
     const dur = secs >= 60 ? `${Math.floor(secs / 60)}m ${String(secs % 60).padStart(2, '0')}s` : `${secs}s`;
     c.innerHTML = `<div class="cc-t">${SVG.phone}<span>Voice call · ${dur}</span></div><div class="cc-s">${lines.length ? lines.length + ' exchange' + (lines.length === 1 ? '' : 's') : 'No exchanges'}</div>`;
-    if (lines.length) { const w = document.createElement('button'); w.type = 'button'; w.className = 'worked'; w.innerHTML = `${SVG.chev}<span>Transcript</span>`; w.setAttribute('aria-expanded', 'false'); const st = document.createElement('div'); st.className = 'steps';
-      st.innerHTML = lines.map((l) => `<div><b>${l.who === 'you' ? 'You' : 'Deep'}</b><span>${esc(l.text)}</span></div>`).join(''); w.onclick = () => { const o = !st.classList.contains('open'); st.classList.toggle('open', o); w.classList.toggle('open', o); w.setAttribute('aria-expanded', String(o)); }; c.append(w, st); }
-    row.appendChild(c); this.$log.appendChild(row); this._scroll();
+    if (lines.length) { const wb = document.createElement('button'); wb.type = 'button'; wb.className = 'worked'; wb.style.marginTop = '6px'; wb.innerHTML = `${SVG.chev}<span>Transcript</span>`; wb.setAttribute('aria-expanded', 'false'); const st = document.createElement('div'); st.className = 'steps';
+      st.innerHTML = lines.map((l) => `<div><b>${l.who === 'you' ? 'You' : 'Deep'}</b><span>${esc(l.text)}</span></div>`).join(''); wb.onclick = () => { const o = !st.classList.contains('open'); st.classList.toggle('open', o); wb.classList.toggle('open', o); wb.setAttribute('aria-expanded', String(o)); }; c.append(wb, st); }
+    col.appendChild(c); row.appendChild(col); this.$log.appendChild(row); this._stick = true; this._scroll();
   }
   _toggleMute() {
     const v = this._voice; if (!v) return; v.muted = !v.muted; const sh = this.shadowRoot, b = sh.querySelector('.v-mute');
@@ -965,56 +1244,69 @@ class DeepAssistant extends HTMLElement {
   }
   // ---------------------------------------------------------------- send / stop
   _stop() { if (this._controller) this._controller.abort(); }
+  _errorText(status) {
+    if (status === 429) return "You're sending messages quickly. Please wait a moment, then try again.";
+    if (status === 403) return "This site isn't allowed to use the assistant yet.";
+    if (status >= 500) return "Deep couldn't answer just now. Please try again in a moment.";
+    return `Something went wrong (error ${status}). Please try again.`;
+  }
   async _send(text) {
     text = (text || this.$q.value).trim(); const files = this._attachments.filter((a) => a.id);
     if ((!text && !files.length) || this._busy) return; if (this._attachments.some((a) => a.xhr)) return;
     if (!this.api) { this._add('bot', 'This assistant has no api attribute set.'); return; }
     if (this._view !== 'chat') this.showView('chat');
-    this.$q.value = ''; this._autosize(); this._closePops(); const sr = this.$log.querySelector('.suggest-row'); if (sr) sr.remove(); const cr = this.$log.querySelector('.caps-row'); if (cr) cr.remove(); this._setBusy(true);
+    this.$q.value = ''; this._autosize(); this._closePops(); this._clearFollowups(); this._setBusy(true);
     const shown = (text || (files.length > 1 ? 'Please look at the attached files.' : 'Please look at the attached file.')) + files.map((a) => `\n[attached: ${a.name}](/uploads/${a.id})`).join('');
     const user = this._add('user', '', Date.now()); this._setText(user, shown); this._transcript.push({ role: 'user', text: shown, ts: Date.now() }); this._persist(); this._emit('question', { text, attachments: files.map((a) => a.id) });
     this._attachments = []; this._renderAttachments();
-    const bot = this._add('bot', ''); const act = this._activity(bot);
-    let answer = '', sources = [], all = [], failed = false, mid = null; const sid = this._sid;
+    const bot = this._add('bot', ''); const act = this._activity(bot); this._markLast();
+    let answer = '', sources = [], all = [], failed = false, mid = null, offer = false, booking = false; const sid = this._sid;
     this._controller = new AbortController(); const me = this._me || {};
+    const fail = (msg) => { failed = true; this._setText(bot, msg); bot.classList.add('err'); };
     try {
       const r = await fetch(this._url('/chat'), { method: 'POST', signal: this._controller.signal, headers: this._headers(),
         body: JSON.stringify({ message: text || 'Please look at the attached file.', history: this._history, timezone: this.tz, attachments: files.map((a) => a.id), user_name: me.signed_in ? undefined : (me.name || undefined), user_email: me.signed_in ? undefined : (me.email || undefined) }) });
-      if (!r.ok) { failed = true; this._setText(bot, r.status === 429 ? 'Slow down a little. Try again in a minute.' : `The assistant returned an error (${r.status}).`); return; }
+      if (!r.ok) { fail(this._errorText(r.status)); this._emit('error', { error: 'http_' + r.status }); return; }
+      if (!this._online) { this._online = true; }
       const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';
       while (true) {
         const { value, done } = await reader.read(); if (done) break;
         buf += dec.decode(value, { stream: true });
         let i; while ((i = buf.indexOf('\n\n')) >= 0) {
           const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2); if (!line.startsWith('data:')) continue;
-          const ev = JSON.parse(line.slice(5));
-          if (ev.type === 'token') { if (!answer) { bot.classList.add('streaming'); if (act.last !== 'Writing…') act.set('writing', 'Writing…'); } answer += ev.text; this._setText(bot, answer, all, ev.text.length); }
+          let ev; try { ev = JSON.parse(line.slice(5)); } catch { continue; }
+          this._stick = this._atBottom();
+          if (ev.type === 'token') { if (!answer) { bot.classList.add('streaming'); if (act.last !== 'Writing…') act.set('writing', 'Writing…'); } answer += ev.text; this._setText(bot, answer, all); }
           else if (ev.type === 'status') { act.set(ev.step, ev.label); }
-          else if (ev.type === 'availability') { bot.classList.remove('thinking'); bot.classList.remove('skel'); const p = bot.querySelector('.picker'); if (p) p.classList.add('done'); const bx = this._availBox(bot); bx.dataset.slug = ev.schedule ? ev.schedule.slug : ''; this._renderAvailability(bx, ev); if (ev.ok) this._actionCard(bot, 'cal', SVG.cal, 'Checked Deep\'s calendar', `${ev.open_total || 0} open times in the next ${ev.days ? ev.days.length : 14} days`, 'ok'); else this._actionCard(bot, 'cal', SVG.cal, 'Checked Deep\'s calendar', ev.message || 'unavailable', 'fail'); }
-          else if (ev.type === 'booking_review') { bot.classList.remove('thinking'); bot.classList.remove('skel'); this._renderReview(bot, ev); this._actionCard(bot, 'slot', SVG.cal, 'Checked that time', ev.status === 'review' ? (ev.slot ? ev.slot.label_visitor + ' is open' : 'open') : ev.status === 'unavailable' ? (ev.wanted || 'That time') + ' is not open' : (ev.message || ''), ev.status === 'review' ? 'ok' : 'fail'); }
-          else if (ev.type === 'schedules') { bot.classList.remove('thinking'); bot.classList.remove('skel'); if (!answer) bot.innerHTML = ''; this._renderPicker(bot, ev.items); }
-          else if (ev.type === 'slots') { bot.classList.remove('thinking'); this._renderSlots(bot, ev); }
-          else if (ev.type === 'booking') { bot.classList.remove('thinking'); this._renderBooking(bot, ev); }
+          else if (ev.type === 'availability') { booking = true; bot.classList.remove('skel'); this._onAvailability(bot, ev); }
+          else if (ev.type === 'booking_review') { booking = true; bot.classList.remove('skel'); this._onReview(bot, ev); }
+          else if (ev.type === 'schedules') { booking = true; bot.classList.remove('skel'); if (!answer) bot.innerHTML = ''; this._onSchedules(bot, ev.items || []); }
+          else if (ev.type === 'slots') { booking = true; bot.classList.remove('skel'); this._onSlots(bot, ev); }
+          else if (ev.type === 'booking') { booking = true; this._renderBooking(bot, ev); }
           else if (ev.type === 'sources') { all = ev.items || []; this._emit('sources', { items: all }); }
           else if (ev.type === 'meta') { mid = ev.message_id || null; }
-          else if (ev.type === 'handover') { bot.classList.remove('thinking'); this._renderHandover(bot, ev.prefill || ''); }
-          else if (ev.type === 'handover_offer') { this._renderHandoverOffer(bot, text); }
-          else if (ev.type === 'error') { failed = true; this._setText(bot, 'Something went wrong on the assistant side. ' + (answer ? '' : 'Please try again.')); this._emit('error', { error: ev.error }); }
-          if (this._atBottom()) this._scroll();
+          else if (ev.type === 'handover') { bot.classList.remove('skel'); this._renderHandover(bot, ev.prefill || ''); this._emit('action', { action: 'handover_requested' }); }
+          else if (ev.type === 'handover_offer') { offer = true; this._emit('action', { action: 'unanswered', label: text }); }
+          else if (ev.type === 'error') { fail('Something went wrong on our side. ' + (answer ? '' : 'Please try again.')); this._emit('error', { error: ev.error }); }
+          this._scroll();
         }
       }
     } catch (e) {
-      if (e.name === 'AbortError') { this._setText(bot, answer || '(stopped)'); if (answer) bot.insertAdjacentHTML('beforeend', '<div class="note">Stopped.</div>'); }
-      else { failed = true; this._setText(bot, 'Connection problem. Check that the assistant is reachable, then retry.'); this._emit('error', { error: String(e) }); }
+      if (e.name === 'AbortError') { this._setText(bot, answer || 'Stopped.'); if (answer) bot.insertAdjacentHTML('beforeend', '<div class="note">Stopped.</div>'); }
+      else { fail("Couldn't reach Deep. Check your connection, then try again."); this._online = false; this._health(); this._emit('error', { error: String(e) }); }
     } finally {
-      bot.classList.remove('streaming'); if (bot.classList.contains('thinking') || bot.classList.contains('skel')) this._setText(bot, answer || '…', all);
-      if (answer && all.length) { sources = usedSources(answer, all); this._addSources(bot, sources); const sEl = bot.parentElement.querySelector('.sources'); if (sEl) sEl.classList.add('in'); this._contextChip(bot.parentElement, sources); }
-      act.done(sources.length); const metaEl = bot.parentElement.querySelector(':scope > .meta'); if (metaEl) metaEl.classList.add('in');
-      const raw = bot.dataset.raw || answer; this._addTools(bot, () => raw, failed ? text : null, mid); const tEl = bot.parentElement.querySelector('.tools'); if (tEl) tEl.classList.add('in');
+      // _stick still holds "was the reader at the bottom before the last change", so the tail below follows the same rule
+      bot.classList.remove('streaming'); if (bot.classList.contains('skel')) this._setText(bot, answer || '…', all);
+      if (answer && all.length && !failed) { sources = usedSources(answer, all); this._addSources(bot, sources); }
+      act.done(sources.length);
+      const raw = bot.dataset.raw || answer; this._addTools(bot, () => raw, failed ? text : null, mid);
+      if (failed) this._followups(bot, [{ icon: 'reset', label: 'Try again', fn: () => this._retry(bot, text) }]);
+      else if (offer) this._followups(bot, [{ icon: 'mail', label: 'Ask the team directly', kind: 'handover', fn: () => this._renderHandover(bot, text) }, { icon: 'cal', label: 'Book a meeting', kind: 'booking', fn: () => this.startBooking() }]);
+      else if (!booking) this._followups(bot, this._answerFollowups(bot, text, answer, sources.length));
       this._history.push({ role: 'user', content: shown }, { role: 'assistant', content: answer }); this._history = this._history.slice(-12);
-      this._transcript.push({ role: 'bot', text: answer, sources, ts: Date.now(), mid }); this._persist();
-      this._controller = null; this._setBusy(false); if (!this._voice) this.$q.focus();
-      this._emit('answer', { question: text, answer: raw, sources, messageId: mid, failed }); this._updateChrome();
+      this._transcript.push({ role: 'bot', text: failed ? bot.dataset.raw : answer, sources, ts: Date.now(), mid, err: failed || undefined }); this._persist();
+      this._controller = null; this._setBusy(false); if (!this._voice) this._focusInput(); this._scroll();
+      this._emit('answer', { question: text, answer: raw, sources, messageId: mid, failed });
       if (this._view === 'chat' && this._sid === sid) await this._markRead(sid);
       this._refreshBadge(); if (this._view === 'messages') this._renderConversations();
       clearTimeout(this._titleT); this._titleT = setTimeout(() => { if (this._view === 'messages') this._renderConversations(); else this._convos = null; }, 6000);

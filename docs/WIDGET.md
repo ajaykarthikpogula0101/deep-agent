@@ -20,28 +20,34 @@ as below. Live demo: `/demo` on the assistant (`WIDGET_DEMO=true`); site-style t
 |---|---|---|
 | `api` | URL | the assistant server; its origin must be in `ALLOWED_ORIGINS` of the app's origin… see §4 |
 | `mode` | `panel` (default) / `launcher` | panel fills its container (give it a height); launcher is a floating button + pop-over |
-| `theme` | `auto` (default) / `dark` / `light` | auto follows the OS |
+| `theme` | `light` (default) / `dark` / `auto` | auto follows the OS; the ⋯ menu's theme item is remembered in localStorage |
 | `open` | boolean attribute | launcher open state |
 | `token` | string | signed-in visitor token (§3) |
 | `user-name`, `user-email` | strings | unverified prefill hints when no token exists |
-| `title`, `subtitle`, `suggestions` | strings | copy; suggestions are `\|`-separated |
+| `title`, `subtitle` | strings | header copy (default `Deep` / `AI assistant`) |
+| `greeting` | string | intro line on the welcome screen (default: what the assistant can do) |
+| `suggestions` | `a\|b\|c` | up to four welcome actions; booking phrasings ("Book…", "Schedule…") open the booking card, others are sent as questions. Default: picked from the page (see `page-context`) |
+| `page-context` | `general` / `product` / `solutions` / `contact` | which welcome actions to show; default inferred from the host page URL (`/product…`, `/solutions…`, `/contact…`, `/pricing…`) |
+| `tabs` | `home,messages,help` | sections; leaving out `help` removes Help from the ⋯ menu; History is always kept |
+| `shortcut` | `Label\|https://…` | external scheduler link in Help (default: the Zoom booking page); `""` hides it |
 
-| `tabs` | `home,messages,help` | bottom navigation; `messages` is always kept |
-| `shortcut` | `Label\|https://…` | card at the top of the Messages screen (default: the Zoom booking page); `""` hides it |
-| `greeting` | string | the bot's first message in a fresh conversation |
+Methods: `ask(text)`, `book(callType?)` (opens the in-chat booking card; `callType` such as `'walkthrough'` marks the
+matching meeting as suggested), `open()`, `close()`, `toggle()`, `newChat()` (alias `reset()`), `openConversation(id)`,
+`showView('chat'|'history'|'help')` (`'messages'` still works), `setToken(token)`. Properties: `busy`, `sessionId`, `view`.
 
-Methods: `ask(text)`, `open()`, `close()`, `toggle()`, `newChat()` (alias `reset()`), `openConversation(id)`,
-`showView('chat'|'messages'|'help')`, `setToken(token)`. Properties: `busy`, `sessionId`, `view`.
+### History
 
-### Messages screen
+The header has a History button (clock icon, with a red badge counting conversations that have unread assistant
+messages) and a ⋯ menu (New conversation, Help & contact, Download transcript, Dark/Light theme). There is no bottom
+tab bar: the conversation stays central and History and Help open as sub-screens with a back arrow. Esc closes a
+menu, then leaves a sub-screen, then minimizes the launcher.
 
-The bottom tab bar has Home (the current conversation), Messages and Help. Messages lists the visitor's past
-conversations, newest first: bot avatar, bot name, one-line preview of the last message, relative time (`14m`,
-`11h`, `2d`), and a red dot when a conversation has assistant messages the visitor has not seen. A red badge on the
-Messages tab counts such conversations. Tapping a row loads the full history (sources, ratings, copy) and marks it
-read; a back arrow returns to the list; "Ask a question" starts a new conversation with the greeting and quick
-replies. Conversations belong to the browser's visitor id (localStorage) or, when a token is set, to the signed-in
-user, so a signed-in visitor sees their conversations across devices.
+History lists the visitor's past conversations, newest first, grouped under Today / Yesterday / Previous 7 days /
+Older, with a search box and a "New conversation" button. Each row shows the title, a one-line preview, the relative
+time (`14m`, `11h`, `2d`) or a "Current" tag, and a dot when unread. Loading shows skeleton rows; a failed request
+shows an error state with "Try again"; an empty list explains what will appear there. Tapping a row loads the full
+history (sources, ratings, copy) and marks it read. Conversations belong to the browser's visitor id (localStorage)
+or, when a token is set, to the signed-in user, so a signed-in visitor sees their conversations across devices.
 
 Each row shows an AI-generated 3–6 word title (made in the background after the first exchange by
 `app/titles.py`; fallback: the first message cut to ~40 characters; "Quick hello" for greeting-only chats until a
@@ -61,14 +67,20 @@ Events (all `CustomEvent`, bubble through the DOM, `detail` below):
 | `deep-assistant:question` | `{text}` |
 | `deep-assistant:answer` | `{question, answer, sources:[{n,url,title}], messageId, failed}` |
 | `deep-assistant:sources` | `{items}` |
-| `deep-assistant:booking` | `{status: 'handoff'\|'booked'\|'unavailable'\|'slot_taken', leadId, handoffUrl, slot, schedule}` |
+| `deep-assistant:booking` | `{status: 'started'\|'confirmed'\|'pending_zoom'\|'unavailable'\|'slot_taken', bookingId, joinUrl, handoffUrl, slot, schedule, email}` |
 | `deep-assistant:handover` | `{leadId, email, briefSent}` |
 | `deep-assistant:feedback` | `{messageId, rating: 1\|-1, note}` |
-| `deep-assistant:open` / `:close` / `:error` | |
+| `deep-assistant:action` | `{action, label, kind}`: `suggestion` (welcome action), `followup`, `help`, `help_question`, `booking_type`, `booking_time`, `handover_requested`, `handover_form`, `unanswered` (low-confidence answer) |
+| `deep-assistant:open` / `:close` / `:error` / `:view` / `:voice` / `:upload` | |
 
-Theming: set CSS variables on the element: `--da-bg --da-panel --da-panel-2 --da-line --da-line-strong --da-text
---da-muted --da-scan --da-beam --da-beam-text --da-danger --da-font --da-radius`. The default is the electron-scan
-look; the font is inherited from your app unless `--da-font` is set.
+The component installs no analytics of its own. To measure conversion, forward these events to whatever the host
+page already uses, e.g. `el.addEventListener('deep-assistant:action', (e) => analytics.track('deep_' + e.detail.action, { label: e.detail.label }))`.
+Only `question` and `unanswered` carry visitor-typed text; booking events carry the email the visitor entered, so
+leave that field out if your analytics must not hold personal data.
+
+Theming (Indigo Dream): set CSS variables on the element: `--da-primary --da-primary-hover --da-navy --da-lavender
+--da-bg --da-surface --da-success --da-text --da-muted --da-line --da-radius --da-font`. The font defaults to Inter
+(when the page has it) then system UI fonts, never the host page's font; set `--da-font: inherit` to use your app's font.
 
 ## 2. Wrappers
 
@@ -135,33 +147,71 @@ Clerk's default session token carries only the user id; to let the assistant boo
 
 `GET /me` with the token header returns what the widget may show: `{signed_in, name, email, verified, via}`.
 
-## 5. The interface (dark by default)
+## 5. The interface (Indigo Dream, light by default)
 
-Header: logo, **ask deep >_**, muted "Deep can also help directly", a ⋯ menu (Switch theme, Download transcript,
-New chat) and × in launcher mode; a back arrow when a conversation was opened from Messages. No meta bar: the
-session and timezone still work in the background. Bot bubbles `#2A2B2F`, 20 px corners, with a muted
-"Deep • AI Agent • 14m" line; visitor bubbles in the orange accent, right-aligned. Typing indicator while a reply
-streams; auto-scroll. Under each answer: a compact "Sources" row of pill chips (number, title cut at 28 chars, domain,
-tooltip with the full title, opens in a new tab) and small muted thumbs-up / thumbs-down / copy buttons that
-appear on hover ("Copied" confirmation). Keyboard hint (Enter / Shift+Enter / Esc) only while the input is focused.
-Footer: "By chatting with us, you agree to our Privacy Policy" (`PRIVACY_URL` or the `privacy-url` attribute).
-First message: "👋 Hey <first name>, you're speaking with Deep's AI assistant…" when the visitor is known, else the
-generic version; the site loader can override it with its `PROACTIVE.message`.
+Tokens: primary `#5546F7` (hover `#4537E8`), midnight navy `#151B32` (header, voice view), lavender `#EEECFF`
+(visitor bubbles, selected states), app background `#F6F7FC`, surfaces `#FFFFFF`, success `#19B887`, text `#151B32`
+/ `#68718A`, borders `#E4E7F2`. All colours are CSS variables in `:host` of `static/deep-assistant.js`; `theme="dark"`
+swaps the neutrals for a navy palette (and a lighter indigo for text so it stays readable).
 
-Theme: `theme="dark"` (default), `"light"`, or `"auto"`. The ⋯ menu's Switch theme is remembered in localStorage.
+Launcher: 56 px indigo button with the Deep mark, a green dot only while `/healthz` answers, an unread badge, and a
+chevron while open. The panel animates in from the button (opacity + 14 px rise; no motion under
+`prefers-reduced-motion`). Header (navy): avatar, **Deep**, "AI assistant · ● Online" (Connecting… until the health
+check returns, Offline when it fails and is retried every 20 s, Working… while answering, In a call during voice),
+History, ⋯, Minimize and Close (launcher mode only; Close also ends a voice call and stops a reply).
 
-Layout: 400×700 floating panel (max-height viewport − 40px, 16px radius) on desktop, full screen under 480px;
-header 64px; the messages area flexes and scrolls with a thin 6px scrollbar; the tab bar (56px) shows on Home and
-Messages only and hides once a conversation has messages, where the header gains a back arrow to Messages.
+Welcome screen (empty conversation): "Hi! I'm Deep 👋" (with the first name when the visitor is known), the intro
+line (`greeting`), and four actions chosen for the host page: on general pages *Explore data solutions*, *Find the
+right solution for my business*, *Learn about LakeB2B*, *Book a meeting*; product pages lead with the product and a
+walkthrough; contact/pricing pages lead with booking and *Talk to a person*. Questions go through `/chat` like typed
+ones; *Book a meeting* opens the booking card directly from `GET /booking/availability` (no model call). The input
+is always available.
+
+Conversation: white bot bubbles with a 6 px tail corner and a "Deep · 2m" line, lavender visitor bubbles. While the
+agent works, a status pill shows the real backend step (Searching…, Writing…) above a skeleton bubble, then collapses
+into "Worked for 3s · 2 sources". Answers render bold, bullet and numbered lists, headings, inline code, links and
+`[n]` citation pills; a "Sources" row and thumbs / copy tools follow (always visible on the latest answer and on
+touch screens). New content only auto-scrolls when the reader is at the bottom; otherwise a "Latest" button appears.
+Failed requests show a red-tinted bubble with a plain-language reason (rate limit, server error, offline) and a
+"Try again" follow-up. Stop is the send button while a reply streams (Esc works too).
+
+Follow-ups are never generic: after a low-confidence answer (`handover_offer`) the visitor gets *Ask the team
+directly* and *Book a meeting*; after a failure, *Try again*; after a sourced answer about pricing or demos, at most one
+*See it in a walkthrough* (or *Talk to an expert* for data/solution questions from the second question on), once per
+conversation.
+
+Booking card (one card, four steps with a progress bar and a back arrow; every choice survives going back):
+1. *Choose a meeting*: the live call types with description, duration and "Zoom video call".
+2. *Pick a time*: date chips with open counts and only the open times for that day, in the visitor's timezone.
+3. *Your details*: name and email (skipped for a verified signed-in visitor), optional company and topic, with
+   inline validation.
+4. *Review and confirm*: summary, "Confirm booking", "Nothing is booked until you confirm."
+Success only after `/booking/confirm` answers `confirmed` (or `pending_zoom`: "One last step on Zoom"): Join Zoom,
+Add to calendar, and next steps. A taken slot returns to step 2 with a banner and the nearest open times; an
+unavailable scheduler offers the external Zoom link; nothing is ever shown as booked before the server says so.
+
+Help (⋯ → Help & contact): Book a meeting, Talk to a person (the hand-over form; replies by email), Voice
+conversation (when the browser can listen), the external scheduler link (`shortcut`), what Deep can do, common
+questions (the server's most-asked questions) and the privacy link.
+
+Layout: floating panel `min(400px, 100vw − 40px)` × `min(700px, 100dvh − 112px)`, 20 px radius, above the launcher on
+desktop; full screen under 520 px, sized to the visual viewport so the composer stays above the on-screen keyboard,
+with safe-area padding and 16 px inputs (no iOS zoom). Footer: "By chatting, you agree to our Privacy Policy".
 Thumbs-down opens a small popover (reason chips, optional note, Submit) and a "Thanks for the feedback" toast.
+
+Accessibility: the panel is a labelled dialog (launcher) or region (panel), the log is `role="log"` and
+`aria-busy` while streaming, status changes and booking results are announced through a polite live region, all
+controls have labels and visible focus rings, the ⋯ menu supports arrow keys and Esc, focus moves to the step title
+when the booking card changes step and back to the launcher when the panel closes.
 
 ## 6. Composer
 
-Compact rounded box (`--da-cbox`, subtle `rgba` border, soft orange focus glow), input grows from one to five
-lines, bottom row: 📎 attach, 😀 emoji, GIF, 🎤 dictate; on the right the "Speak to Deep" pill in the warm
-gradient (`--voice-gradient-start/mid/end`, default orange → coral → rose) that becomes a round gradient send button
-once there is text or an attachment. If you see purple teardrops around the text caret, that is Windows' Text cursor
-indicator (Settings → Accessibility → Text cursor), not the widget.
+One slim pill-shaped row (about 45 px) with an indigo focus ring: **+**, the input, the voice button and the round
+send button. The input grows to five lines as you type; Enter sends, Shift+Enter adds a line. **+** opens a small
+menu (arrow keys and Esc work) with Attach a file, Emoji, GIF (only when the server has a GIF key) and Dictate (only
+when the browser or the server can transcribe). The voice button (wave icon) starts a voice conversation and hides
+while you type; send is disabled until there is text or a finished upload and becomes Stop while a reply streams. If you see purple teardrops around the
+text caret, that is Windows' Text cursor indicator (Settings → Accessibility → Text cursor), not the widget.
 
 | Feature | How it works | Server / env |
 |---|---|---|
