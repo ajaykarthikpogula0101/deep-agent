@@ -24,7 +24,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.10.1';
+const VERSION = '2026.10.11.1';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -1219,7 +1219,7 @@ class DeepAssistant extends HTMLElement {
   // ---- multilingual voice (docs/MEMORY_VOICE.md): the picker sets recognition + synthesis; 'auto' follows the reply's language
   _voiceLangs() { const list = (this._cfg && Array.isArray(this._cfg.voice_languages) && this._cfg.voice_languages.length) ? this._cfg.voice_languages : Object.keys(VOICE_LANGS); return list.filter((c) => VOICE_LANGS[c]); }
   _voiceLang() { const v = local.get('dh_voice_lang') || 'auto'; return VOICE_LANGS[v] ? v : 'auto'; }
-  _cycleVoiceLang() { const list = this._voiceLangs(); const i = list.indexOf(this._voiceLang()); const next = list[(i + 1) % list.length] || 'auto'; local.set('dh_voice_lang', next); this._paintVoiceLang(); const v = this._voice; if (v) { this._toast(VOICE_LANGS[next][1] === 'Auto' ? 'Voice language: automatic' : 'Voice language: ' + VOICE_LANGS[next][1]); if (v.state === 'listen' && v.rec) { v.discard = true; try { v.rec.stop(); } catch {} setTimeout(() => this._vListen(), 200); } } }
+  _cycleVoiceLang() { const list = this._voiceLangs(); const i = list.indexOf(this._voiceLang()); const next = list[(i + 1) % list.length] || 'auto'; local.set('dh_voice_lang', next); this._paintVoiceLang(); const v = this._voice; if (v) { this._toast(VOICE_LANGS[next][1] === 'Auto' ? 'Voice language: automatic' : 'Voice language: ' + VOICE_LANGS[next][1]); if (v.state && !v.ended) this._vstate(this._vlabel(v.state), v.state); if (v.state === 'listen' && v.rec) { v.discard = true; try { v.rec.stop(); } catch {} setTimeout(() => this._vListen(), 200); } } }
   _paintVoiceLang() { const b = this.shadowRoot.querySelector('.v-lang'); if (!b) return; const c = this._voiceLang(); b.querySelector('.vl').textContent = c === 'auto' ? 'Auto' : c.toUpperCase(); b.setAttribute('aria-label', 'Voice language: ' + VOICE_LANGS[c][1] + ' (tap to change)'); }
   _langTag(code) { const c = code && VOICE_LANGS[code] && code !== 'auto' ? code : null; return c ? VOICE_LANGS[c][0] : (navigator.language || 'en-US'); }
   _activeLang() { const pick = this._voiceLang(); if (pick !== 'auto') return pick; const l = this._lastLang; return l && VOICE_LANGS[l] ? l : (navigator.language || 'en').slice(0, 2); }

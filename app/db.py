@@ -194,6 +194,30 @@ CREATE TABLE IF NOT EXISTS settings (
     value       TEXT NOT NULL DEFAULT '',
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Proactive outreach (app/outreach.py): owner rules for when the greeting bubble opens and what it says, and
+-- one row per firing so each rule's opens / chats / bookings can be counted.
+CREATE TABLE IF NOT EXISTS outreach_rules (
+    id              BIGSERIAL PRIMARY KEY,
+    name            TEXT NOT NULL,
+    enabled         BOOLEAN NOT NULL DEFAULT true,
+    priority        INT NOT NULL DEFAULT 10,
+    cooldown_hours  INT NOT NULL DEFAULT 24,
+    trigger         JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+    message         JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS outreach_events (
+    id              BIGSERIAL PRIMARY KEY,
+    fired_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    rule_id         BIGINT NOT NULL,
+    visitor_id      TEXT,
+    page            TEXT,
+    session_id      TEXT,
+    opened_at       TIMESTAMPTZ,
+    dismissed_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS outreach_events_rule_idx ON outreach_events(rule_id, visitor_id, fired_at DESC);
 CREATE TABLE IF NOT EXISTS custom_answers (
     id          BIGSERIAL PRIMARY KEY,
     question    TEXT NOT NULL,

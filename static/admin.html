@@ -66,7 +66,7 @@
 </header>
 <nav>
   <button data-pane="overview" class="on">Overview</button><button data-pane="convos">Conversations</button><button data-pane="gaps">Gaps</button>
-  <button data-pane="sessions">Sessions</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="emails">Emails</button>
+  <button data-pane="sessions">Sessions</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="emails">Emails</button><button data-pane="outreach">Outreach</button>
 </nav>
 <main>
   <section class="pane on" id="overview">
@@ -163,6 +163,63 @@
         <div class="card"><h2>Preview · visitor booking confirmation (chat) <button class="btn" type="button" data-test="visitor_confirmed" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_confirmed"></pre></div>
         <div class="card"><h2>Preview · host new booking (chat) <button class="btn" type="button" data-test="host_booking" style="float:right">send test</button></h2><pre class="pv" id="pv-host_booking"></pre></div>
         <p class="status" id="teststatus"></p>
+      </div>
+    </div>
+  </section>
+  <section class="pane" id="outreach">
+    <div class="card">
+      <h2>Proactive outreach · the greeting bubble speaks up when a rule matches what the visitor is doing</h2>
+      <p class="muted" style="margin:0 0 10px;font-size:13px">Rules are checked in priority order (lowest number first) when a page loads, and again when a time-on-page or scroll threshold a rule waits for is reached. One rule bubble per page view; a visitor who closes a rule bubble or opens the chat is left alone for the rest of the visit. Each rule fires at most once per cooldown per device. Counts are for the period selected above.</p>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="or-default"> show the generic "Hi! I'm Deep" greeting when no rule matches <span class="status" id="or-status"></span></label>
+    </div>
+    <div class="wrap"><table id="ortable"><thead><tr><th>on</th><th>#</th><th>rule</th><th>when</th><th>says</th><th>shown</th><th>opened</th><th>chatted</th><th>booked</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div class="grid2" style="margin-top:18px">
+      <form id="orform" class="card" style="display:flex;flex-direction:column;gap:10px">
+        <h2 id="orform-h">Add a rule</h2>
+        <input type="hidden" name="id">
+        <label class="mono muted">name<input name="name" maxlength="80" required style="width:100%" placeholder="LakeB2B walkthrough offer"></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <label class="mono muted">priority (1 fires first)<input name="priority" type="number" min="1" max="100" value="10" style="width:100%"></label>
+          <label class="mono muted">cooldown hours per visitor<input name="cooldown_hours" type="number" min="0" max="720" value="24" style="width:100%"></label>
+        </div>
+        <h2>When</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <label class="mono muted">visitor<select name="visitor" style="width:100%"><option value="any">anyone</option><option value="new">first visit</option><option value="returning">returning</option></select></label>
+          <label class="mono muted">upcoming call in the calendar<select name="booking" style="width:100%"><option value="any">either way</option><option value="yes">yes</option><option value="no">no</option></select></label>
+          <label class="mono muted">current page starts with<input name="page" style="width:100%" placeholder="/company/lake-b2b  (use * for anything, | for alternatives)"></label>
+          <label class="mono muted">seconds on the page<input name="dwell_s" type="number" min="0" max="1800" style="width:100%" placeholder="0 = right away"></label>
+          <label class="mono muted">pages seen this visit (at least)<input name="pages_min" type="number" min="0" max="50" style="width:100%" placeholder="0 = ignore"></label>
+          <label class="mono muted">…counting pages that start with<input name="pages_match" style="width:100%" placeholder="/company/  (empty = any page)"></label>
+          <label class="mono muted">scrolled down at least %<input name="scroll_pct" type="number" min="0" max="100" style="width:100%" placeholder="0 = ignore"></label>
+          <label class="mono muted">came from (referrer contains)<input name="referrer" style="width:100%" placeholder="linkedin"></label>
+          <label class="mono muted">channel (comma list)<input name="channel" style="width:100%" placeholder="search, social, ai, email, paid, referral, direct"></label>
+          <label class="mono muted">utm_source equals<input name="utm_source" style="width:100%" placeholder="newsletter"></label>
+        </div>
+        <h2>Then say</h2>
+        <label class="mono muted">title (bold line)<input name="title" maxlength="80" style="width:100%" placeholder="Deep into LakeB2B?"></label>
+        <label class="mono muted">message<textarea name="text" maxlength="300" required style="min-height:70px" placeholder="Want a 30-minute walkthrough of LakeB2B's data with Deep? I can book it right here."></textarea></label>
+        <label class="mono muted">quick replies · one per line · booking phrasings open the booking card<textarea name="replies" style="min-height:70px" placeholder="Book a LakeB2B walkthrough&#10;What does LakeB2B do?"></textarea></label>
+        <label class="mono muted">first line inside the chat once opened (optional)<input name="intro" maxlength="300" style="width:100%" placeholder="defaults to the message"></label>
+        <p class="muted" style="margin:0;font-size:12px">Variables: {first_name} {booking} {schedule} {topic} {visits} {page_title}. Empty values disappear cleanly.</p>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn primary" type="submit">Save rule</button><button class="btn" type="button" id="ornew">New rule</button><span class="status" id="orstatus"></span></div>
+      </form>
+      <div>
+        <form id="ortry" class="card" style="display:flex;flex-direction:column;gap:10px">
+          <h2>Try it · which rule would fire for this visitor? (nothing is recorded; cooldowns ignored)</h2>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <label class="mono muted">current page<input name="path" value="/company/lake-b2b" style="width:100%"></label>
+            <label class="mono muted">pages seen (comma list)<input name="pages" value="/, /company/ampliz, /company/lake-b2b" style="width:100%"></label>
+            <label class="mono muted">seconds on the page<input name="dwell_s" type="number" value="60" style="width:100%"></label>
+            <label class="mono muted">scrolled %<input name="scroll_pct" type="number" value="30" style="width:100%"></label>
+            <label class="mono muted">referrer URL<input name="referrer" placeholder="https://www.linkedin.com/" style="width:100%"></label>
+            <label class="mono muted">visit number<input name="visits" type="number" value="1" style="width:100%"></label>
+            <label class="mono muted">first name<input name="first_name" placeholder="Ada" style="width:100%"></label>
+            <label style="display:flex;gap:8px;align-items:center;align-self:end"><input type="checkbox" name="booking"> has an upcoming call</label>
+          </div>
+          <div><button class="btn" type="submit">Check</button></div>
+          <div id="ortry-out" class="muted"></div>
+        </form>
+        <div class="card"><h2>Recent firings</h2><div class="wrap" id="or-recent"></div></div>
       </div>
     </div>
   </section>
@@ -266,11 +323,46 @@ $('tplreset').onclick = async () => { const empty = {}; TPL_KEYS.forEach(k => em
 document.querySelectorAll('button[data-test]').forEach(b => b.onclick = async () => { b.disabled = true; $('teststatus').textContent = 'sending…';
   try { const d = await api('/admin/email-templates/test', { method: 'POST', body: JSON.stringify({ kind: b.dataset.test }) }); $('teststatus').textContent = d.ok ? `Sent to ${d.to}: "${d.subject}"` : ('Not sent: ' + (d.error || 'SMTP problem, see server log')); } catch (err) { $('teststatus').textContent = err.message; } finally { b.disabled = false; } });
 
+// ---- proactive outreach rules
+const OR_T = ['visitor', 'booking', 'page', 'pages_min', 'pages_match', 'dwell_s', 'scroll_pct', 'referrer', 'channel', 'utm_source'];
+let orRules = [];
+function orFill(r) { const f = $('orform'); f.elements.id.value = r ? r.id : ''; f.elements.name.value = r ? r.name : ''; f.elements.priority.value = r ? r.priority : 10; f.elements.cooldown_hours.value = r ? r.cooldown_hours : 24;
+  OR_T.forEach(k => { const v = r ? r.trigger[k] : null; f.elements[k].value = (v === null || v === undefined || v === 0 || v === '') ? ((k === 'visitor' || k === 'booking') ? 'any' : '') : v; });
+  f.elements.title.value = r ? (r.message.title || '') : ''; f.elements.text.value = r ? (r.message.text || '') : ''; f.elements.intro.value = r ? (r.message.intro || '') : ''; f.elements.replies.value = r ? (r.message.replies || []).join('\n') : '';
+  $('orform-h').textContent = r ? `Edit rule · ${r.name}` : 'Add a rule'; }
+function orValues() { const f = $('orform'); const trigger = {}; OR_T.forEach(k => trigger[k] = f.elements[k].value.trim());
+  return { name: f.elements.name.value.trim(), priority: +f.elements.priority.value || 10, cooldown_hours: Math.max(0, +f.elements.cooldown_hours.value || 0), trigger,
+    message: { title: f.elements.title.value.trim(), text: f.elements.text.value.trim(), intro: f.elements.intro.value.trim(), replies: f.elements.replies.value.split('\n').map(s => s.trim()).filter(Boolean) } }; }
+async function loadOutreach() {
+  const d = await api(`/admin/outreach?days=${days()}`); orRules = d.rules; $('or-default').checked = d.default_greeting;
+  const tb = $('ortable').querySelector('tbody');
+  tb.innerHTML = d.rules.map(r => `<tr><td><input type="checkbox" data-on="${r.id}" ${r.enabled ? 'checked' : ''}></td><td class="muted">${r.priority}</td><td><b>${esc(r.name)}</b><div class="muted" style="font-size:12px">cooldown ${r.cooldown_hours} h</div></td><td>${esc(r.summary || 'everyone')}</td>
+    <td style="max-width:420px">${r.message.title ? '<b>' + esc(r.message.title) + '</b> ' : ''}${esc(r.message.text)}<div class="muted" style="font-size:12px">${(r.message.replies || []).map(esc).join(' · ')}</div></td>
+    <td>${r.stats.fired}</td><td>${r.stats.opened}</td><td class="ok">${r.stats.chatted || ''}</td><td class="ok">${r.stats.booked || ''}</td><td style="white-space:nowrap"><button class="btn" data-edit="${r.id}">edit</button> <button class="btn danger" data-del="${r.id}">delete</button></td></tr>`).join('') || '<tr><td colspan="10" class="muted">No rules yet. Add one below.</td></tr>';
+  tb.querySelectorAll('input[data-on]').forEach(cb => cb.onchange = () => api(`/admin/outreach/rules/${cb.dataset.on}`, { method: 'PATCH', body: JSON.stringify({ enabled: cb.checked }) }).catch(e => { $('or-status').textContent = e.message; }));
+  tb.querySelectorAll('button[data-edit]').forEach(b => b.onclick = () => { orFill(orRules.find(r => String(r.id) === b.dataset.edit)); $('orform').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  tb.querySelectorAll('button[data-del]').forEach(b => b.onclick = async () => { if (!confirm('Delete this rule?')) return; try { await api(`/admin/outreach/rules/${b.dataset.del}`, { method: 'DELETE' }); loadOutreach(); } catch (e) { $('or-status').textContent = e.message; } });
+  $('or-recent').innerHTML = d.recent.length ? `<table><thead><tr><th>when</th><th>rule</th><th>page</th><th>result</th></tr></thead><tbody>` + d.recent.map(e => `<tr${e.session_id ? ` class="click" data-sid="${esc(e.session_id)}"` : ''}><td>${fmt(e.ts)}</td><td>${esc(e.rule || e.rule_id)}</td><td class="ell muted">${esc(e.page || '')}</td><td>${e.opened ? '<span class="ok">opened the chat</span>' : e.dismissed ? '<span class="muted">closed</span>' : '<span class="muted">shown</span>'}</td></tr>`).join('') + '</tbody></table>' : '<p class="muted">No firings in this period.</p>';
+  $('or-recent').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { document.querySelector('nav button[data-pane="convos"]').click(); openConvo(tr.dataset.sid); });
+}
+$('or-default').onchange = async () => { try { await api('/admin/outreach/settings', { method: 'PUT', body: JSON.stringify({ default_greeting: $('or-default').checked }) }); $('or-status').textContent = 'saved · live within 15 s'; } catch (e) { $('or-status').textContent = e.message; } };
+$('orform').onsubmit = async e => { e.preventDefault(); const id = $('orform').elements.id.value; $('orstatus').textContent = 'saving…';
+  try { const r = await fetch(id ? `/admin/outreach/rules/${id}` : '/admin/outreach/rules', { method: id ? 'PATCH' : 'POST', headers: H(), body: JSON.stringify(orValues()) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || ('error ' + r.status)); }
+    $('orstatus').textContent = 'saved · live within 15 s'; orFill(null); loadOutreach(); } catch (err) { $('orstatus').textContent = err.message; } };
+$('ornew').onclick = () => { orFill(null); $('orstatus').textContent = ''; };
+$('ortry').onsubmit = async e => { e.preventDefault(); const f = e.target;
+  const body = { path: f.path.value.trim() || '/', pages: f.pages.value.split(',').map(s => s.trim()).filter(Boolean), dwell_s: +f.dwell_s.value || 0, scroll_pct: +f.scroll_pct.value || 0, referrer: f.referrer.value.trim() || null, visits: +f.visits.value || 1, booking: f.booking.checked, first_name: f.first_name.value.trim() || null };
+  try { const d = await api('/admin/outreach/try', { method: 'POST', body: JSON.stringify(body) });
+    $('ortry-out').innerHTML = (d.fires ? `<b class="ok">"${esc(d.fires.name)}" fires</b><div class="m" style="max-width:100%;margin-top:8px">${d.fires.title ? '<b>' + esc(d.fires.title) + '</b><br>' : ''}${esc(d.fires.text)}<div class="muted" style="margin-top:6px;font-size:12px">${d.fires.replies.map(r => esc(r.label)).join(' · ')}</div></div>` : `<b>No rule fires</b> · ${d.default ? 'the generic greeting shows' : 'nothing shows (generic greeting is off)'}`)
+      + '<div class="muted" style="font-size:12px;margin-top:8px">' + (d.rules.map(r => `${esc(r.name)}: ${r.match ? '<span class="ok">matches</span>' : r.wait ? 'waits for ' + Object.entries(r.wait).map(([k, v]) => k === 'dwell_s' ? v + ' s on the page' : v + '% scroll').join(' and ') : 'no'}`).join(' · ') || 'no enabled rules') + '</div>';
+  } catch (err) { $('ortry-out').textContent = err.message; } };
+
 async function load() {
   const token = $('token').value.trim(); if (!token) { $('status').textContent = 'enter the admin token'; return; }
   try { sessionStorage.setItem('dh_admin', token); } catch {}
   $('status').textContent = 'loading…';
-  try { await Promise.all([loadOverview(), loadConvos(), loadGaps(), loadSessions(), loadGuidance(), loadAnswers(), loadEmails()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
+  try { await Promise.all([loadOverview(), loadConvos(), loadGaps(), loadSessions(), loadGuidance(), loadAnswers(), loadEmails(), loadOutreach()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
   catch (e) { $('status').textContent = e.message; }
 }
 $('go').onclick = load; $('days').onchange = load; $('token').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });

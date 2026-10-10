@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     multilingual: bool = Field(default=True, alias="MULTILINGUAL")
     voice_languages: str = Field(default="auto,en,hi,te,ta,es,fr,de", alias="VOICE_LANGUAGES")  # call view language picker
     visitor_memory: bool = Field(default=True, alias="VISITOR_MEMORY")  # return-visitor memory in the greeting and prompt
+    outreach_enabled: bool = Field(default=True, alias="OUTREACH_ENABLED")  # proactive outreach rules (docs/OUTREACH.md)
 
     # In-chat booking (docs/BOOKING.md)
     booking_days_ahead: int = Field(default=14, alias="BOOKING_DAYS_AHEAD")
