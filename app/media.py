@@ -178,4 +178,5 @@ def speak(text: str) -> tuple[bytes, str]:
 
 def widget_config() -> dict[str, Any]:
     return {"privacy_url": settings.privacy_url, "upload_max_mb": settings.upload_max_mb, "upload_types": allowed_extensions(),
-            "gif": bool(settings.gif_api_key), "stt": "server" if stt_available() else "browser", "tts": "server" if tts_available() else "browser"}
+            "gif": bool(settings.gif_api_key), "stt": "server" if stt_available() else "browser", "tts": "server" if tts_available() else "browser",
+            "voice_languages": [x.strip() for x in settings.voice_languages.split(",") if x.strip()], "memory": settings.visitor_memory}

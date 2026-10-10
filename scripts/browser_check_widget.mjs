@@ -49,7 +49,7 @@ try {
   check(await evaluate(P("panel", "/Hi! I'm Deep/.test(sh.querySelector('.welcome h2').textContent)")), "welcome: 'Hi! I'm Deep' title for anonymous visitors");
   check(await evaluate(P("panel", "/explore LakeB2B's solutions/.test(sh.querySelector('.welcome p').textContent)")), "welcome: intro explains what the assistant can do");
   await evaluate(P("panel", "(sh.querySelector('.more').click(), true)")); await sleep(150);
-  check(await evaluate(P("panel", "sh.querySelector('.menu').classList.contains('open') && [...sh.querySelectorAll('.menu button > span:last-child')].map(s => s.textContent).join('|') === 'New conversation|Help & contact|Download transcript|Dark theme'")), "header: ⋯ menu with New conversation, Help & contact, Download transcript, Dark theme");
+  check(await evaluate(P("panel", "sh.querySelector('.menu').classList.contains('open') && [...sh.querySelectorAll('.menu button > span:last-child')].map(s => s.textContent).join('|') === 'New conversation|Help & contact|Download transcript|Forget me on this device|Dark theme'")), "header: ⋯ menu with New conversation, Help & contact, Download transcript, Forget me on this device, Dark theme");
   await evaluate(P("panel", "(sh.querySelector('.menu button[data-act=theme]').click(), true)")); await sleep(150);
   check(await evaluate(P("panel", "el.getAttribute('theme') === 'dark' && getComputedStyle(sh.querySelector('.panel')).backgroundColor === 'rgb(15, 19, 36)'")), "menu: theme item flips to dark");
   await evaluate(P("panel", "(el.setAttribute('theme', 'light'), true)"));
@@ -65,12 +65,19 @@ try {
   await evaluate(P("panel", "(el._closePops(), true)"));
   await evaluate(P("panel", "(sh.querySelector('.speak').click(), true)")); await sleep(300);
   await sleep(900);
+  await waitFor(P("panel", "!/Connecting/.test(sh.querySelector('.vstatus').textContent)"), 10000, "call view status"); await sleep(200);
   check(await evaluate(P("panel", "sh.querySelector('.voice').classList.contains('open') && /Listening|Thinking|not available|denied|Could not/.test(sh.querySelector('.vstatus').textContent) && !!sh.querySelector('.v-mute') && !!sh.querySelector('.v-end')")), "voice: 'Speak to Deep' opens the call view with status, mute and end");
   const vc = await evaluate(P("panel", "(() => { const r = (sel) => sh.querySelector(sel).getBoundingClientRect(); const e = r('.v-end'), m = r('.v-mute'); const cs = getComputedStyle(sh.querySelector('.v-end')); return { endW: Math.round(e.width), endH: Math.round(e.height), muteW: Math.round(m.width), radius: cs.borderRadius, bg: cs.backgroundColor, endText: [...sh.querySelector('.v-end').childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim() + (sh.querySelector('.v-end .tip') ? '' : 'NO-TIP'), canvas: !!sh.querySelector('.vorb canvas') && !sh.querySelector('.vorb canvas').hidden, header: sh.querySelector('.vhead b').textContent, timer: sh.querySelector('.vtimer').textContent, live: !!sh.querySelector('.vhead .live'), state: el._voice && el._voice.state, orb: !!(el._voice && el._voice.orb), meter: !!(el._voice && el._voice.meter), ccOn: sh.querySelector('.v-cc').getAttribute('aria-pressed'), st: sh.querySelector('.st .stt').textContent }; })()"));
   check(vc.endW === 56 && vc.endH === 56 && vc.muteW === 56 && vc.radius === '50%' && /229, 72, 77/.test(vc.bg) && vc.endText === '', `voice: round 56px mute and red hang-up buttons, no wrapped text (end text: "${vc.endText}")`);
   check(vc.canvas && vc.orb && vc.meter, "voice: canvas orb running with the audio meter attached");
   check(vc.header === 'Deep · Voice' && /^\d\d:\d\d$/.test(vc.timer) && vc.live, `voice: header strip with live dot and timer (${vc.timer})`);
   check(vc.st === 'In a call', "voice: header status reads 'In a call'");
+  const vl0 = await evaluate(P("panel", "(() => { const b = sh.querySelector('.v-lang'); return { label: b.querySelector('.vl').textContent, aria: b.getAttribute('aria-label'), w: Math.round(b.getBoundingClientRect().width) }; })()"));
+  check(vl0.label === 'Auto' && /Voice language/.test(vl0.aria) && vl0.w === 56, "voice: language button present, 'Auto' by default");
+  await evaluate(P("panel", "(localStorage.setItem('dh_voice_lang', 'en'), sh.querySelector('.v-lang').click(), true)")); await waitFor(P("panel", "sh.querySelector('.v-lang .vl').textContent === 'HI' && /सुन|सोच|म्यूट/.test(sh.querySelector('.vstatus').textContent)"), 5000, "hindi status").catch(() => {}); await sleep(100);
+  const vl1 = await evaluate(P("panel", "(() => ({ label: sh.querySelector('.v-lang .vl').textContent, status: sh.querySelector('.vstatus').textContent, stored: localStorage.getItem('dh_voice_lang') }))()"));
+  check(vl1.label === 'HI' && vl1.stored === 'hi' && /सुन रहा हूँ|म्यूट|Thinking|सोच/.test(vl1.status), `voice: language cycles to Hindi, status localised ('${vl1.status}')`);
+  await evaluate(P("panel", "(localStorage.setItem('dh_voice_lang', 'auto'), el._paintVoiceLang(), true)")); await sleep(100);
   await evaluate(P("panel", "(sh.querySelector('.v-mute').click(), true)")); await sleep(500);
   const mu = await evaluate(P("panel", "({ muted: sh.querySelector('.voice').classList.contains('muted'), on: sh.querySelector('.v-mute').classList.contains('on'), st: sh.querySelector('.vstatus').textContent, state: el._voice.state, badge: getComputedStyle(sh.querySelector('.vmute-badge')).display })"));
   check(mu.muted && mu.on && mu.st === 'Muted' && mu.state === 'muted' && mu.badge === 'block', "voice: mute turns the button white, shows the muted badge and greys the orb");
@@ -104,6 +111,13 @@ try {
   check(/^Worked for \d+(\.\d)?s · \d sources?$/.test(ag.worked) && !ag.activity && !ag.skel && !ag.streaming, `agent: activity row collapsed into '${ag.worked}'`);
   check(ag.steps.includes('Thinking') && ag.steps.includes('Searching deependhq.com') && ag.steps.some(x => /^Reading \d sources?$/.test(x)) && ag.steps.includes('Writing') && ag.steps.includes('Done'), `agent: real backend steps listed (${ag.steps.join(' → ')})`);
   check(ag.sourcesRow && ag.toolsRow, "agent: sources row and action icons under the answer");
+  await sleep(8000);  // the title job runs in the background after the answer
+  await evaluate(P("panel", "(el.newChat(), true)")); await waitFor(P("panel", "/Welcome back/.test((sh.querySelector('.welcome h2') || {}).textContent || '')"), 15000, "welcome-back greeting"); await sleep(200);
+  const wb = await evaluate(P("panel", "(() => { const w = sh.querySelector('.welcome'); return { h2: w.querySelector('h2').textContent, p: w.querySelector('p').textContent, back: w.classList.contains('back'), mem: el._me && el._me.memory && el._me.memory.returning }; })()"));
+  check(/^Welcome back/.test(wb.h2) && wb.back && wb.mem && /Last time|Good to see you again|Your /.test(wb.p), `memory: returning visitor greeting '${wb.h2}' · '${wb.p.slice(0, 70)}'`);
+  await evaluate(P("panel", "(el.forgetMe(), true)")); await sleep(1200);
+  const fg = await evaluate(P("panel", "(() => { const w = sh.querySelector('.welcome'); return { h2: w ? w.querySelector('h2').textContent : '', mem: !!(el._me && el._me.memory && el._me.memory.returning) }; })()"));
+  check(/^Hi! I'm Deep/.test(fg.h2) && !fg.mem, `memory: 'Forget me on this device' returns to the first-visit greeting ('${fg.h2}')`);
 
   check(b.tools >= 3, "thumbs and copy tools rendered");
   check(await evaluate(P("panel", "(() => { const m = [...sh.querySelectorAll('.row.bot .msg')].pop(); const cs = getComputedStyle(m); return cs.borderTopLeftRadius === '6px' && cs.backgroundColor === 'rgb(255, 255, 255)' && /Deep · /.test(m.parentElement.querySelector('.meta').textContent); })()")), "restyle: white bot bubble with a 6px tail corner and a 'Deep · time' meta line");

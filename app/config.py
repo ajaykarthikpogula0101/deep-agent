@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     enrich_enabled: bool = Field(default=True, alias="ENRICH_ENABLED")
     suggestions_days: int = Field(default=30, alias="SUGGESTIONS_DAYS")
     multilingual: bool = Field(default=True, alias="MULTILINGUAL")
+    voice_languages: str = Field(default="auto,en,hi,te,ta,es,fr,de", alias="VOICE_LANGUAGES")  # call view language picker
+    visitor_memory: bool = Field(default=True, alias="VISITOR_MEMORY")  # return-visitor memory in the greeting and prompt
 
     # In-chat booking (docs/BOOKING.md)
     booking_days_ahead: int = Field(default=14, alias="BOOKING_DAYS_AHEAD")
