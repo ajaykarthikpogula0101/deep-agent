@@ -33,7 +33,7 @@ def _collect(gen):
 @patch("app.chat.search", return_value=[_hit(0.12)])
 def test_off_topic_question_is_refused_without_model_call(search, log_event):
     events = _collect(respond("What's the weather in Paris today?", [], "Europe/Paris", "s1"))
-    events = [e for e in events if e.get("type") != "status"]  # activity events (Thinking…, Searching…) precede the outcome
+    events = [e for e in events if e.get("type") not in ("status", "lang")]  # activity and language events precede the outcome
     assert events[0] == {"type": "refusal", "reason": "low_confidence"}
     assert events[1]["text"] == prompts.REFUSAL_NO_CONTEXT
     assert events[-1] == {"type": "done"}

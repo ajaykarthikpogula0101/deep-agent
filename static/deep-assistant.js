@@ -24,10 +24,13 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.09.1';
+const VERSION = '2026.10.10.1';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
+// voice languages: code -> BCP-47 tag for speech recognition / synthesis, native name, and the call-view labels
+const VOICE_LANGS = { auto: ['', 'Auto'], en: ['en-US', 'English'], hi: ['hi-IN', 'हिन्दी'], te: ['te-IN', 'తెలుగు'], ta: ['ta-IN', 'தமிழ்'], es: ['es-ES', 'Español'], fr: ['fr-FR', 'Français'], de: ['de-DE', 'Deutsch'], pt: ['pt-BR', 'Português'], it: ['it-IT', 'Italiano'], nl: ['nl-NL', 'Nederlands'], ar: ['ar-SA', 'العربية'], zh: ['zh-CN', '中文'], ja: ['ja-JP', '日本語'], ko: ['ko-KR', '한국어'], ru: ['ru-RU', 'Русский'], bn: ['bn-IN', 'বাংলা'] };
+const VOICE_LABELS = { en: { listen: 'Listening…', think: 'Thinking…', speak: 'Speaking…', muted: 'Muted' }, hi: { listen: 'सुन रहा हूँ…', think: 'सोच रहा हूँ…', speak: 'बोल रहा हूँ…', muted: 'म्यूट' }, te: { listen: 'వింటున్నాను…', think: 'ఆలోచిస్తున్నాను…', speak: 'మాట్లాడుతున్నాను…', muted: 'మ్యూట్' }, ta: { listen: 'கேட்கிறேன்…', think: 'யோசிக்கிறேன்…', speak: 'பேசுகிறேன்…', muted: 'ஒலியடக்கம்' }, es: { listen: 'Escuchando…', think: 'Pensando…', speak: 'Hablando…', muted: 'Silenciado' }, fr: { listen: 'À l’écoute…', think: 'Réflexion…', speak: 'Je parle…', muted: 'Muet' }, de: { listen: 'Ich höre zu…', think: 'Ich denke nach…', speak: 'Ich spreche…', muted: 'Stumm' }, pt: { listen: 'Ouvindo…', think: 'Pensando…', speak: 'Falando…', muted: 'Mudo' } };
 const BOOK_RE = /\b(book|schedule|meeting|appointment|demo call|call with)\b/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const EMOJI = [['😀', 'grin smile happy'], ['😂', 'laugh joy tears'], ['🙂', 'smile'], ['😉', 'wink'], ['😍', 'love heart eyes'], ['🤔', 'thinking hmm'], ['😅', 'sweat smile'], ['😎', 'cool sunglasses'], ['🥳', 'party celebrate'], ['😢', 'sad cry'], ['😡', 'angry'], ['🙏', 'thanks please pray'],
@@ -288,6 +291,7 @@ textarea.q { display:block; flex:1; min-width:0; width:auto; min-height:34px; ma
 .vcap { width:min(360px, 100%); min-height:46px; max-height:46px; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; gap:3px; font-size:14px; line-height:1.45 }
 .vcap .cu { color:rgba(255,255,255,.6); font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis } .vcap .ca .w { opacity:.3; transition:opacity .12s } .vcap .ca .w.on { opacity:1 } .vcap.off { visibility:hidden }
 .vctl { flex:none; display:flex; justify-content:center; align-items:center; gap:16px; padding:12px 16px calc(24px + env(safe-area-inset-bottom)) }
+.vbtn.lang .vl { font-size:12px; font-weight:700; letter-spacing:.04em } .welcome.back h2 { color:var(--da-ink) }
 .vbtn { position:relative; flex:none; width:56px; height:56px; display:inline-grid; place-items:center; padding:0; border:0; border-radius:50%; background:rgba(255,255,255,.12); color:#fff; cursor:pointer; transition:background .2s, color .2s, transform .15s }
 .vbtn svg { width:24px; height:24px } .vbtn:hover { background:rgba(255,255,255,.2) } .vbtn:active { transform:scale(.96) } .vbtn.on { background:#fff; color:var(--da-navy) } .vbtn.end { background:#E5484D } .vbtn.end:hover { background:#F05A5F } .vbtn.cc.off { color:rgba(255,255,255,.5) } .vbtn:focus-visible { outline-color:#fff }
 .vbtn .tip { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); padding:3px 7px; border-radius:6px; background:#fff; color:var(--da-navy); font-size:11px; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .15s } .vbtn:hover .tip, .vbtn:focus-visible .tip { opacity:1 }
@@ -387,7 +391,7 @@ class DeepAssistant extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this._history = []; this._transcript = []; this._busy = false; this._controller = null; this._me = null; this._rendered = false; this._wasOpen = false;
     this._view = 'chat'; this._unread = 0; this._attachments = []; this._cfg = { gif: false, stt: 'browser', tts: 'browser', upload_max_mb: 10, upload_types: [] };
-    this._voice = null; this._rec = null; this._online = undefined; this._nudged = false;
+    this._voice = null; this._rec = null; this._online = undefined; this._nudged = false; this._lastLang = null;
     this.tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     const rm = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null; this._reduced = !!(rm && rm.matches); if (rm && rm.addEventListener) rm.addEventListener('change', (e) => { this._reduced = e.matches; });
     this._coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
@@ -405,11 +409,16 @@ class DeepAssistant extends HTMLElement {
   toggle() { this.hasAttribute('open') ? this.close() : this.open(); }
   setToken(token) { if (token) this.setAttribute('token', token); else this.removeAttribute('token'); }
   reset() { this.newChat(); }
+  forgetMe() {  // rotate the device id: earlier visits are no longer linked to this browser (server data stays under the old id)
+    local.set('dh_vid', uuid()); this._vid = local.get('dh_vid'); if (this._me) { this._me.memory = null; if (!this._me.signed_in) { this._me.name = this.getAttribute('user-name'); this._me.email = this.getAttribute('user-email'); } }
+    this._convos = null; this._toast('Forgotten on this device'); this._emit('forget', {}); this.newChat();
+  }
   newChat() {
     if (this._busy) this._stop(); this.stopVoice();
     this._sid = uuid(); store.set(this._key('sid'), this._sid);
     this._transcript = []; this._history = []; this._attachments = []; this._nudged = false; this._renderAttachments();
     this._restore(); this._track(); this.showView('chat');
+    if (this.api) this._loadMe().then(() => this._refreshWelcome());  // return-visitor memory for the new conversation
   }
   download() {
     const lines = this._transcript.map((m) => `[${new Date(m.ts).toLocaleString()}] ${m.role === 'user' ? 'You' : this.botName}: ${plain(m.text)}${m.sources && m.sources.length ? '\n  sources: ' + m.sources.map((s) => s.url).join(', ') : ''}`);
@@ -508,6 +517,7 @@ class DeepAssistant extends HTMLElement {
       <button type="button" role="menuitem" data-act="help">${SVG.help}<span>Help &amp; contact</span></button>
       <hr>
       <button type="button" role="menuitem" data-act="download">${SVG.dl}<span>Download transcript</span></button>
+      <button type="button" role="menuitem" data-act="forget">${SVG.x}<span>Forget me on this device</span></button>
       <button type="button" role="menuitem" data-act="theme"><span class="ti"></span><span class="tl"></span></button>
     </div>
   </header>
@@ -559,7 +569,7 @@ class DeepAssistant extends HTMLElement {
       <div class="vstatus" aria-live="off">Connecting…</div>
       <div class="vcap" aria-live="off"><div class="cu"></div><div class="ca"></div></div>
     </div>
-    <div class="vctl"><button type="button" class="vbtn v-mute" aria-pressed="false" aria-label="Mute microphone"><span class="vi">${SVG.mic}</span><span class="tip">Mute</span></button><button type="button" class="vbtn end v-end" aria-label="End call">${SVG.hangup}<span class="tip">End call</span></button><button type="button" class="vbtn cc v-cc" aria-pressed="true" aria-label="Captions on"><span class="vi">${SVG.cc}</span><span class="tip">Captions</span></button></div>
+    <div class="vctl"><button type="button" class="vbtn v-mute" aria-pressed="false" aria-label="Mute microphone"><span class="vi">${SVG.mic}</span><span class="tip">Mute</span></button><button type="button" class="vbtn end v-end" aria-label="End call">${SVG.hangup}<span class="tip">End call</span></button><button type="button" class="vbtn cc v-cc" aria-pressed="true" aria-label="Captions on"><span class="vi">${SVG.cc}</span><span class="tip">Captions</span></button><button type="button" class="vbtn lang v-lang" aria-label="Voice language: automatic"><span class="vi vl">Auto</span><span class="tip">Language</span></button></div>
   </div>
   <div class="vh sr" role="status" aria-live="polite"></div>
 </section>`;
@@ -574,7 +584,7 @@ class DeepAssistant extends HTMLElement {
     this.$back.onclick = () => this.showView('chat');
     sh.querySelector('.b-history').onclick = () => this.showView('messages');
     const more = sh.querySelector('.more'); more.onclick = (e) => { e.stopPropagation(); const o = !this.$menu.classList.contains('open'); this._closePops(); this.$menu.classList.toggle('open', o); more.setAttribute('aria-expanded', String(o)); if (o) this.$menu.querySelector('button').focus(); };
-    this.$menu.querySelectorAll('button').forEach((b) => b.onclick = () => { this._closePops(); const a = b.dataset.act; if (a === 'theme') this.switchTheme(); else if (a === 'download') this.download(); else if (a === 'help') this.showView('help'); else this.newChat(); });
+    this.$menu.querySelectorAll('button').forEach((b) => b.onclick = () => { this._closePops(); const a = b.dataset.act; if (a === 'theme') this.switchTheme(); else if (a === 'download') this.download(); else if (a === 'help') this.showView('help'); else if (a === 'forget') this.forgetMe(); else this.newChat(); });
     this.$menu.addEventListener('keydown', (e) => { const items = [...this.$menu.querySelectorAll('button')]; const i = items.indexOf(sh.activeElement);
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
       else if (e.key === 'Escape' || e.key === 'Tab') { this._closePops(); if (e.key === 'Escape') { e.stopPropagation(); more.focus(); } } });
@@ -612,6 +622,7 @@ class DeepAssistant extends HTMLElement {
     // dictation + voice
     sh.querySelector('.b-mic').onclick = () => { this._closePops(); this._toggleDictation(); this.$q.focus(); }; sh.querySelector('.rstop').onclick = () => this._stopDictation();
     this.$speak.onclick = () => this.startVoice(); sh.querySelector('.v-end').onclick = () => this.stopVoice(); sh.querySelector('.v-mute').onclick = () => this._toggleMute();
+    sh.querySelector('.v-lang').onclick = () => this._cycleVoiceLang(); this._paintVoiceLang();
     sh.querySelector('.v-min').onclick = () => this._showVoice(false); sh.querySelector('.vpill').onclick = () => this.startVoice(); sh.querySelector('.v-cc').onclick = () => this._toggleCaptions();
     this._onVis = () => { const v = this._voice; if (v && v.orb) { if (document.visibilityState === 'hidden') v.orb.pause(); else if (this.hasAttribute('open') || this.getAttribute('mode') !== 'launcher') v.orb.resume(); } };
     document.addEventListener('visibilitychange', this._onVis);
@@ -670,7 +681,7 @@ class DeepAssistant extends HTMLElement {
   async _loadMe() {
     const hintName = this.getAttribute('user-name'), hintEmail = this.getAttribute('user-email');
     this._me = { signed_in: false, name: hintName, email: hintEmail, verified: false };
-    if (this.getAttribute('token') && this.api) { try { const r = await fetch(this._url('/me'), { headers: this._headers(false) }); if (r.ok) this._me = await r.json(); } catch {} }
+    if (this.api) { try { const r = await fetch(this._url('/me'), { headers: this._headers(false) }); if (r.ok) { const d = await r.json(); this._me = { ...d, name: d.name || hintName, email: d.email || hintEmail }; } } catch {} }
     if (!this._me.name && hintName) this._me.name = hintName; if (!this._me.email && hintEmail) this._me.email = hintEmail;
   }
   _firstName() { return (this._me && this._me.name) ? String(this._me.name).trim().split(/\s+/)[0] : ''; }
@@ -697,9 +708,14 @@ class DeepAssistant extends HTMLElement {
   }
   _renderWelcome() {
     const w = document.createElement('div'); w.className = 'welcome'; const first = this._firstName(); const ctx = this.getAttribute('suggestions') ? 'custom' : this._pageContext();
-    w.innerHTML = `<div class="wav" aria-hidden="true">${SVG.mark}</div><h2>${esc(first ? `Hi ${first}! I'm Deep 👋` : "Hi! I'm Deep 👋")}</h2><p>${esc(this.getAttribute('greeting') || INTRO)}</p>
+    const mem = (this._me && this._me.memory && this._me.memory.returning) ? this._me.memory : null;  // return-visitor memory (docs/MEMORY_VOICE.md)
+    const h2 = mem && mem.headline ? mem.headline : (first ? `Hi ${first}! I'm Deep 👋` : "Hi! I'm Deep 👋"); const p = this.getAttribute('greeting') || (mem && mem.line) || INTRO;
+    if (mem) w.classList.add('back');
+    w.innerHTML = `<div class="wav" aria-hidden="true">${SVG.mark}</div><h2>${esc(h2)}</h2><p>${esc(p)}</p>
       <div class="acts-label">${ctx === 'general' || ctx === 'custom' ? 'Popular ways to start' : 'Suggested for this page'}</div><div class="acts" role="group" aria-label="Suggested actions"></div>`;
     const acts = w.querySelector('.acts');
+    if (mem && mem.upcoming && (mem.upcoming.join_url || mem.upcoming.handoff_url)) { const u = mem.upcoming; const a = document.createElement('a'); a.className = 'act book'; a.href = u.join_url || u.handoff_url; a.target = '_blank'; a.rel = 'noopener';
+      a.innerHTML = `<span class="ai">${SVG.cal}</span><span class="al">${esc(u.status === 'confirmed' ? 'Join your call' : 'Confirm your call on Zoom')}<small>${esc(u.schedule_name + ' · ' + u.label_visitor)}</small></span>${SVG.chev}`; acts.appendChild(a); }
     this._actions().forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'act' + (x.book ? ' book' : ''); b.innerHTML = `<span class="ai">${SVG[x.icon] || SVG.spark}</span><span class="al">${esc(x.label)}</span>${SVG.chev}`; b.onclick = () => this._runAction(x, 'suggestion'); acts.appendChild(b); });
     this.$log.appendChild(w);
   }
@@ -1127,7 +1143,7 @@ class DeepAssistant extends HTMLElement {
     const show = (msg) => { label.textContent = msg; rec.classList.add('on'); mic.classList.add('on'); mic.setAttribute('aria-pressed', 'true'); }; const done = () => { clearInterval(tick); rec.classList.remove('on'); mic.classList.remove('on'); mic.setAttribute('aria-pressed', 'false'); time.textContent = '0:00'; this._rec = null; };
     const Api = this._speechApi();
     if (Api && this._cfg.stt !== 'server') {
-      const r = new Api(); r.lang = navigator.language || 'en-US'; r.interimResults = true; r.continuous = true; let finalText = '';
+      const r = new Api(); r.lang = this._langTag(this._voiceLang()); r.interimResults = true; r.continuous = true; let finalText = '';
       r.onresult = (e) => { let interim = ''; for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) finalText += t + ' '; else interim += t; } label.textContent = interim ? 'Listening… ' + interim.slice(-40) : 'Listening…'; };
       r.onerror = (e) => { show(e.error === 'not-allowed' ? 'Microphone access was denied. Allow it in your browser settings and try again.' : 'Dictation error: ' + e.error); setTimeout(done, 2500); };
       r.onend = () => { if (finalText.trim()) this._insert((this.$q.value && !/\s$/.test(this.$q.value) ? ' ' : '') + finalText.trim()); done(); };
@@ -1138,7 +1154,7 @@ class DeepAssistant extends HTMLElement {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); const mr = new MediaRecorder(stream); const chunks = [];
       mr.ondataavailable = (e) => chunks.push(e.data);
-      mr.onstop = async () => { stream.getTracks().forEach((t) => t.stop()); show('Transcribing…'); try { const fd = new FormData(); fd.append('file', new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), 'audio.webm'); fd.append('language', (navigator.language || 'en').slice(0, 2));
+      mr.onstop = async () => { stream.getTracks().forEach((t) => t.stop()); show('Transcribing…'); try { const fd = new FormData(); fd.append('file', new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), 'audio.webm'); fd.append('language', this._voiceLang() !== 'auto' ? this._voiceLang() : (navigator.language || 'en').slice(0, 2));
           const r = await fetch(this._url('/stt'), { method: 'POST', headers: this._headers(false), body: fd }); const d = r.ok ? await r.json() : null; if (d && d.text) this._insert((this.$q.value && !/\s$/.test(this.$q.value) ? ' ' : '') + d.text); else show('Could not transcribe that.'); } catch { show('Could not transcribe that.'); } setTimeout(done, 600); };
       this._rec = { stop: () => mr.stop() }; show('Recording…'); mr.start();
     } catch (e) { show(e && e.name === 'NotAllowedError' ? 'Microphone access was denied. Allow it in your browser settings and try again.' : 'Could not access the microphone.'); setTimeout(done, 2500); }
@@ -1163,7 +1179,7 @@ class DeepAssistant extends HTMLElement {
     } catch (e) { orbWrap.classList.add('static'); canvas.hidden = true; console.warn('deep-assistant: orb unavailable', e); }
     if (!this._canListen()) { this._vstate('Voice is not available in this browser.', 'idle'); return; }
     if (v.meter && navigator.mediaDevices) v.meter.listenMic().then((ok) => { v.mic = ok; });  // levels for the orb while you speak
-    this._vstate('Listening…', 'listen'); this._vListen();
+    this._paintVoiceLang(); this._vstate(this._vlabel('listen'), 'listen'); this._vListen();
   }
   _showVoice(open) {
     const sh = this.shadowRoot, el = sh.querySelector('.voice'), pill = sh.querySelector('.vpill'); const v = this._voice;
@@ -1195,9 +1211,18 @@ class DeepAssistant extends HTMLElement {
     const v = this._voice; if (!v) return; v.muted = !v.muted; const sh = this.shadowRoot, b = sh.querySelector('.v-mute');
     b.setAttribute('aria-pressed', String(v.muted)); b.classList.toggle('on', v.muted); b.querySelector('.vi').innerHTML = v.muted ? SVG.micoff : SVG.mic; b.querySelector('.tip').textContent = v.muted ? 'Unmute' : 'Mute'; b.setAttribute('aria-label', v.muted ? 'Unmute microphone' : 'Mute microphone');
     sh.querySelector('.voice').classList.toggle('muted', v.muted); if (v.meter) v.meter.mute(v.muted);
-    if (v.muted) { if (v.rec) { v.discard = true; try { v.rec.stop(); } catch {} } this._vstate('Muted', 'muted'); } else if (!this._busy) this._vListen();
+    if (v.muted) { if (v.rec) { v.discard = true; try { v.rec.stop(); } catch {} } this._vstate(this._vlabel('muted'), 'muted'); } else if (!this._busy) this._vListen();
   }
   _toggleCaptions() { const v = this._voice; const sh = this.shadowRoot, b = sh.querySelector('.v-cc'); const on = v ? (v.cc = !v.cc) : true; b.classList.toggle('off', !on); b.setAttribute('aria-pressed', String(on)); b.setAttribute('aria-label', on ? 'Captions on' : 'Captions off'); sh.querySelector('.vcap').classList.toggle('off', !on); }
+  // ---- multilingual voice (docs/MEMORY_VOICE.md): the picker sets recognition + synthesis; 'auto' follows the reply's language
+  _voiceLangs() { const list = (this._cfg && Array.isArray(this._cfg.voice_languages) && this._cfg.voice_languages.length) ? this._cfg.voice_languages : Object.keys(VOICE_LANGS); return list.filter((c) => VOICE_LANGS[c]); }
+  _voiceLang() { const v = local.get('dh_voice_lang') || 'auto'; return VOICE_LANGS[v] ? v : 'auto'; }
+  _cycleVoiceLang() { const list = this._voiceLangs(); const i = list.indexOf(this._voiceLang()); const next = list[(i + 1) % list.length] || 'auto'; local.set('dh_voice_lang', next); this._paintVoiceLang(); const v = this._voice; if (v) { this._toast(VOICE_LANGS[next][1] === 'Auto' ? 'Voice language: automatic' : 'Voice language: ' + VOICE_LANGS[next][1]); if (v.state === 'listen' && v.rec) { v.discard = true; try { v.rec.stop(); } catch {} setTimeout(() => this._vListen(), 200); } } }
+  _paintVoiceLang() { const b = this.shadowRoot.querySelector('.v-lang'); if (!b) return; const c = this._voiceLang(); b.querySelector('.vl').textContent = c === 'auto' ? 'Auto' : c.toUpperCase(); b.setAttribute('aria-label', 'Voice language: ' + VOICE_LANGS[c][1] + ' (tap to change)'); }
+  _langTag(code) { const c = code && VOICE_LANGS[code] && code !== 'auto' ? code : null; return c ? VOICE_LANGS[c][0] : (navigator.language || 'en-US'); }
+  _activeLang() { const pick = this._voiceLang(); if (pick !== 'auto') return pick; const l = this._lastLang; return l && VOICE_LANGS[l] ? l : (navigator.language || 'en').slice(0, 2); }
+  _vlabel(key) { const t = VOICE_LABELS[this._activeLang()] || VOICE_LABELS.en; return t[key] || VOICE_LABELS.en[key]; }
+  _pickVoice(tag) { try { const vs = speechSynthesis.getVoices() || []; const lc = tag.toLowerCase(), base = lc.slice(0, 2); return vs.find((v) => v.lang.toLowerCase() === lc) || vs.find((v) => v.lang.toLowerCase().startsWith(base)) || null; } catch { return null; } }
   _vstate(text, mode) {
     const sh = this.shadowRoot, st = sh.querySelector('.vstatus'); const v = this._voice;
     if (st.textContent !== text) { if (this._reduced) st.textContent = text; else { st.classList.add('sw'); setTimeout(() => { st.textContent = text; st.classList.remove('sw'); }, 160); } this._announce(text); }
@@ -1209,12 +1234,12 @@ class DeepAssistant extends HTMLElement {
   }
   _captionProgress(i) { const ws = this.shadowRoot.querySelectorAll('.vcap .ca .w'); ws.forEach((w, j) => w.classList.toggle('on', j <= i)); }
   _vListen() {
-    const v = this._voice; if (!v || v.ended || v.muted) return; this._vstate('Listening…', 'listen'); const Api = this._speechApi();
-    const onText = async (text) => { if (!text || v.ended) return; v.lines.push({ who: 'you', text }); this._caption('you', text); this._vstate('Thinking…', 'think');
+    const v = this._voice; if (!v || v.ended || v.muted) return; this._vstate(this._vlabel('listen'), 'listen'); const Api = this._speechApi(); const pick = this._voiceLang();
+    const onText = async (text) => { if (!text || v.ended) return; v.lines.push({ who: 'you', text }); this._caption('you', text); this._vstate(this._vlabel('think'), 'think');
       await this._send(text); if (v.ended) return; const last = this._transcript[this._transcript.length - 1]; const reply = last && last.role === 'bot' ? plain(last.text) : '';
-      if (reply) { v.lines.push({ who: 'deep', text: reply }); this._vstate('Speaking…', 'speak'); const say = trunc(reply, 600); this._caption('deep', say, say.split(/\s+/)); await this._vSpeak(say); this._captionProgress(1e9); } if (!v.ended) this._vListen(); };
+      if (reply) { v.lines.push({ who: 'deep', text: reply }); this._vstate(this._vlabel('speak'), 'speak'); const say = trunc(reply, 600); this._caption('deep', say, say.split(/\s+/)); await this._vSpeak(say); this._captionProgress(1e9); } if (!v.ended) this._vListen(); };
     if (Api && this._cfg.stt !== 'server') {
-      const r = new Api(); r.lang = navigator.language || 'en-US'; r.interimResults = true; r.continuous = false; let got = '';
+      const r = new Api(); r.lang = this._langTag(pick); r.interimResults = true; r.continuous = false; let got = '';
       r.onresult = (e) => { let interim = ''; for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) got += t; else interim += t; } this._caption('you', (got || interim).trim()); };
       r.onerror = (e) => { if (e.error === 'not-allowed') this._vstate('Microphone access was denied.', 'idle'); };
       r.onend = () => { v.rec = null; if (v.discard) { v.discard = false; return; } if (got) onText(got.trim()); else if (!v.ended && !v.muted && !this._busy) setTimeout(() => this._vListen(), 300); };
@@ -1222,7 +1247,7 @@ class DeepAssistant extends HTMLElement {
       return;
     }
     navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => { const mr = new MediaRecorder(stream); const chunks = []; mr.ondataavailable = (e) => chunks.push(e.data);
-      mr.onstop = async () => { stream.getTracks().forEach((t) => t.stop()); v.rec = null; if (v.ended || v.discard) { v.discard = false; return; } this._vstate('Thinking…', 'think'); const fd = new FormData(); fd.append('file', new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), 'audio.webm');
+      mr.onstop = async () => { stream.getTracks().forEach((t) => t.stop()); v.rec = null; if (v.ended || v.discard) { v.discard = false; return; } this._vstate(this._vlabel('think'), 'think'); const fd = new FormData(); fd.append('file', new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), 'audio.webm'); if (pick !== 'auto') fd.append('language', pick);
         try { const r = await fetch(this._url('/stt'), { method: 'POST', headers: this._headers(false), body: fd }); const d = r.ok ? await r.json() : null; if (d && d.text) onText(d.text.trim()); else if (!v.muted) setTimeout(() => this._vListen(), 300); } catch { this._vstate('Transcription failed.', 'idle'); } };
       v.rec = mr; mr.start(); setTimeout(() => { if (mr.state === 'recording') mr.stop(); }, 6000); }).catch(() => this._vstate('Microphone access was denied.', 'idle'));
   }
@@ -1236,7 +1261,8 @@ class DeepAssistant extends HTMLElement {
             a.onended = () => resolve(); a.onerror = () => resolve(); a.play().catch(() => resolve()); return; } } catch {}
       }
       if (!('speechSynthesis' in window)) return resolve();
-      const u = new SpeechSynthesisUtterance(text); u.lang = navigator.language || 'en-US';
+      const tag = this._langTag(this._activeLang()); const u = new SpeechSynthesisUtterance(text); u.lang = tag; const voice = this._pickVoice(tag); if (voice) u.voice = voice;
+      else if (tag.slice(0, 2) !== (navigator.language || 'en').slice(0, 2) && !v.warnedVoice) { v.warnedVoice = true; this._toast('No ' + ((VOICE_LANGS[tag.slice(0, 2)] || [])[1] || tag) + ' voice is installed on this device; using the default voice'); }
       // SpeechSynthesis exposes no audio stream: word boundaries drive the captions and a synthetic pulse on the orb
       u.onboundary = (e) => { if (e.name && e.name !== 'word') return; const i = text.slice(0, e.charIndex).split(/\s+/).length - 1; this._captionProgress(i); if (v.meter) v.meter.pulse(0.55 + Math.min(0.45, ((e.charLength || 4) / 10))); };
       u.onend = () => resolve(); u.onerror = () => resolve(); speechSynthesis.cancel(); speechSynthesis.speak(u);
@@ -1285,6 +1311,7 @@ class DeepAssistant extends HTMLElement {
           else if (ev.type === 'booking') { booking = true; this._renderBooking(bot, ev); }
           else if (ev.type === 'sources') { all = ev.items || []; this._emit('sources', { items: all }); }
           else if (ev.type === 'meta') { mid = ev.message_id || null; }
+          else if (ev.type === 'lang') { this._lastLang = ev.code || null; }
           else if (ev.type === 'handover') { bot.classList.remove('skel'); this._renderHandover(bot, ev.prefill || ''); this._emit('action', { action: 'handover_requested' }); }
           else if (ev.type === 'handover_offer') { offer = true; this._emit('action', { action: 'unanswered', label: text }); }
           else if (ev.type === 'error') { fail('Something went wrong on our side. ' + (answer ? '' : 'Please try again.')); this._emit('error', { error: ev.error }); }

@@ -19,7 +19,7 @@ import re
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import conversations, digest, guidance, identity, inbox, mailer, media, nudge, store_bookings, suggestions, templates, titles, tracking
+from app import conversations, digest, guidance, identity, inbox, mailer, media, memory, nudge, store_bookings, suggestions, templates, titles, tracking
 from app.booking import availability as avail
 from app.booking import flow, ics
 from app.booking.service import BookingService
@@ -34,7 +34,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.09.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.10.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -227,7 +227,10 @@ async def chat(body: ChatIn, request: Request, x_session_id: str | None = Header
         return StreamingResponse(capped(), media_type="text/event-stream")
 
     extra, attached = media.attachments_block(body.attachments, session_id) if body.attachments else ("", [])
-    gen = respond(body.message, body.history, body.timezone, session_id, visitor=visitor, extra_context=extra, attachments=attached)
+    mem = ""
+    if settings.visitor_memory and (x_visitor_id or visitor.get("signed_in")):
+        mem = memory.prompt_block(memory.profile(x_visitor_id, visitor.get("sub") if visitor.get("signed_in") else None, session_id))
+    gen = respond(body.message, body.history, body.timezone, session_id, visitor=visitor, extra_context=extra, attachments=attached, memory=mem)
     return StreamingResponse(iterate_in_threadpool(gen), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Session-Id": session_id})
 
@@ -395,12 +398,20 @@ def tts(body: TtsIn, request: Request):
 
 
 @app.get("/me")
-def me(request: Request):
-    """What the widget may prefill for this visitor (signed-in name/email), from the X-Visitor-Token header."""
+def me(request: Request, x_visitor_id: str | None = Header(default=None), x_session_id: str | None = Header(default=None)):
+    """What the widget may prefill for this visitor (signed-in name/email from the X-Visitor-Token header) plus the
+    return-visitor memory for the device (X-Visitor-Id): greeting copy, upcoming booking, details typed before."""
     if not _origin_ok(request):
         raise HTTPException(403, "origin not allowed")
     v = _visitor(request)
-    return {k: v.get(k) for k in ("signed_in", "name", "email", "verified", "via")}
+    out = {k: v.get(k) for k in ("signed_in", "name", "email", "verified", "via")}
+    if settings.visitor_memory and (x_visitor_id or v.get("signed_in")):
+        p = memory.profile((x_visitor_id or "").strip()[:64] or None, v.get("sub") if v.get("signed_in") else None, (x_session_id or "").strip()[:64] or None)
+        out["memory"] = memory.public(p)
+        if not v.get("signed_in"):  # hints from their own earlier forms; the booking/hand-over forms prefill them, unverified
+            out["name"] = out.get("name") or p.get("name")
+            out["email"] = out.get("email") or p.get("email")
+    return out
 
 
 @app.post("/handover")
