@@ -250,9 +250,10 @@ try {
   const label = await evaluate("[...document.querySelectorAll('.dh-pro .dh-pro-reply')].map(b => b.textContent).find(t => !/book|schedule|meeting/i.test(t))");
   await evaluate(`([...document.querySelectorAll('.dh-pro .dh-pro-reply')].find(b => b.textContent === ${JSON.stringify(label)}).click(), true)`);
   await waitFor("document.querySelector('deep-assistant') && document.querySelector('deep-assistant').hasAttribute('open') && document.querySelector('deep-assistant').shadowRoot.querySelectorAll('.row.user').length >= 1", 20000, "quick reply opens the chat");
-  await sleep(500);
+  await waitFor("!document.querySelector('deep-assistant').busy", 60000, "quick reply answer"); await sleep(300);  // the bubble is a skeleton until the first token
   const first = await evaluate("document.querySelector('deep-assistant').shadowRoot.querySelector('.row.bot .msg').innerText");
   const userMsg = await evaluate("document.querySelector('deep-assistant').shadowRoot.querySelector('.row.user .msg').innerText");
+  await waitFor("!document.querySelector('deep-assistant').shadowRoot.querySelector('.welcome')", 5000, "welcome to give way").catch(() => {});
   check(first.length > 0 && await evaluate("!document.querySelector('deep-assistant').shadowRoot.querySelector('.welcome')"), "quick reply: the welcome screen gives way to the conversation");
   check(userMsg === label, `quick reply: '${label}' sent as the visitor's first message`);
   check(await evaluate("!document.querySelector('.dh-pro') && !document.getElementById('dh-assistant-btn')"), "quick reply: bubble, pills and badge are gone once the chat is open");

@@ -708,6 +708,7 @@ class DeepAssistant extends HTMLElement {
     return CONTEXT_ACTIONS[this._pageContext()].map((k) => { const x = ACTIONS[k]; return x.askPage ? { ...x, ask: x.askPage(title) } : x; });
   }
   _renderWelcome() {
+    this.$log.querySelectorAll('.welcome').forEach((x) => x.remove());  // idempotent: open + restore + /me may each ask for it
     const w = document.createElement('div'); w.className = 'welcome'; const first = this._firstName(); const ctx = this.getAttribute('suggestions') ? 'custom' : this._pageContext();
     const mem = (this._me && this._me.memory && this._me.memory.returning) ? this._me.memory : null;  // return-visitor memory (docs/MEMORY_VOICE.md)
     const h2 = mem && mem.headline ? mem.headline : (first ? `Hi ${first}! I'm Deep 👋` : "Hi! I'm Deep 👋"); const p = this.getAttribute('greeting') || (mem && mem.line) || INTRO;
