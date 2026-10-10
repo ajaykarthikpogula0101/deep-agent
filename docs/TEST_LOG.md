@@ -1,5 +1,21 @@
 # Test log
 
+## 2026-10-11 — proactive outreach rules (version 2026.10.11.1)
+
+docs/OUTREACH.md. `app/outreach.py` (rules, matcher, cooldown, attribution, stats, 5 starter rules), tables
+`outreach_rules` / `outreach_events`, `POST /outreach/check` + `/outreach/event`, Console → Outreach (table with
+shown/opened/chatted/booked, add/edit form, Try it, recent firings, generic-greeting switch). `static/widget.js`
+keeps the visit activity (pages, visible seconds, scroll, first referrer) and asks the server at load and at the
+thresholds it is told to wait for; a rule bubble replaces the generic one.
+
+```
+pytest: 124 passed, 1 skipped (tests/test_outreach.py: 8, incl. the Postgres round trip)
+HTTP probes on 8089: new visitor on /company/lake-b2b after 50 s -> rule 3 fires (event recorded); same visitor
+  again -> null (cooldown); /journey.html#day-200 at 5 s -> recheck {dwell_s: 60, scroll_pct: 85}
+browser suite: see the run below (outreach section: rule waits 3 s on /site, replaces the generic greeting,
+  opens the chat with its intro, console counts the open against the session, disabled rule stays quiet)
+```
+
 ## 2026-10-07 — agent UI: activity row, streaming animations, living orb call view (version 2026.10.07.2)
 
 docs/AGENT_UI.md. Backend `status` events (`app/chat.py`), new `static/deep-orb.js` (canvas orb + Web Audio meter),

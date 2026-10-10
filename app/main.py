@@ -19,7 +19,7 @@ import re
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import conversations, digest, guidance, identity, inbox, mailer, media, memory, nudge, store_bookings, suggestions, templates, titles, tracking
+from app import conversations, digest, guidance, identity, inbox, mailer, media, memory, nudge, outreach, store_bookings, suggestions, templates, titles, tracking
 from app.booking import availability as avail
 from app.booking import flow, ics
 from app.booking.service import BookingService
@@ -34,7 +34,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.10.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.11.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -63,6 +63,7 @@ _scheduler = BackgroundScheduler()
 _track_limiter = RateLimiter(per_minute=30, per_day=2000)  # one beacon per chat open; separate from the chat budget
 _booking_limiter = RateLimiter(per_minute=4, per_day=12)     # confirm attempts per session (plus the per-email active cap)
 _booking_service = BookingService()                         # shared: schedule cache + Zoom token
+_outreach_limiter = RateLimiter(per_minute=60, per_day=3000)  # a few checks per page view (app/outreach.py)
 
 
 @app.on_event("startup")
@@ -78,6 +79,8 @@ def _startup() -> None:
     if settings.nudge_enabled:  # hourly: remind visitors whose Zoom hand-off is still unconfirmed (app/nudge.py)
         _scheduler.add_job(nudge.run, CronTrigger.from_crontab("15 * * * *", timezone=settings.host_timezone),
                            id="nudges", replace_existing=True, misfire_grace_time=1800)
+    if settings.outreach_enabled:  # starter outreach rules, once (app/outreach.py)
+        outreach.seed_if_empty()
     _scheduler.start()
     log.info("recrawl scheduled: '%s' (%s); tracking=%s geo=%s ip_mode=%s retention=%sd",
              settings.recrawl_cron, settings.recrawl_tz, settings.tracking_enabled, settings.geoip_provider,
@@ -110,6 +113,53 @@ class TrackIn(BaseModel):
     timezone: str | None = Field(default=None, max_length=64)
     lang: str | None = Field(default=None, max_length=16)
     screen: str | None = Field(default=None, max_length=16)
+
+
+class OutreachCheckIn(BaseModel):
+    """Activity snapshot from the loader (docs/OUTREACH.md). Nothing here is stored except the page of a firing."""
+    visitor_id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    page: str | None = Field(default=None, max_length=2000)
+    path: str | None = Field(default=None, max_length=500)
+    title: str | None = Field(default=None, max_length=200)
+    first_page: str | None = Field(default=None, max_length=2000)
+    pages: list[str] = Field(default_factory=list, max_length=60)
+    dwell_s: int = Field(default=0, ge=0, le=1_000_000)
+    scroll_pct: int = Field(default=0, ge=0, le=100)
+    referrer: str | None = Field(default=None, max_length=2000)
+    visits: int = Field(default=0, ge=0, le=100_000)
+    shown: list[int] = Field(default_factory=list, max_length=60)
+
+
+class OutreachEventIn(BaseModel):
+    event_id: int
+    action: str = Field(pattern=r"^(opened|dismissed)$")
+    visitor_id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    session_id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class OutreachRuleIn(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    enabled: bool | None = None
+    priority: int | None = Field(default=None, ge=1, le=100)
+    cooldown_hours: int | None = Field(default=None, ge=0, le=720)
+    trigger: dict | None = None
+    message: dict | None = None
+
+
+class OutreachSettingsIn(BaseModel):
+    default_greeting: bool
+
+
+class OutreachTryIn(BaseModel):
+    """Dry run from the console: which rule would fire for this activity (nothing is recorded)."""
+    path: str = Field(default="/", max_length=500)
+    pages: list[str] = Field(default_factory=list, max_length=60)
+    dwell_s: int = Field(default=0, ge=0, le=100_000)
+    scroll_pct: int = Field(default=0, ge=0, le=100)
+    referrer: str | None = Field(default=None, max_length=2000)
+    visits: int = Field(default=1, ge=0, le=100_000)
+    booking: bool = False
+    first_name: str | None = Field(default=None, max_length=60)
 
 
 class FeedbackIn(BaseModel):
@@ -198,6 +248,35 @@ async def track(body: TrackIn, request: Request):
     except Exception as e:  # a tracking failure is never the visitor's problem
         log.warning("track failed: %s", e)
         return {"ok": False, "tracked": False}
+
+
+@app.post("/outreach/check")
+def outreach_check(body: OutreachCheckIn, request: Request, x_visitor_id: str | None = Header(default=None)):
+    """Which outreach rule, if any, should open the greeting bubble now (docs/OUTREACH.md). Called by the loader on
+    page load and again when a time-on-page or scroll threshold a rule waits for is reached."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    if not settings.outreach_enabled:
+        return {"rule": None, "recheck": {}, "default": True, "enabled": False}
+    if not _outreach_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    vid = (body.visitor_id or x_visitor_id or "").strip()[:64] or None
+    return {**outreach.check(body.model_dump(), vid), "enabled": True}
+
+
+@app.post("/outreach/event")
+def outreach_event(body: OutreachEventIn, request: Request, x_visitor_id: str | None = Header(default=None)):
+    """The bubble a rule opened was tapped (into chat session `session_id`) or dismissed."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    if not _outreach_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    try:
+        ok = outreach.mark(body.event_id, body.action, body.visitor_id or x_visitor_id, body.session_id)
+    except Exception as e:
+        log.warning("outreach event failed: %s", e)
+        ok = False
+    return {"ok": ok}
 
 
 @app.post("/chat")
@@ -667,6 +746,71 @@ def admin_suggestions(refresh: bool = False, x_admin_token: str | None = Header(
 
 
 # ---- email templates
+@app.get("/admin/outreach")
+def admin_outreach(days: int = 30, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    rules = outreach.list_rules()
+    st = outreach.stats(days)
+    for r in rules:
+        r["summary"] = outreach.summary(r["trigger"])
+        r["stats"] = st["by_rule"].get(r["id"], {"fired": 0, "opened": 0, "dismissed": 0, "chatted": 0, "booked": 0})
+    return {"enabled": settings.outreach_enabled, "default_greeting": outreach.default_greeting_enabled(), "rules": rules,
+            "recent": st["recent"], "days": st["days"], "channels": list(outreach.CHANNELS), "max_rules": outreach.MAX_RULES}
+
+
+@app.post("/admin/outreach/rules")
+def admin_outreach_add(body: OutreachRuleIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    try:
+        r = outreach.create_rule(body.model_dump(exclude_none=True))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    r["summary"] = outreach.summary(r["trigger"])
+    return r
+
+
+@app.patch("/admin/outreach/rules/{rule_id}")
+def admin_outreach_patch(rule_id: int, body: OutreachRuleIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    try:
+        r = outreach.update_rule(rule_id, body.model_dump(exclude_none=True))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not r:
+        raise HTTPException(404, "no such rule")
+    r["summary"] = outreach.summary(r["trigger"])
+    return r
+
+
+@app.delete("/admin/outreach/rules/{rule_id}")
+def admin_outreach_delete(rule_id: int, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return {"ok": outreach.delete_rule(rule_id)}
+
+
+@app.put("/admin/outreach/settings")
+def admin_outreach_settings(body: OutreachSettingsIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    outreach.set_default_greeting(body.default_greeting)
+    return {"default_greeting": outreach.default_greeting_enabled()}
+
+
+@app.post("/admin/outreach/try")
+def admin_outreach_try(body: OutreachTryIn, x_admin_token: str | None = Header(default=None)):
+    """Dry run: which rule would fire for this activity. Cooldowns and earlier firings are ignored; nothing is recorded."""
+    _require_admin(x_admin_token)
+    facts = {"returning": body.visits > 1, "visits": body.visits, "name": body.first_name,
+             "upcoming": {"schedule_name": "Discovery Call", "label_visitor": "Thu 15 Oct, 16:30"} if body.booking else None}
+    payload = {"path": body.path, "page": body.path, "pages": body.pages, "dwell_s": body.dwell_s, "scroll_pct": body.scroll_pct,
+               "referrer": body.referrer, "first_page": body.path, "visits": body.visits}
+    ctx = outreach.context(payload, facts)
+    rules = [r for r in outreach.list_rules() if r["enabled"]]
+    rows = [{"id": r["id"], "name": r["name"], **outreach.evaluate(r["trigger"], ctx)} for r in rules]
+    hit = next((r for r, row in zip(rules, rows) if row["match"]), None)
+    return {"context": {k: ctx[k] for k in ("path", "pages", "dwell_s", "scroll_pct", "referrer_host", "channel", "returning", "booking")},
+            "fires": outreach.public_message(hit, ctx) if hit else None, "rules": rows, "default": outreach.default_greeting_enabled()}
+
+
 @app.get("/admin/email-templates")
 def admin_templates_get(x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)

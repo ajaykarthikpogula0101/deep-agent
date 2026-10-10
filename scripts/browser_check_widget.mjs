@@ -228,6 +228,9 @@ try {
   else check(false, "admin sessions reachable");
 
   // ---- the public-site path: one script tag (widget.js) -> launcher button -> component mounted on first tap
+  // a fresh device first: the /demo conversations above made this visitor id "returning", which the seeded "Welcome back" outreach rule would greet
+  const freshVisitor = () => evaluate("(localStorage.setItem('dh_vid', crypto.randomUUID()), localStorage.removeItem('dh_visits'), sessionStorage.clear(), true)");
+  await freshVisitor();
   await call("Page.navigate", { url: `${BASE}/site` });
   await waitFor("document.readyState === 'complete' && !!document.getElementById('dh-assistant-btn')", 20000, "embed page");
   check(await evaluate("!document.querySelector('deep-assistant') && !!document.getElementById('dh-assistant-btn') && !document.querySelector('.dh-pro')"), "site embed: only the launcher button exists before the first tap (no greeting yet)");
@@ -261,7 +264,7 @@ try {
   check(await evaluate("[...document.querySelector('deep-assistant').shadowRoot.querySelectorAll('.row.bot .msg')].pop().innerText.length > 40"), "quick reply: answer streamed through the normal flow");
   await shot("site_greeting.png");
   // fresh page for the plain launcher path
-  await evaluate("(sessionStorage.clear(), true)");
+  await freshVisitor();
   await call("Page.navigate", { url: `${BASE}/site?plain=1` });
   await waitFor("document.readyState === 'complete' && !!document.getElementById('dh-assistant-btn')", 20000, "embed page");
   await evaluate("(document.getElementById('dh-assistant-btn').click(), true)");
@@ -274,6 +277,47 @@ try {
   const t = await evaluate("[...document.querySelector('deep-assistant').shadowRoot.querySelectorAll('.row.bot .msg')].pop().innerText.slice(0, 120)");
   check(/Lake B2B/i.test(t), "site embed: window.deepAssistant.ask() produced an answer: " + t.slice(0, 60).replace(/\n/g, " ") + "…");
   await shot("site_embed.png");
+
+  // ---- proactive outreach rules: a rule that waits for 3 s on /site replaces the generic greeting, is attributed when opened, and can be tried/disabled from the console
+  const AH = { "X-Admin-Token": TOKEN, "Content-Type": "application/json" };
+  let orRule = null;
+  try {
+    const mk = await fetch(`${BASE}/admin/outreach/rules`, { method: "POST", headers: AH, body: JSON.stringify({ name: "browser test rule", priority: 1, cooldown_hours: 0,
+      trigger: { page: "/site", dwell_s: 3 }, message: { title: "Outreach test 🎯", text: "Still here, {first_name}? Want a walkthrough?", intro: "Hello from the test rule", replies: ["Book a walkthrough", "What is LakeB2B?"] } }) });
+    orRule = mk.ok ? await mk.json() : null;
+    check(orRule && orRule.id && orRule.summary === "anyone · on /site · after 3 s on the page", "outreach: rule created through the console API with a readable summary");
+    const tr = await (await fetch(`${BASE}/admin/outreach/try`, { method: "POST", headers: AH, body: JSON.stringify({ path: "/site", dwell_s: 10, first_name: "Ada" }) })).json();
+    check(tr.fires && tr.fires.name === "browser test rule" && tr.fires.text === "Still here, Ada? Want a walkthrough?" && tr.fires.replies[0].book === true, "outreach: 'try it' names the rule that would fire, with the first name filled in");
+    const tr2 = await (await fetch(`${BASE}/admin/outreach/try`, { method: "POST", headers: AH, body: JSON.stringify({ path: "/site", dwell_s: 1 }) })).json();
+    check(!tr2.fires && tr2.rules.some((r) => r.name === "browser test rule" && r.wait && r.wait.dwell_s === 3), "outreach: 'try it' explains the rule is waiting for 3 s on the page");
+    await freshVisitor();
+    await call("Page.navigate", { url: `${BASE}/site?outreach=1` });
+    await waitFor("document.readyState === 'complete' && !!document.getElementById('dh-assistant-btn')", 20000, "embed page");
+    await waitFor("!!document.querySelector('.dh-pro .dh-pro-bubble')", 10000, "generic greeting first");
+    check(await evaluate("/Hi! I.m Deep/.test(document.querySelector('.dh-pro-title').textContent) && !document.querySelector('.dh-pro-rule')"), "outreach: the generic greeting shows first while the rule waits for its 3 s");
+    await waitFor("!!document.querySelector('.dh-pro-rule')", 12000, "rule bubble");
+    check(await evaluate("document.querySelector('.dh-pro-rule .dh-pro-title').textContent === 'Outreach test 🎯' && /Still here\\? Want a walkthrough\\?/.test(document.querySelector('.dh-pro-rule .dh-pro-q').textContent) && document.querySelectorAll('.dh-pro').length === 1 && document.querySelectorAll('.dh-pro-rule .dh-pro-reply').length === 2"),
+      "outreach: after 3 s the rule bubble replaces the generic one (title, message with the empty name tidied away, two replies)");
+    check(await evaluate("(() => { const d = window.deepAssistant.lastCheck(); return d && d.rule && d.rule.event_id > 0 && d.rule.id === " + orRule.id + "; })()"), "outreach: the loader recorded the firing (event id from the server)");
+    await shot("site_outreach.png");
+    await evaluate("(document.querySelector('.dh-pro-rule .dh-pro-bubble').click(), true)");
+    await waitFor("document.querySelector('deep-assistant') && document.querySelector('deep-assistant').hasAttribute('open') && document.querySelector('deep-assistant').shadowRoot.querySelector('.welcome p')", 20000, "chat opens from the rule bubble");
+    await sleep(600);
+    check(await evaluate("document.querySelector('deep-assistant').shadowRoot.querySelector('.welcome p').textContent === 'Hello from the test rule' && sessionStorage.getItem('dh_greeting_dismissed') === '2'"), "outreach: tapping the bubble opens the chat with the rule's intro line; outreach is over for this session");
+    await sleep(800);
+    const st = await (await fetch(`${BASE}/admin/outreach?days=1`, { headers: AH })).json();
+    const mine = st.rules.find((r) => r.id === orRule.id);
+    check(mine && mine.stats.fired >= 1 && mine.stats.opened >= 1 && st.recent.some((e) => e.rule_id === orRule.id && e.opened && e.session_id), "outreach: console stats count the firing and the open, linked to the chat session");
+    const off = await fetch(`${BASE}/admin/outreach/rules/${orRule.id}`, { method: "PATCH", headers: AH, body: JSON.stringify({ enabled: false }) });
+    check(off.ok && (await off.json()).enabled === false, "outreach: rule switched off from the console");
+    await freshVisitor();
+    await call("Page.navigate", { url: `${BASE}/site?outreach=2` });
+    await waitFor("!!document.querySelector('.dh-pro .dh-pro-bubble')", 10000, "generic greeting");
+    await sleep(5000);
+    check(await evaluate("!document.querySelector('.dh-pro-rule') && /Hi! I.m Deep/.test(document.querySelector('.dh-pro-title').textContent)"), "outreach: a disabled rule stays quiet; the generic greeting remains");
+  } finally {
+    if (orRule && orRule.id) { const del = await fetch(`${BASE}/admin/outreach/rules/${orRule.id}`, { method: "DELETE", headers: AH }); check(del.ok, "outreach: test rule deleted again"); }
+  }
 } catch (e) { console.error("ERROR", e.stack || e.message); failures++; try { await shot("widget_error.png"); } catch {} }
 finally { try { ws && ws.close(); } catch {} proc.kill(); await sleep(300); }  // let the socket close before exiting
 console.log(failures ? `${failures} check(s) failed` : "all widget checks passed");
