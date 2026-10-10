@@ -626,7 +626,8 @@ class DeepAssistant extends HTMLElement {
     sh.querySelector('.v-min').onclick = () => this._showVoice(false); sh.querySelector('.vpill').onclick = () => this.startVoice(); sh.querySelector('.v-cc').onclick = () => this._toggleCaptions();
     this._onVis = () => { const v = this._voice; if (v && v.orb) { if (document.visibilityState === 'hidden') v.orb.pause(); else if (this.hasAttribute('open') || this.getAttribute('mode') !== 'launcher') v.orb.resume(); } };
     document.addEventListener('visibilitychange', this._onVis);
-    this._loadMe().then(() => { this._restore(); this._refreshBadge(); }); this._autosize(); this._syncSend(); this._track(); this._health(); this._loadConfig();
+    this._me = { signed_in: false, name: this.getAttribute('user-name'), email: this.getAttribute('user-email'), verified: false }; this._restore();  // paint at once; /me then refreshes the welcome (memory) without touching a live conversation
+    this._loadMe().then(() => { this._refreshWelcome(); this._refreshBadge(); }); this._autosize(); this._syncSend(); this._track(); this._health(); this._loadConfig();
     console.info('deep-assistant v' + VERSION + ' ready (api ' + this.api + ')');
     this._emit('ready', { sessionId: this._sid, version: VERSION });
   }

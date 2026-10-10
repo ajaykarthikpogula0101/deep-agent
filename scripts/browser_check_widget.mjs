@@ -111,13 +111,6 @@ try {
   check(/^Worked for \d+(\.\d)?s · \d sources?$/.test(ag.worked) && !ag.activity && !ag.skel && !ag.streaming, `agent: activity row collapsed into '${ag.worked}'`);
   check(ag.steps.includes('Thinking') && ag.steps.includes('Searching deependhq.com') && ag.steps.some(x => /^Reading \d sources?$/.test(x)) && ag.steps.includes('Writing') && ag.steps.includes('Done'), `agent: real backend steps listed (${ag.steps.join(' → ')})`);
   check(ag.sourcesRow && ag.toolsRow, "agent: sources row and action icons under the answer");
-  await sleep(8000);  // the title job runs in the background after the answer
-  await evaluate(P("panel", "(el.newChat(), true)")); await waitFor(P("panel", "/Welcome back/.test((sh.querySelector('.welcome h2') || {}).textContent || '')"), 15000, "welcome-back greeting"); await sleep(200);
-  const wb = await evaluate(P("panel", "(() => { const w = sh.querySelector('.welcome'); return { h2: w.querySelector('h2').textContent, p: w.querySelector('p').textContent, back: w.classList.contains('back'), mem: el._me && el._me.memory && el._me.memory.returning }; })()"));
-  check(/^Welcome back/.test(wb.h2) && wb.back && wb.mem && /Last time|Good to see you again|Your /.test(wb.p), `memory: returning visitor greeting '${wb.h2}' · '${wb.p.slice(0, 70)}'`);
-  await evaluate(P("panel", "(el.forgetMe(), true)")); await sleep(1200);
-  const fg = await evaluate(P("panel", "(() => { const w = sh.querySelector('.welcome'); return { h2: w ? w.querySelector('h2').textContent : '', mem: !!(el._me && el._me.memory && el._me.memory.returning) }; })()"));
-  check(/^Hi! I'm Deep/.test(fg.h2) && !fg.mem, `memory: 'Forget me on this device' returns to the first-visit greeting ('${fg.h2}')`);
 
   check(b.tools >= 3, "thumbs and copy tools rendered");
   check(await evaluate(P("panel", "(() => { const m = [...sh.querySelectorAll('.row.bot .msg')].pop(); const cs = getComputedStyle(m); return cs.borderTopLeftRadius === '6px' && cs.backgroundColor === 'rgb(255, 255, 255)' && /Deep · /.test(m.parentElement.querySelector('.meta').textContent); })()")), "restyle: white bot bubble with a 6px tail corner and a 'Deep · time' meta line");
@@ -182,6 +175,14 @@ try {
 
   await evaluate(P("panel", "(el.showView('chat'), true)")); await sleep(200);
 
+// return-visitor memory (starts a new chat, so it runs after the History and welcome-action checks)
+  await sleep(8000);  // the title job runs in the background after the answer
+  await evaluate(P("panel", "(el.newChat(), true)")); await waitFor(P("panel", "/Welcome back/.test((sh.querySelector('.welcome h2') || {}).textContent || '')"), 15000, "welcome-back greeting"); await sleep(200);
+  const wb = await evaluate(P("panel", "(() => { const w = sh.querySelector('.welcome'); return { h2: w.querySelector('h2').textContent, p: w.querySelector('p').textContent, back: w.classList.contains('back'), mem: el._me && el._me.memory && el._me.memory.returning }; })()"));
+  check(/^Welcome back/.test(wb.h2) && wb.back && wb.mem && /Last time|Good to see you again|Your /.test(wb.p), `memory: returning visitor greeting '${wb.h2}' · '${wb.p.slice(0, 70)}'`);
+  await evaluate(P("panel", "(el.forgetMe(), true)")); await sleep(1200);
+  const fg = await evaluate(P("panel", "(() => { const w = sh.querySelector('.welcome'); return { h2: w ? w.querySelector('h2').textContent : '', mem: !!(el._me && el._me.memory && el._me.memory.returning) }; })()"));
+  check(/^Hi! I'm Deep/.test(fg.h2) && !fg.mem, `memory: 'Forget me on this device' returns to the first-visit greeting ('${fg.h2}')`);
   // signed-in launcher: token from /demo/token, identity visible, booking skips name/email
   await waitFor(P("launcher", "el.getAttribute('token')"), 10000, "demo token"); await sleep(600);
   const me = await evaluate(P("launcher", "el._me"));
