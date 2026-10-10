@@ -297,6 +297,7 @@ def update_rule(rule_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
 def delete_rule(rule_id: int) -> bool:
     with conn() as c:
         n = c.execute("DELETE FROM outreach_rules WHERE id = %s", (rule_id,)).rowcount
+        c.execute("DELETE FROM outreach_events WHERE rule_id = %s", (rule_id,))  # its history goes with it
         c.commit()
     invalidate()
     return n > 0

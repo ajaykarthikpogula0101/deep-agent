@@ -12,7 +12,7 @@ thresholds it is told to wait for; a rule bubble replaces the generic one.
 pytest: 124 passed, 1 skipped (tests/test_outreach.py: 8, incl. the Postgres round trip)
 HTTP probes on 8089: new visitor on /company/lake-b2b after 50 s -> rule 3 fires (event recorded); same visitor
   again -> null (cooldown); /journey.html#day-200 at 5 s -> recheck {dwell_s: 60, scroll_pct: 85}
-browser suite: see the run below (outreach section: rule waits 3 s on /site, replaces the generic greeting,
+browser suite (headless Edge, 8089): all 105 widget checks passed (94 + 11 outreach: rule waits 3 s on /site, replaces the generic greeting,
   opens the chat with its intro, console counts the open against the session, disabled rule stays quiet)
 ```
 
