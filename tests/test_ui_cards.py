@@ -263,7 +263,8 @@ def _lib_components() -> list[str]:
 
 def test_prompt_section_content_and_trigger_policy(monkeypatch):
     sec = ui_cards.prompt_section()
-    assert sec.startswith("\n\nANSWER CARD (optional)") and sec.endswith("\n") and not sec.endswith("\n\n")
+    assert sec.startswith("\n\nANSWER CARD. After your prose answer, add exactly ONE fenced block") and sec.endswith("\n") and not sec.endswith("\n\n")
+    assert "do not skip it" in sec and "Do NOT add a card for refusals" in sec  # the card is expected for structured answers, never for the skip list
     for name in _lib_components():
         assert re.search(rf"^{name}\(", sec, re.M), name
     assert "@ToAssistant" in sec and "@OpenUrl" in sec and "any @ToAssistant argument is ignored" in sec
