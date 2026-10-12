@@ -541,9 +541,20 @@ def drive_script(b, task: str, p: dict[str, Any], dry_run: bool, log: list[str])
 
 
 # ---------------------------------------------------------------- the run
+class StepLog(list):
+    """Step lines prefixed with seconds since the run started, so slow stages show up in the result."""
+
+    def __init__(self, t0: float):
+        super().__init__()
+        self.t0 = t0
+
+    def append(self, item: str) -> None:  # type: ignore[override]
+        super().append(f"{time.perf_counter() - self.t0:5.1f}s {item}")
+
+
 def run(task: str, p: dict[str, Any]) -> dict[str, Any]:
     t0 = time.perf_counter()
-    log: list[str] = []
+    log: list[str] = StepLog(t0)
     driver = (p.get("driver") or os.environ.get("BROWSER_BOOKING_DRIVER") or "auto").lower()
     if driver == "auto":
         driver = "jev" if os.environ.get("TYPESAFE_API_KEY") else "script"
@@ -558,7 +569,9 @@ def run(task: str, p: dict[str, Any]) -> dict[str, Any]:
     os.environ.setdefault("BU_NAME", "deep-zoom")
     try:
         with OwnedBrowser():
+            log.append("browser up")
             b = open_page(p["url"], tz)
+            log.append("page open")
             try:
                 if task == "reschedule":  # the manage page shows Reschedule / Cancel first; Reschedule opens the calendar
                     page = observe(b, lambda pg: has_slots(pg) or any(re.fullmatch(r"\s*reschedule\s*", a["label"], re.I) for a in clicks(pg)), timeout=12)
