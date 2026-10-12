@@ -13,6 +13,8 @@ pytest: tests/test_browser_booking.py +1 (hand-off reschedule books through the 
   taken slot -> alternatives)
 live rows from the user's widget session: bookings 61 and 62 made by the worker on Zoom (method browser, links
   captured); booking 59 (hand-off) rescheduled twice through the chat on the old re-hold path
+widget suite (8089, BROWSER_BOOKING_ENABLED=false): all 110 checks pass after fixing a /me loader race (the identity
+  object was reset before the server answered; the extra refreshes after a booking exposed it)
 ```
 
 ## 2026-10-12 — browser booking + reschedule on the public Zoom Scheduler page (version 2026.10.12.1)

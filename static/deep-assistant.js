@@ -684,9 +684,10 @@ class DeepAssistant extends HTMLElement {
   }
   async _loadMe() {
     const hintName = this.getAttribute('user-name'), hintEmail = this.getAttribute('user-email');
-    this._me = { signed_in: false, name: hintName, email: hintEmail, verified: false };
-    if (this.api) { try { const r = await fetch(this._url('/me'), { headers: this._headers(false) }); if (r.ok) { const d = await r.json(); this._me = { ...d, name: d.name || hintName, email: d.email || hintEmail }; } } catch {} }
-    if (!this._me.name && hintName) this._me.name = hintName; if (!this._me.email && hintEmail) this._me.email = hintEmail;
+    let next = this._me || { signed_in: false, name: hintName, email: hintEmail, verified: false };  // keep what we have until the server answers
+    if (this.api) { try { const r = await fetch(this._url('/me'), { headers: this._headers(false) }); if (r.ok) { const d = await r.json(); next = { ...d, name: d.name || hintName, email: d.email || hintEmail }; } } catch {} }
+    if (!next.name && hintName) next.name = hintName; if (!next.email && hintEmail) next.email = hintEmail;
+    this._me = next;
   }
   _firstName() { return (this._me && this._me.name) ? String(this._me.name).trim().split(/\s+/)[0] : ''; }
   _track() {
