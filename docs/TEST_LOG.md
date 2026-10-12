@@ -29,8 +29,15 @@ LIVE booking on Deep's real calendar (user-authorised, run by the user): Fri 23 
   Findings: Reschedule/Cancel on the confirmation page are buttons, not links (links came back empty -> the worker
   now presses Reschedule to record its URL, then goes back); the model kept choosing WAIT after Book (15 steps) ->
   the worker now stops the loop as soon as the page verifies after the final click.
-NOT yet run: reschedule and cancel of that booking (links from Zoom's confirmation email), then the second
-  end-to-end cycle with the new link capture.
+manage link from Zoom's email (https://scheduler.zoom.us/manage/<token>): Reschedule -> /manage/<token>/rescheduling
+  with the same calendar; Cancel -> inline form 'Why are you canceling this meeting? (Optional)' + 'Cancel Appointment'.
+first live reschedule attempt (user-run) failed before touching Zoom: a browser-harness daemon left over from the
+  booking run (bound to a closed browser) -> the worker now stops the daemon before and after every run; then a
+  StalePage on the calendar click -> every code-driven click/fill retries after re-observing (act_retry).
+reschedule DRY run on the manage link (jev driver): Reschedule -> day -> 'Select slot on 22/10/2026, 21:00:00' ->
+  confirm screen read 'Thursday, October 22, 2026, 21:00 - 21:15 Friday, October 23, 2026, 21:30 - 21:45 ... Back
+  Reschedule'; stopped before the button. 94 s (daemon start + observes; tuning later).
+NOT yet run: the real reschedule + cancel (user-run), then the second end-to-end cycle with automatic link capture.
 ```
 
 ## 2026-10-11 — proactive outreach rules (version 2026.10.11.1)

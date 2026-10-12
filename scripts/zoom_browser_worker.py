@@ -180,8 +180,25 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
+def stop_daemon(log: list[str] | None = None) -> None:
+    """browser-harness keeps one background daemon per BU_NAME, bound to the browser it first connected to. Our browser
+    is new on every run, so a daemon left over from the previous run would answer with timeouts: stop it before and
+    after each run."""
+    try:
+        from browser_harness.admin import daemon_alive, restart_daemon
+
+        name = os.environ.get("BU_NAME") or "default"
+        if daemon_alive(name):
+            restart_daemon(name)  # despite the name, this only stops it; the next Browser() spawns a fresh one
+            if log is not None:
+                log.append("stopped a leftover browser-harness daemon")
+    except Exception as e:  # pragma: no cover
+        if log is not None:
+            log.append(f"daemon stop skipped: {type(e).__name__}")
+
+
 class OwnedBrowser:
-    """A headless browser launched for this run on its own profile, torn down afterwards."""
+    """A headless browser launched for this run on its own profile, torn down afterwards (with its daemon)."""
 
     def __init__(self) -> None:
         self.proc = None
@@ -189,6 +206,7 @@ class OwnedBrowser:
         self.url = os.environ.get("JEV_CDP_URL", "").strip()
 
     def __enter__(self) -> "OwnedBrowser":
+        stop_daemon()
         if self.url:
             os.environ["BU_CDP_URL"] = self.url
             return self
@@ -216,6 +234,7 @@ class OwnedBrowser:
         return self
 
     def __exit__(self, *_a) -> None:
+        stop_daemon()
         if self.proc:
             try:
                 self.proc.terminate()
@@ -255,14 +274,50 @@ def open_page(url: str, tz: str):
     return b
 
 
+def safe_observe(b, tries: int = 6):
+    """jev's observe() retries stale pages but not a daemon timeout, which happens when a click starts a navigation and
+    the post-input wait promise dies with the old document. Drop that pending wait and observe again."""
+    for i in range(tries):
+        try:
+            return b.observe(screenshot=False)
+        except Exception:
+            b.after_input = None
+            if i == tries - 1:
+                raise
+            time.sleep(1.0)
+
+
 def observe(b, want=None, timeout=15.0):
     """Observe until `want(page)` holds (the React app draws its controls after load)."""
     deadline = time.monotonic() + timeout
-    page = b.observe(screenshot=False)
+    page = safe_observe(b)
     while want and not want(page) and time.monotonic() < deadline:
         time.sleep(0.3)
-        page = b.observe(screenshot=False)
+        page = safe_observe(b)
     return page
+
+
+def act_retry(b, page, pick, text=None, tries=4):
+    """pick(page) -> an observed action or None. jev raises StalePage BEFORE any input when the page changed since the
+    observation (the calendar re-rendering, a loading spinner), so observing again and retrying is safe."""
+    from jev_ultrafast.browser import StalePage
+
+    for i in range(tries):
+        a = pick(page)
+        if not a:
+            return page, None
+        try:
+            if text is not None:
+                b.act(a, page, text=text)
+            else:
+                b.act(a, page)
+            return page, a
+        except StalePage:
+            if i == tries - 1:
+                raise
+            time.sleep(0.7)
+            page = safe_observe(b)
+    return page, None
 
 
 def clicks(page) -> list[dict]:
@@ -310,25 +365,26 @@ def select_slot(b, start: datetime, log: list[str]) -> tuple[Any, str | None]:
     """Click the wanted slot. Uses the month calendar (and next month) to reach other weeks. Returns (page, error)."""
     page = observe(b, has_slots, timeout=15)
     for attempt in range(4):
-        hit = next((a for a in clicks(page) if slot_label_matches(a["label"], start)), None)
+        page, hit = act_retry(b, page, lambda pg: next((a for a in clicks(pg) if slot_label_matches(a["label"], start)), None))
         if hit:
             log.append(f"slot: {hit['label']}")
-            b.act(hit, page)
             time.sleep(0.8)
             return observe(b, lambda p: bool(fills(p)) or not has_slots(p), timeout=10), None
-        day = next((a for a in clicks(page) if date_option_matches(a["label"], start)), None)
+        page, day = act_retry(b, page, lambda pg: next((a for a in clicks(pg) if date_option_matches(a["label"], start)), None))
         if day:
             log.append(f"day: {day['label']}")
-            b.act(day, page)
             time.sleep(0.8)
             page = observe(b, has_slots, timeout=10)
             if not any(slot_label_matches(a["label"], start) for a in clicks(page)):
                 return page, "slot_unavailable"
             continue
-        nxt = next((a for a in clicks(page) if "nextmonth" in a["label"].lower().replace(" ", "") or a["label"].lower() in ("next month", "next")), None)
-        if nxt and attempt < 3:
+
+        def is_next(a):
+            return "nextmonth" in a["label"].lower().replace(" ", "") or a["label"].lower() in ("next month", "next")
+
+        page, nxt = act_retry(b, page, lambda pg: next((a for a in clicks(pg) if is_next(a)), None)) if attempt < 3 else (page, None)
+        if nxt:
             log.append("calendar: next month")
-            b.act(nxt, page)
             time.sleep(0.8)
             page = observe(b, lambda p: bool(clicks(p)), timeout=10)
             continue
@@ -390,12 +446,11 @@ def capture_manage_links(b, log: list[str]) -> dict[str, str]:
     Cancel is never pressed here. The page is navigated back afterwards."""
     out: dict[str, str] = {}
     try:
-        page = b.observe(screenshot=False)
+        page = safe_observe(b)
         before = b.evaluate("location.href")
-        btn = next((a for a in clicks(page) if re.fullmatch(r"\s*reschedule\s*", a["label"], re.I)), None)
+        page, btn = act_retry(b, page, lambda pg: next((a for a in clicks(pg) if re.fullmatch(r"\s*reschedule\s*", a["label"], re.I)), None))
         if not btn:
             return out
-        b.act(btn, page)
         deadline = time.monotonic() + 8
         href = before
         while time.monotonic() < deadline:
@@ -417,23 +472,20 @@ def capture_manage_links(b, log: list[str]) -> dict[str, str]:
             time.sleep(1.0)
         else:
             log.append("reschedule button did not change the URL; no durable link captured")
-            page = b.observe(screenshot=False)
-            back = next((a for a in clicks(page) if re.fullmatch(r"\s*back\s*", a["label"], re.I)), None)
-            if back:
-                b.act(back, page)
+            page = safe_observe(b)
+            act_retry(b, page, lambda pg: next((a for a in clicks(pg) if re.fullmatch(r"\s*back\s*", a["label"], re.I)), None))
     except Exception as e:
         log.append(f"link capture skipped: {type(e).__name__}")
     return out
 
 
 def _fill_by_label(b, page, pattern: str, value: str, log: list[str]):
-    a = next((x for x in fills(page) if re.search(pattern, x["label"], re.I)), None)
+    page, a = act_retry(b, page, lambda pg: next((x for x in fills(pg) if re.search(pattern, x["label"], re.I)), None), text=value)
     if not a:
         return page, False
-    b.act(a, page, text=value)
     log.append(f"typed {a['label'][:30]!r}")
     time.sleep(0.3)
-    return b.observe(screenshot=False), True
+    return safe_observe(b), True
 
 
 def drive_script(b, task: str, p: dict[str, Any], dry_run: bool, log: list[str]) -> str:
@@ -448,36 +500,37 @@ def drive_script(b, task: str, p: dict[str, Any], dry_run: bool, log: list[str])
                     return "blocked"
         if dry_run:
             return "done"
-        btn = next((a for a in clicks(page) if re.fullmatch(r"\s*(book|schedule|confirm|submit)\s*(meeting|booking|appointment)?\s*", a["label"], re.I)), None)
+        def final(pg):
+            return next((a for a in clicks(pg) if re.fullmatch(r"\s*(book|schedule|confirm|submit)\s*(meeting|booking|appointment)?\s*", a["label"], re.I)), None)
+
+        page, btn = act_retry(b, page, final)
         if not btn:
-            page = b.observe(screenshot=False)
-            btn = next((a for a in clicks(page) if re.fullmatch(r"\s*(book|schedule|confirm|submit)\s*(meeting|booking|appointment)?\s*", a["label"], re.I)), None)
+            time.sleep(0.8)
+            page, btn = act_retry(b, safe_observe(b), final)
         if not btn:
             return "blocked"
         log.append(f"click {btn['label']!r}")
-        b.act(btn, page)
         return "done"
     if task == "reschedule":
         if dry_run:
             return "done"
         for pat in (r"^(reschedule|confirm|book|save|update)\b", r"(reschedule|confirm)"):
-            btn = next((a for a in clicks(page) if re.search(pat, a["label"], re.I) and not re.search(r"back|cancel", a["label"], re.I)), None)
+            page, btn = act_retry(b, page, lambda pg, pat=pat: next((a for a in clicks(pg) if re.search(pat, a["label"], re.I)
+                                                                  and not re.search(r"back|cancel", a["label"], re.I)), None))
             if btn:
                 log.append(f"click {btn['label']!r}")
-                b.act(btn, page)
                 return "done"
         return "blocked"
     if dry_run:
         return "done"
-    for _ in range(2):  # cancel, then a confirmation dialog if one appears
-        btn = next((a for a in clicks(page) if re.search(r"cancel|yes|confirm", a["label"], re.I)
-                    and not re.search(r"back|keep|no,|close|reschedule|don.t", a["label"], re.I)), None)
+    for _ in range(2):  # Cancel, then the inline form's "Cancel Appointment"
+        page, btn = act_retry(b, page, lambda pg: next((a for a in clicks(pg) if re.search(r"cancel|yes|confirm", a["label"], re.I)
+                                                        and not re.search(r"back|keep|no,|close|reschedule|don.t", a["label"], re.I)), None))
         if not btn:
             break
         log.append(f"click {btn['label']!r}")
-        b.act(btn, page)
         time.sleep(1.0)
-        page = b.observe(screenshot=False)
+        page = safe_observe(b)
         if CANCELLED_RE.search(page_text(b)):
             return "done"
     return "done"
@@ -506,17 +559,18 @@ def run(task: str, p: dict[str, Any]) -> dict[str, Any]:
                 if task == "reschedule":  # the manage page shows Reschedule / Cancel first; Reschedule opens the calendar
                     page = observe(b, lambda pg: has_slots(pg) or any(re.fullmatch(r"\s*reschedule\s*", a["label"], re.I) for a in clicks(pg)), timeout=12)
                     if not has_slots(page):
-                        btn = next((a for a in clicks(page) if re.fullmatch(r"\s*reschedule\s*", a["label"], re.I)), None)
+                        page, btn = act_retry(b, page, lambda pg: next((a for a in clicks(pg) if re.fullmatch(r"\s*reschedule\s*", a["label"], re.I)), None))
                         if btn:
                             log.append("manage page: Reschedule")
-                            b.act(btn, page)
                             time.sleep(0.8)
                 if task in ("book", "reschedule"):
+                    log.append("selecting the slot")
                     page, err = select_slot(b, start, log)
                     if err:
                         out.update(status="slot_unavailable", message=f"{expected_phrases(start)[0]} {expected_phrases(start)[2]} is not offered on the page",
                                    page_url=page["url"], screenshot=screenshot(b, p.get("screenshot")))
                         return out
+                log.append(f"driving the form ({driver})")
                 status = drive_jev(b, task, p, start, dry_run, log) if driver == "jev" else drive_script(b, task, p, dry_run, log)
                 # settle, then verify independently
                 time.sleep(1.2)
@@ -529,7 +583,7 @@ def run(task: str, p: dict[str, Any]) -> dict[str, Any]:
                 out.update(page_url=b.evaluate("location.href"), page_text=re.sub(r"\s+", " ", text)[:700],
                            screenshot=screenshot(b, p.get("screenshot")), links=pick_links(anchors(b)))
                 if dry_run:
-                    vals = {a["label"]: a.get("current_value", a.get("value", "")) for a in fills(b.observe(screenshot=False))}
+                    vals = {a["label"]: a.get("current_value", a.get("value", "")) for a in fills(safe_observe(b))}
                     want = [p.get("first_name"), p.get("last_name"), p.get("email")] if task == "book" else []
                     filled = all(any(v and w and w in str(v) for v in vals.values()) for w in want if w)
                     out.update(ok=filled or task != "book", status="dry_run_ok" if (filled or task != "book") else "verify_failed",
