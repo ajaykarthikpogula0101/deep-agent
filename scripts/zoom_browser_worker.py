@@ -50,6 +50,8 @@ BOOKED_RE = re.compile(r"\b(booked|confirmed|scheduled|you'?re all set|all set|h
 RESCHEDULED_RE = re.compile(r"\b(rescheduled|moved|updated|confirmed|all set|has been (?:rescheduled|updated|changed))\b", re.I)
 CANCELLED_RE = re.compile(r"\b(cancel(?:l)?ed|has been cancel(?:l)?ed|successfully cancel)", re.I)
 ERROR_RE = re.compile(r"\b(no longer available|not available|already booked|try again|something went wrong|captcha|verify you are human)\b", re.I)
+# Zoom shows this for a manage link that was retired (the event was rescheduled or cancelled earlier, with a new link)
+STALE_RE = re.compile(r"no longer active|may have been (?:cancel(?:l)?ed|rescheduled)|event you were looking for|link (?:is|has) (?:expired|invalid)", re.I)
 BROWSER_CANDIDATES = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
@@ -99,6 +101,8 @@ def expected_phrases(start: datetime) -> list[str]:
 def verify_text(text: str, start: datetime | None, email: str | None, kind: str) -> tuple[bool, str]:
     """Independent outcome check on the page text. A DONE from the model is never taken as proof."""
     t = text or ""
+    if STALE_RE.search(t):
+        return False, "the manage link is no longer active (the event was changed through another link)"
     if ERROR_RE.search(t) and not (BOOKED_RE.search(t) or CANCELLED_RE.search(t)):
         return False, "the page reports a problem: " + ERROR_RE.search(t).group(0)
     word = {"book": BOOKED_RE, "reschedule": RESCHEDULED_RE, "cancel": CANCELLED_RE}[kind]
@@ -432,7 +436,7 @@ def drive_jev(b, task: str, p: dict[str, Any], start, dry_run: bool, log: list[s
                 clicked_final = True
         # once the final button was pressed, the page decides, not the model: stop as soon as the outcome is readable
         if clicked_final and not dry_run:
-            for _ in range(10):
+            for _ in range(30):
                 if verify_text(page_text(b), start, p.get("email"), task)[0]:
                     log.append("verified after the final click; stopping the model loop")
                     return "done"
@@ -577,7 +581,7 @@ def run(task: str, p: dict[str, Any]) -> dict[str, Any]:
                 text = ""
                 for _ in range(25):
                     text = page_text(b)
-                    if dry_run or verify_text(text, start, p.get("email"), task)[0] or ERROR_RE.search(text):
+                    if dry_run or verify_text(text, start, p.get("email"), task)[0] or ERROR_RE.search(text) or STALE_RE.search(text):
                         break
                     time.sleep(0.8)
                 out.update(page_url=b.evaluate("location.href"), page_text=re.sub(r"\s+", " ", text)[:700],
@@ -593,8 +597,10 @@ def run(task: str, p: dict[str, Any]) -> dict[str, Any]:
                 ok, why = verify_text(text, start, p.get("email"), task)
                 if ok:
                     out.update(ok=True, status={"book": "booked", "reschedule": "rescheduled", "cancel": "cancelled"}[task], message=why)
-                    if task == "book" and not out["links"].get("reschedule"):
+                    if task in ("book", "reschedule"):
                         out["links"] = {**capture_manage_links(b, log), **out["links"]}
+                elif STALE_RE.search(text):
+                    out.update(status="link_expired", message=why)
                 elif ERROR_RE.search(text) and re.search(r"no longer available|not available|already booked", text, re.I):
                     out.update(status="slot_unavailable", message=why)
                 else:

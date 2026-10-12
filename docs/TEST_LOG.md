@@ -37,7 +37,15 @@ first live reschedule attempt (user-run) failed before touching Zoom: a browser-
 reschedule DRY run on the manage link (jev driver): Reschedule -> day -> 'Select slot on 22/10/2026, 21:00:00' ->
   confirm screen read 'Thursday, October 22, 2026, 21:00 - 21:15 Friday, October 23, 2026, 21:30 - 21:45 ... Back
   Reschedule'; stopped before the button. 94 s (daemon start + observes; tuning later).
-NOT yet run: the real reschedule + cancel (user-run), then the second end-to-end cycle with automatic link capture.
+LIVE reschedule (user-run, jev driver): manage link -> Reschedule -> Thu 22 Oct 21:00 -> reason typed -> Reschedule
+  clicked -> page read 'Confirmed Your appointment with Sreedeep Surapaneni has been rescheduled. ... Thursday,
+  October 22, 2026, 21:00 - 21:15'. 114 s (the model pressed Reschedule twice; post-click wait now 18 s).
+LIVE cancel attempt on the SAME manage link: Zoom had retired that token on reschedule; page read 'This event is no
+  longer active ... may have been canceled or rescheduled' and the verifier wrongly matched 'canceled' -> FALSE
+  POSITIVE, the booking stayed live. Fixed: STALE_RE -> status link_expired (never success); links are captured after
+  a reschedule as well and stored on the row; the new manage link comes from Zoom's 'rescheduled' email.
+NOT yet run: the real cancel through the new manage link (user-run), then a full book -> reschedule -> cancel cycle
+  relying only on automatically captured links.
 ```
 
 ## 2026-10-11 — proactive outreach rules (version 2026.10.11.1)

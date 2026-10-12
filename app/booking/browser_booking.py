@@ -29,7 +29,7 @@ log = logging.getLogger("booking.browser")
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 WORKER = ROOT / "scripts" / "zoom_browser_worker.py"
-STATUSES = ("booked", "rescheduled", "cancelled", "dry_run_ok", "slot_unavailable", "verify_failed", "blocked", "error", "timeout")
+STATUSES = ("booked", "rescheduled", "cancelled", "dry_run_ok", "slot_unavailable", "link_expired", "verify_failed", "blocked", "error", "timeout")
 
 
 def driver() -> str:

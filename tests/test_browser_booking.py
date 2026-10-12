@@ -61,6 +61,10 @@ def test_verification_reads_the_page_not_the_model():
     assert not worker.verify_text("This time is no longer available. Please try again.", ist, None, "book")[0]
     assert worker.verify_text("Your meeting has been rescheduled to Thursday, October 15, 2026, 4:30 PM", ist, None, "reschedule")[0]
     assert worker.verify_text("Your booking has been cancelled.", None, None, "cancel")[0]
+    # a retired manage link (Zoom issues a new one on every reschedule) must never read as success
+    ok, why = worker.verify_text("This event is no longer active The event you were looking for may have been canceled or rescheduled.", None, None, "cancel")
+    assert not ok and "no longer active" in why
+    assert not worker.verify_text("This event is no longer active ... may have been canceled or rescheduled.", ist, None, "reschedule")[0]
     assert not worker.verify_text("Are you sure you want to cancel?", None, None, "cancel")[0] or True  # 'cancel' wording alone is weak; allowed
 
 
@@ -185,7 +189,8 @@ def test_reschedule_moves_a_browser_booking_on_zoom_and_tells_both_sides(monkeyp
     monkeypatch.setattr(bb, "available", lambda: True)
     seen = {}
     monkeypatch.setattr(bb, "reschedule", lambda url, start, dry_run=None: (seen.update(url=url, start=start) or
-                        {"ok": True, "status": "rescheduled", "driver": "script", "links": {"join": "https://zoom.us/j/10"}}))
+                        {"ok": True, "status": "rescheduled", "driver": "script",
+                         "links": {"join": "https://zoom.us/j/10", "reschedule": "https://scheduler.zoom.us/manage/new1/rescheduling", "cancel": "https://scheduler.zoom.us/manage/new1"}}))
     marks, mails = [], []
     d = FakeDeps(busy=[(datetime(2026, 10, 6, 4, 30, tzinfo=timezone.utc), datetime(2026, 10, 6, 4, 45, tzinfo=timezone.utc))])
     res = flow.reschedule(svc(), _browser_booking(), "2026-10-07T11:00:00+05:30", "Asia/Kolkata", d.deps,
@@ -193,6 +198,7 @@ def test_reschedule_moves_a_browser_booking_on_zoom_and_tells_both_sides(monkeyp
     assert res["status"] == "rescheduled" and res["booking"]["label_visitor"].startswith("Wed 07 Oct, 11:00") and res["old_label_visitor"].startswith("Tue 06 Oct, 10:00")
     assert seen["url"] == "https://scheduler.zoom.us/r?t=1" and seen["start"] == datetime(2026, 10, 7, 5, 30, tzinfo=timezone.utc)
     assert marks[0][0] == 7 and marks[0][1] == seen["start"] and marks[0][3]["status"] == "rescheduled" and marks[0][4] == "https://zoom.us/j/10"
+    assert marks[0][6] == "https://scheduler.zoom.us/manage/new1/rescheduling" and marks[0][7] == "https://scheduler.zoom.us/manage/new1"  # the fresh manage link replaces the retired one
     assert mails[0]["old_label_visitor"].startswith("Tue 06 Oct") and mails[0]["join_url"] == "https://zoom.us/j/10"
     assert d.events[-1][0] == "booking_rescheduled"
     # the old time itself is not "busy" for this booking; a genuinely taken time is refused with alternatives

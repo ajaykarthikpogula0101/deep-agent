@@ -402,15 +402,17 @@ def reschedule(service: BookingService, booking: dict[str, Any], start: str, vis
             log.error("browser reschedule failed: %s %s", res.get("status"), res.get("message"))
             return {"status": "error", "message": "Zoom's scheduler did not accept the change. Your original time still stands; "
                                                   "please try again in a minute or reply to your confirmation email.", "retry": True}
-        join_url = (res.get("links") or {}).get("join")
+        links = res.get("links") or {}
+        join_url = links.get("join")
     else:
+        links = {}
         handoff_url = BookingService._handoff_url(schedule.booking_link or settings.zoom_booking_base, booking["name"], booking["email"], start_utc)
     if mark is None:
         from app import store_bookings as sb
 
         mark = sb.reschedule
     try:
-        mark(int(booking["id"]), start_utc, end_utc, run, join_url, handoff_url)
+        mark(int(booking["id"]), start_utc, end_utc, run, join_url, handoff_url, links.get("reschedule"), links.get("cancel"))
     except Exception as e:
         log.error("reschedule store failed: %s", e)
     old_label = Slot(booking["start_utc"], 0).label(tz) if booking.get("start_utc") else ""
