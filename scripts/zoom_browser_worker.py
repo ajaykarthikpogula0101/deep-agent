@@ -154,9 +154,9 @@ def build_goal(task: str, p: dict[str, Any], start: datetime | None, dry_run: bo
                 "Stop (DONE) only when the page shows the booking was rescheduled or confirmed for the new time.")
     if dry_run:
         return "Do not click anything. Stop (DONE) immediately."
-    return ("Cancel this booking. Click the button that cancels the booking (Cancel booking, Cancel event or Cancel meeting) and confirm "
-            "when asked (Yes, Confirm, Cancel). Do not click Back, Keep or Reschedule. Stop (DONE) only when the page says the booking "
-            "is cancelled. If no cancel control exists, choose BLOCKED.")
+    return ("Cancel this booking. Click the Cancel button; a short form appears with an optional reason (leave it empty) and a "
+            "'Cancel Appointment' button: click that to confirm. Do not click Back, Keep or Reschedule. Stop (DONE) only when the page "
+            "says the appointment or booking is cancelled. If no cancel control exists, choose BLOCKED.")
 
 
 # ---------------------------------------------------------------- browser plumbing
@@ -406,6 +406,10 @@ def capture_manage_links(b, log: list[str]) -> dict[str, str]:
         if href != before:
             out["reschedule"] = href
             log.append(f"reschedule page: {href[:120]}")
+            m = re.match(r"(https://scheduler\.zoom\.us/manage/[A-Za-z0-9_-]+)", href)
+            if m:  # Zoom's manage page offers both Reschedule and Cancel; the cancel task opens it and presses Cancel
+                out["manage"] = m.group(1)
+                out["cancel"] = m.group(1)
             for a in anchors(b):
                 if "cancel" in (a.get("href") or "").lower() and a["href"].startswith("http"):
                     out.setdefault("cancel", a["href"])
@@ -499,6 +503,14 @@ def run(task: str, p: dict[str, Any]) -> dict[str, Any]:
         with OwnedBrowser():
             b = open_page(p["url"], tz)
             try:
+                if task == "reschedule":  # the manage page shows Reschedule / Cancel first; Reschedule opens the calendar
+                    page = observe(b, lambda pg: has_slots(pg) or any(re.fullmatch(r"\s*reschedule\s*", a["label"], re.I) for a in clicks(pg)), timeout=12)
+                    if not has_slots(page):
+                        btn = next((a for a in clicks(page) if re.fullmatch(r"\s*reschedule\s*", a["label"], re.I)), None)
+                        if btn:
+                            log.append("manage page: Reschedule")
+                            b.act(btn, page)
+                            time.sleep(0.8)
                 if task in ("book", "reschedule"):
                     page, err = select_slot(b, start, log)
                     if err:

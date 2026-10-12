@@ -77,7 +77,7 @@ def test_links_and_goals():
     assert "Thursday, October 15, 2026 at 4:30 PM" in g and "'Ada'" in g and "'ada@lovelace.org'" in g and "click the Book button once" in g
     assert "Do NOT click Book" in worker.build_goal("book", p, ist, dry_run=True)
     assert "Stop (DONE) immediately" in worker.build_goal("cancel", {}, None, dry_run=True)
-    assert "cancels the booking" in worker.build_goal("cancel", {}, None, dry_run=False)
+    assert "Cancel Appointment" in worker.build_goal("cancel", {}, None, dry_run=False)
     assert "already selected" in worker.build_goal("reschedule", {}, ist, dry_run=False)
 
 
@@ -92,6 +92,7 @@ def test_run_parses_the_last_json_line_and_handles_timeouts(monkeypatch):
     monkeypatch.setattr(bb.subprocess, "run", fake_run)
     monkeypatch.setattr(settings, "browser_booking_enabled", True)
     monkeypatch.setattr(settings, "browser_booking_driver", "script")
+    monkeypatch.setattr(settings, "typesafe_api_key", "")  # the real .env may carry a key; this test is about the script driver
     res = bb.book("https://scheduler.zoom.us/x/discovery-call", START, "Ada Lovelace", "ada@lovelace.org", "notes")
     assert res["status"] == "booked" and res["links"]["join"] == "https://zoom.us/j/1"
     cmd, kw = calls[0]
