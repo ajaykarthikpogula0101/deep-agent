@@ -23,8 +23,14 @@ worker, jev driver WITH the TypeSafe key (later the same day), Deep's real page,
 HTTP: POST /booking/999999/reschedule as a stranger -> 404; empty body -> 422; /widget-config booking_mode=handoff
 browser suite (headless Edge, 8089): all 110 widget checks passed (reschedule section: welcome action, step 1 of 2, review, move, row carries
   previous_start_utc)
-NOT yet run (needs a schedule in the user's own Zoom account + the TypeSafe key): pressing Book for real, the
-  confirmation page wording/links, reschedule and cancel pages, reCAPTCHA Enterprise behaviour in headless Chrome.
+LIVE booking on Deep's real calendar (user-authorised, run by the user): Fri 23 Oct 2026 21:30 IST, jev driver, 42 s:
+  code picked the day + slot, Jev typed the four fields and clicked Book, page read "Confirmed You are booked with
+  Sreedeep Surapaneni LakeB2B Discovery Call Friday, October 23, 2026, 21:30 - 21:45"; reCAPTCHA did not challenge.
+  Findings: Reschedule/Cancel on the confirmation page are buttons, not links (links came back empty -> the worker
+  now presses Reschedule to record its URL, then goes back); the model kept choosing WAIT after Book (15 steps) ->
+  the worker now stops the loop as soon as the page verifies after the final click.
+NOT yet run: reschedule and cancel of that booking (links from Zoom's confirmation email), then the second
+  end-to-end cycle with the new link capture.
 ```
 
 ## 2026-10-11 — proactive outreach rules (version 2026.10.11.1)

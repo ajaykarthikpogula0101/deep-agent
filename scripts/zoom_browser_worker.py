@@ -366,12 +366,60 @@ def drive_jev(b, task: str, p: dict[str, Any], start, dry_run: bool, log: list[s
     log.append("jev goal: " + goal[:160])
     ag = AttachedAgent(b, goal)
     status = "ready"
+    clicked_final = False
     for state in ag.run():
         status = state["status"]
         if state["history"]:
             h = state["history"][-1]
             log.append(f"jev: {h['operation']} {h['action'][:60]}" + (f" = {h['text'][:40]!r}" if h.get("text") else ""))
+            if h["operation"] == "CLICK" and re.search(r"^(book|schedule|confirm|reschedule|cancel|yes|submit)\b", h["action"], re.I):
+                clicked_final = True
+        # once the final button was pressed, the page decides, not the model: stop as soon as the outcome is readable
+        if clicked_final and not dry_run:
+            for _ in range(10):
+                if verify_text(page_text(b), start, p.get("email"), task)[0]:
+                    log.append("verified after the final click; stopping the model loop")
+                    return "done"
+                time.sleep(0.6)
     return status
+
+
+def capture_manage_links(b, log: list[str]) -> dict[str, str]:
+    """The confirmation page offers Reschedule / Cancel as buttons, not links. Pressing Reschedule only opens the
+    reschedule page (nothing changes until a new time is confirmed), so its URL can be recorded and kept for later.
+    Cancel is never pressed here. The page is navigated back afterwards."""
+    out: dict[str, str] = {}
+    try:
+        page = b.observe(screenshot=False)
+        before = b.evaluate("location.href")
+        btn = next((a for a in clicks(page) if re.fullmatch(r"\s*reschedule\s*", a["label"], re.I)), None)
+        if not btn:
+            return out
+        b.act(btn, page)
+        deadline = time.monotonic() + 8
+        href = before
+        while time.monotonic() < deadline:
+            time.sleep(0.4)
+            href = b.evaluate("location.href") or before
+            if href != before:
+                break
+        if href != before:
+            out["reschedule"] = href
+            log.append(f"reschedule page: {href[:120]}")
+            for a in anchors(b):
+                if "cancel" in (a.get("href") or "").lower() and a["href"].startswith("http"):
+                    out.setdefault("cancel", a["href"])
+            b.evaluate("history.back()")
+            time.sleep(1.0)
+        else:
+            log.append("reschedule button did not change the URL; no durable link captured")
+            page = b.observe(screenshot=False)
+            back = next((a for a in clicks(page) if re.fullmatch(r"\s*back\s*", a["label"], re.I)), None)
+            if back:
+                b.act(back, page)
+    except Exception as e:
+        log.append(f"link capture skipped: {type(e).__name__}")
+    return out
 
 
 def _fill_by_label(b, page, pattern: str, value: str, log: list[str]):
@@ -479,6 +527,8 @@ def run(task: str, p: dict[str, Any]) -> dict[str, Any]:
                 ok, why = verify_text(text, start, p.get("email"), task)
                 if ok:
                     out.update(ok=True, status={"book": "booked", "reschedule": "rescheduled", "cancel": "cancelled"}[task], message=why)
+                    if task == "book" and not out["links"].get("reschedule"):
+                        out["links"] = {**capture_manage_links(b, log), **out["links"]}
                 elif ERROR_RE.search(text) and re.search(r"no longer available|not available|already booked", text, re.I):
                     out.update(status="slot_unavailable", message=why)
                 else:
