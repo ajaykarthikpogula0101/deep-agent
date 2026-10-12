@@ -184,6 +184,7 @@ header { flex:none; position:relative; z-index:10; display:flex; align-items:cen
 .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:38px; padding:8px 14px; border:1px solid var(--da-line); border-radius:10px; background:var(--da-surface); color:var(--da-text); font-size:13.5px; font-weight:600; line-height:1.2; text-align:center; text-decoration:none; cursor:pointer; transition:background .15s, border-color .15s, color .15s, box-shadow .15s }
 .btn:hover { border-color:var(--da-line-strong); background:var(--da-subtle) } .btn svg { width:16px; height:16px; flex:none }
 .btn.primary { background:var(--da-primary); border-color:var(--da-ink); color:#fff; box-shadow:0 6px 16px -8px rgba(85,70,247,.7) } .btn.primary:hover { background:var(--da-primary-hover); border-color:var(--da-primary-hover) }
+.btn.danger { background:#D6345B; border-color:#B52A4C; color:#fff } .btn.danger:hover { background:#B52A4C }
 .btn.ghost { border-color:transparent; background:transparent; color:var(--da-muted) } .btn.ghost:hover { color:var(--da-text); background:var(--da-subtle) }
 .btn.block { width:100% } .btn.sm { min-height:32px; padding:4px 10px; font-size:12.5px } .btn:disabled { opacity:.55; cursor:not-allowed }
 .btn.loading::before { content:""; width:14px; height:14px; border-radius:50%; border:2px solid rgba(255,255,255,.4); border-top-color:#fff; animation:da-spin .8s linear infinite }
@@ -386,6 +387,7 @@ const RS_STEPS = ['time', 'review'];  // rescheduling an existing booking
 const RS_TITLES = { time: 'Pick a new time', review: 'Confirm the change' };
 const BK_TITLES = { type: 'Choose a meeting', time: 'Pick a time', details: 'Your details', review: 'Review and confirm' };
 const RESCHED_RE = /\b(reschedule|re-schedule|move|change|shift|postpone|push)\b/i, CALL_RE = /\b(call|meeting|booking|appointment|slot|time|it)\b/i;
+const CANCEL_RE = /\b(cancel|call off|drop|delete|remove)\b/i;
 
 class DeepAssistant extends HTMLElement {
   static get observedAttributes() { return ['api', 'token', 'theme', 'mode', 'open', 'title', 'subtitle', 'suggestions', 'user-name', 'user-email', 'tabs', 'shortcut', 'privacy-url', 'greeting', 'page-context']; }
@@ -724,6 +726,8 @@ class DeepAssistant extends HTMLElement {
       a.innerHTML = `<span class="ai">${SVG.cal}</span><span class="al">${esc(u.status === 'confirmed' ? 'Join your call' : 'Confirm your call on Zoom')}<small>${esc(u.schedule_name + ' · ' + u.label_visitor)}</small></span>${SVG.chev}`; acts.appendChild(a); }
     if (mem && mem.upcoming && mem.upcoming.can_reschedule) { const u = mem.upcoming; const b = document.createElement('button'); b.type = 'button'; b.className = 'act resched';
       b.innerHTML = `<span class="ai">${SVG.clock}</span><span class="al">Reschedule your call<small>Pick a new time for ${esc(u.schedule_name)}</small></span>${SVG.chev}`; b.onclick = () => this.startReschedule(u, 'Reschedule my call'); acts.appendChild(b); }
+    if (mem && mem.upcoming && mem.upcoming.can_cancel) { const u = mem.upcoming; const b = document.createElement('button'); b.type = 'button'; b.className = 'act cancelcall';
+      b.innerHTML = `<span class="ai">${SVG.x || SVG.close || SVG.alert}</span><span class="al">Cancel your call<small>${esc(u.schedule_name + ' · ' + u.label_visitor)}</small></span>${SVG.chev}`; b.onclick = () => this.startCancel(u, 'Cancel my call'); acts.appendChild(b); }
     this._actions().forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'act' + (x.book ? ' book' : ''); b.innerHTML = `<span class="ai">${SVG[x.icon] || SVG.spark}</span><span class="al">${esc(x.label)}</span>${SVG.chev}`; b.onclick = () => this._runAction(x, 'suggestion'); acts.appendChild(b); });
     this.$log.appendChild(w);
   }
@@ -1094,9 +1098,51 @@ class DeepAssistant extends HTMLElement {
         ${res.emails_queued ? `<li>${SVG.checkc}<span>${moved ? 'An updated invite' : 'A confirmation'}${b.join_url ? ' with the Zoom link' : ''} is on its way to <b>${esc(b.email)}</b></span></li>` : ''}
         ${b.ics_url ? `<li>${SVG.checkc}<span>Add it to your calendar so it doesn't slip</span></li>` : ''}
         <li>${SVG.spark.replace('aria-hidden', 'class="nx" aria-hidden')}<span>Want to prepare? Ask me anything before the call.</span></li>
-      </ul>${b.id ? `<p class="note"><button type="button" class="linkbtn rs-change">Need a different time? Change it here</button></p>` : ''}</div>`;
-    const ch = body.querySelector('.rs-change');
-    if (ch) ch.onclick = () => this.startReschedule({ id: b.id, schedule_slug: b.schedule_slug, schedule_name: b.schedule_name, label_visitor: b.label_visitor, duration_min: b.duration_min, method: b.method, can_reschedule: true }, 'Change the time of my call');
+      </ul>${b.id ? `<p class="note"><button type="button" class="linkbtn rs-change">Need a different time? Change it here</button> · <button type="button" class="linkbtn cx-open">Cancel this booking</button></p>` : ''}</div>`;
+    const up = { id: b.id, schedule_slug: b.schedule_slug, schedule_name: b.schedule_name, label_visitor: b.label_visitor, duration_min: b.duration_min, method: b.method, can_reschedule: true, can_cancel: true };
+    const ch = body.querySelector('.rs-change'); if (ch) ch.onclick = () => this.startReschedule(up, 'Change the time of my call');
+    const cx = body.querySelector('.cx-open'); if (cx) cx.onclick = () => this.startCancel(up, 'Cancel my call');
+  }
+  // ---------------------------------------------------------------- cancelling a booking from the chat (confirm first; the worker cancels it on Zoom)
+  startCancel(up, label) {
+    if (this._busy || !up || !up.id) return; this.showView('chat'); this._clearFollowups();
+    const text = label || 'Cancel my call', intro = `Your ${up.schedule_name} is on ${up.label_visitor}. Do you want me to cancel it?`;
+    const user = this._add('user', '', Date.now()); this._setText(user, text);
+    const bot = this._add('bot', '', Date.now()); this._setText(bot, intro);
+    this._transcript.push({ role: 'user', text, ts: Date.now() }, { role: 'bot', text: intro, ts: Date.now() });
+    this._history.push({ role: 'user', content: text }, { role: 'assistant', content: intro }); this._history = this._history.slice(-12); this._persist(); this._markLast();
+    this._emit('booking', { status: 'cancel_started', bookingId: up.id, schedule: up.schedule_slug || null });
+    const f = this._bkFlow(bot); f.mode = 'cancel'; f.booking = up;
+    f.card.innerHTML = `<div class="bk cx"><div class="sumbox"><div class="sumrow"><span>Meeting</span><b>${esc(up.schedule_name || '')}</b></div><div class="sumrow"><span>When</span><b>${esc(up.label_visitor || '')}</b></div></div>
+      <div class="hrow" style="margin-top:8px"><button type="button" class="btn danger cx-yes">Yes, cancel it</button><button type="button" class="btn cx-no">Keep it</button></div><p class="note sstat" role="status">Nothing changes until you confirm.</p></div>`;
+    f.card.querySelector('.cx-no').onclick = () => { f.card.querySelector('.bk').innerHTML = '<p class="note">Kept. Your call stays as it is.</p>'; };
+    f.card.querySelector('.cx-yes').onclick = () => this._cxConfirm(f, up);
+    requestAnimationFrame(() => this._reveal(f.card));
+  }
+  async _cxConfirm(f, up) {
+    const card = f.card, yes = card.querySelector('.cx-yes'), no = card.querySelector('.cx-no'), stat = card.querySelector('.sstat');
+    yes.disabled = true; no.disabled = true; yes.classList.add('loading'); yes.textContent = 'Cancelling…';
+    stat.textContent = up.method === 'browser' ? 'Cancelling it on Zoom for you. This can take a minute; please keep this open…' : 'Cancelling…';
+    let res = null, status = 0;
+    try { const r = await fetch(this._url(`/booking/${encodeURIComponent(up.id)}`), { method: 'DELETE', headers: this._headers() }); status = r.status; res = r.ok ? await r.json() : null; } catch {}
+    const fail = (msg) => { yes.disabled = false; no.disabled = false; yes.classList.remove('loading'); yes.textContent = 'Yes, cancel it'; stat.className = 'note sstat warn'; stat.textContent = msg; };
+    if (status === 429) return fail('Too many attempts. Please wait a minute and try again. Your booking still stands.');
+    if (status === 404) return fail("I couldn't find that booking on this device. Use the link in your confirmation email instead.");
+    if (!res || res.status !== 'cancelled') return fail((res && res.message) || "Couldn't cancel it right now. Your booking still stands; please try again.");
+    const b = res.booking || up;
+    card.querySelector('.bk').innerHTML = `<div class="booked"><div class="bk-ok" tabindex="-1"><svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>Your call is cancelled</span></div>
+      <div class="bk-when">${esc(b.label_visitor || up.label_visitor || '')}</div><div class="bk-sub">${esc(b.schedule_name || up.schedule_name || '')}</div>
+      ${res.zoom_note ? `<p class="note">${esc(res.zoom_note)}</p>` : ''}
+      <ul class="nexts">${res.emails_queued ? `<li>${SVG.checkc}<span>A cancellation note is on its way to <b>${esc(b.email || '')}</b>${b.email ? '' : 'you'} and to Deep</span></li>` : ''}
+        <li>${SVG.spark.replace('aria-hidden', 'class="nx" aria-hidden')}<span>Changed your mind? Book a new time any time.</span></li></ul>
+      <div class="hrow"><button type="button" class="btn primary cx-rebook">Book a new time</button></div></div>`;
+    card.querySelector('.cx-rebook').onclick = () => this.startBooking(b.schedule_slug || null, 'Book a new time');
+    const line = `Booking cancelled: ${b.schedule_name || up.schedule_name} on ${b.label_visitor || up.label_visitor}.`;
+    this._history.push({ role: 'assistant', content: line }); this._history = this._history.slice(-12);
+    this._transcript.push({ role: 'bot', text: line, ts: Date.now() }); this._persist(); this._announce('Call cancelled.');
+    this._emit('booking', { status: 'cancelled', bookingId: up.id, schedule: b.schedule_slug || up.schedule_slug || null });
+    this._loadMe().catch(() => {});
+    const ok = card.querySelector('.bk-ok'); if (ok) ok.focus({ preventScroll: true });
   }
   _bkBooked(res) {
     const b = res.booking, pending = res.status !== 'confirmed';
@@ -1334,6 +1380,10 @@ class DeepAssistant extends HTMLElement {
     if ((!text && !files.length) || this._busy) return; if (this._attachments.some((a) => a.xhr)) return;
     if (!this.api) { this._add('bot', 'This assistant has no api attribute set.'); return; }
     const up = this._me && this._me.memory && this._me.memory.upcoming;
+    if (text && !files.length && CANCEL_RE.test(text) && CALL_RE.test(text) && !RESCHED_RE.test(text)) {
+      let u = up; if (!u || !u.can_cancel) { try { await this._loadMe(); } catch {} u = this._me && this._me.memory && this._me.memory.upcoming; }
+      if (u && u.can_cancel) { this.$q.value = ''; this._autosize(); this._closePops(); return this.startCancel(u, text); }
+    }
     if (text && !files.length && RESCHED_RE.test(text) && CALL_RE.test(text)) {
       let u = up; if (!u || !u.can_reschedule) { try { await this._loadMe(); } catch {} u = this._me && this._me.memory && this._me.memory.upcoming; }  // a booking made in this very chat
       if (u && u.can_reschedule) { this.$q.value = ''; this._autosize(); this._closePops(); return this.startReschedule(u, text); }

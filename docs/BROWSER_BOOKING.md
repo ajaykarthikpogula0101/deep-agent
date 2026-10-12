@@ -19,7 +19,11 @@ executor only acts on elements it observed.
   back to re-holding the time with a new prefilled link. The visitor is never sent to Zoom or to their email to do it.
   The picker opens from the welcome screen, from "Need a different time?" under the booking card, and from typing
   "reschedule my call" (also right after booking in the same chat).
-* **Cancel.** The cancel link in the email now also cancels the Zoom event for browser-made bookings.
+* **Cancel.** "Cancel your call" on the welcome screen, "Cancel this booking" under the booking card, or typing
+  "cancel my call": the chat asks for confirmation (Yes, cancel it / Keep it), then cancels it on Zoom through the
+  worker for browser-made bookings (Meetings-API bookings through the API; hand-off holds simply end), shows "Your
+  call is cancelled" with a "Book a new time" button, and both sides get the cancellation email. The email link
+  still works too. `DELETE /booking/{id}` (visitor-owned or manage token).
 
 Order of attempts in `flow._book_on_zoom`: Zoom Scheduler API → Meetings API → **browser worker** → prefilled hand-off
 link. The worker is used only when `BROWSER_BOOKING_ENABLED=true`.

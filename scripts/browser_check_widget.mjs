@@ -231,7 +231,14 @@ try {
   const bk2 = await (await fetch(`${BASE}/admin/bookings?days=1`, { headers: { "X-Admin-Token": TOKEN } })).json();
   const mine2 = bk2.items.find((x) => x.notes === "browser test booking" && x.status !== "cancelled");
   check(!!mine2 && !!mine2.previous_start_utc && mine2.start_utc !== mine2.previous_start_utc && !!mine2.rescheduled_at, "reschedule: the booking row carries the new start, the previous one and when it moved");
-  try { const bl = await (await fetch(`${BASE}/admin/bookings?days=1`, { headers: { "X-Admin-Token": TOKEN } })).json(); const mine = bl.items.find((x) => x.notes === "browser test booking" && x.status !== "cancelled"); if (mine) { const c = await fetch(`${BASE}/admin/bookings/${mine.id}/cancel`, { method: "POST", headers: { "X-Admin-Token": TOKEN } }); check(c.ok, "booking: test booking cancelled again (admin cancel endpoint)"); } } catch { check(false, "booking: cleanup"); }
+  // cancel from the chat: typed "cancel my call" -> confirm card -> cancelled card; the row is cancelled
+  await evaluate(P("launcher", "(el.newChat(), true)")); await waitFor(P("launcher", "!!sh.querySelector('.welcome .act.cancelcall')"), 15000, "cancel action on the welcome screen");
+  check(await evaluate(P("launcher", "/Cancel your call/.test(sh.querySelector('.welcome .act.cancelcall').textContent)")), "cancel: welcome screen offers 'Cancel your call' for the upcoming booking");
+  await evaluate(P("launcher", "(el.ask('please cancel my call'), true)")); await waitFor(P("launcher", "!!sh.querySelector('.cx .cx-yes')"), 15000, "cancel confirm card"); await sleep(200);
+  check(await evaluate(P("launcher", "/Do you want me to cancel it/.test([...sh.querySelectorAll('.row.bot .msg')].pop().textContent) && /Yes, cancel it/.test(sh.querySelector('.cx').textContent) && /Keep it/.test(sh.querySelector('.cx').textContent)")), "cancel: typed request opens a confirm card with Yes / Keep it");
+  await evaluate(P("launcher", "(sh.querySelector('.cx .cx-yes').click(), true)")); await waitFor(P("launcher", "!!sh.querySelector('.cx .booked')"), 60000, "cancelled card"); await sleep(300);
+  check(await evaluate(P("launcher", "/Your call is cancelled/.test(sh.querySelector('.cx .booked').textContent) && /^Booking cancelled:/.test(el._history[el._history.length - 1].content)")), "cancel: 'Your call is cancelled' card and the history line");
+  try { const bl = await (await fetch(`${BASE}/admin/bookings?days=1`, { headers: { "X-Admin-Token": TOKEN } })).json(); const mine = bl.items.find((x) => x.notes === "browser test booking"); check(!!mine && mine.status === "cancelled", "cancel: the booking row is cancelled"); const left = bl.items.filter((x) => x.notes === "browser test booking" && x.status !== "cancelled"); for (const m of left) await fetch(`${BASE}/admin/bookings/${m.id}/cancel`, { method: "POST", headers: { "X-Admin-Token": TOKEN } }); } catch { check(false, "booking: cleanup"); }
 
   await ask("launcher", "Can I talk to a real person?");
   b = await lastBot("launcher"); check(b.hform, "hand-over form rendered");

@@ -634,6 +634,36 @@ def booking_reschedule(booking_id: int, body: RescheduleIn, request: Request, t:
     return res
 
 
+@app.delete("/booking/{booking_id}")
+def booking_cancel_from_chat(booking_id: int, request: Request, t: str = "", x_session_id: str | None = Header(default=None),
+                             x_visitor_id: str | None = Header(default=None)):
+    """Cancel from the chat: the booking belongs to this visitor's sessions (or the manage token is given). Browser-made
+    bookings are cancelled on Zoom Scheduler by the worker; Meetings-API ones through the API; hand-off holds just end."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    b = store_bookings.get(booking_id)
+    sid = (x_session_id or "").strip()[:64] or None
+    vid = (x_visitor_id or "").strip()[:64] or None
+    owned = bool(b) and ((t and b.get("manage_token") == t) or store_bookings.owned_by_visitor(booking_id, vid, sid))
+    if not b or not owned:
+        raise HTTPException(404, "booking not found")
+    if b.get("status") == "cancelled":
+        return {"status": "cancelled", "already": True, "booking": flow._booking_view(b)}
+    if not _booking_limiter.allow(sid or _client_ip(request)):
+        raise HTTPException(429, "Too many attempts. Please wait a minute and try again.")
+    try:
+        r = flow.cancel(b, _booking_service)
+    except Exception as e:
+        log.error("cancel from chat failed: %s", e)
+        return {"status": "error", "message": "Zoom or the server did not respond. Your booking still stands.", "retry": True}
+    v = flow._booking_view(b)
+    if sid:
+        inbox.log_message(sid, "assistant", f"Booking cancelled: {b.get('schedule_name')} on {v['label_visitor']}.", outcome="booking",
+                          question=f"[cancel] {b.get('schedule_slug')} {v['start_iso']}")
+    return {"status": "cancelled" if r.get("ok") else "error", "booking": dict(v, status="cancelled"), "zoom_note": r.get("zoom_note") or "",
+            "message": f"Cancelled: {b.get('schedule_name')} on {v['label_visitor']}.", "emails_queued": True}
+
+
 @app.post("/booking/{booking_id}/cancel")
 def booking_cancel(booking_id: int, t: str = ""):
     b = _booking_or_404(booking_id, t)

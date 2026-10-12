@@ -2,6 +2,10 @@
 
 ## 2026-10-12 (late) — rescheduling is done by the agent for every booking (version 2026.10.12.2)
 
+Also: cancelling from the chat (DELETE /booking/{id}, visitor-owned or manage token): welcome action, link under the
+booking card, typed "cancel my call" -> confirm card -> the worker cancels it on Zoom -> "Your call is cancelled".
+The browser suite now cancels its test booking through the chat (4 checks) instead of the admin endpoint.
+
 The user's first live reschedules were on a hand-off hold and only re-held the time with a prefilled link (a manual
 step on Zoom); typed "reschedule" right after booking fell through to the model (memory loaded before the booking).
 Now: a hand-off hold is moved by booking the new time on Zoom through the worker (method -> browser, status ->
