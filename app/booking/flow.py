@@ -4,8 +4,11 @@ lead storage, enrichment) and app/booking/availability.py (the grid).
 confirm() is the only place a booking is made, and it runs when the visitor clicks "Confirm booking":
   1. validate details (no placeholders), per-email active-booking limit
   2. re-check the slot on Zoom right now (and against our own confirmed bookings)
-  3. book: Zoom Scheduler API (POST /scheduler/attendee) -> Meetings API (POST /users/{host}/meetings) -> prefilled
-     Zoom hand-off link when no API credentials are configured ("pending_zoom": the visitor finishes on Zoom)
+  3. book: Zoom Scheduler API (POST /scheduler/attendee) -> Meetings API (POST /users/{host}/meetings) -> the browser
+     worker on the public scheduler page (app/booking/browser_booking.py, no credentials) -> prefilled Zoom hand-off
+     link ("pending_zoom": the visitor finishes on Zoom)
+reschedule() moves an active booking (browser-made bookings through the scheduler's own reschedule link; hand-offs by
+updating our held time); cancel() also drives the scheduler's cancel link for browser-made bookings.
   4. store the lead and the booking, queue both confirmation emails with the .ics invite (app/mailer.py)
 Side effects are injectable (Deps) so the whole flow is testable without Postgres, SMTP or Zoom.
 """
@@ -18,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from app.booking import availability as avail
+from app.booking import browser_booking
 from app.booking.service import BookingService, _EMAIL_RE, _origin_line, looks_like_placeholder
 from app.booking.zoom import AvailabilityError, InvalidTimeError, Schedule, Slot, SlotTakenError, ZoomOfficialClient, parse_start, parse_tz
 from app.config import settings
@@ -152,6 +156,22 @@ def _book_on_zoom(service: BookingService, schedule: Schedule, start_utc: dateti
         except AvailabilityError as e:
             log.error("meetings api booking failed: %s", e)
             out["error"] = str(e)[:200]
+    if browser_booking.available():
+        res = browser_booking.book(schedule.booking_link or f"{settings.zoom_booking_base}/{schedule.slug}", start_utc, req.name, req.email,
+                                   req.notes or req.company or "")
+        out["run"] = browser_booking.summary(res)
+        if res.get("ok") and res.get("status") == "booked":
+            links = res.get("links") or {}
+            out.update(method="browser", join_url=links.get("join"), zoom_event_id=None,
+                       reschedule_url=links.get("reschedule"), cancel_url=links.get("cancel"))
+            return out
+        if res.get("status") == "slot_unavailable":
+            raise SlotTakenError(res.get("message") or "the time is no longer offered")
+        if res.get("ok") and res.get("status") == "dry_run_ok":
+            out["error"] = "browser dry run: nothing booked"
+        else:
+            out["error"] = f"browser booking {res.get('status')}: {res.get('message', '')}"[:200]
+        log.error("browser booking did not complete (%s); falling back to the hand-off link", out["error"])
     out["handoff_url"] = BookingService._handoff_url(schedule.booking_link or settings.zoom_booking_base, req.name, req.email, start_utc)
     return out
 
@@ -243,7 +263,8 @@ def confirm(service: BookingService, req: ConfirmRequest, deps: Deps | None = No
                "start_utc": start_utc, "end_utc": end_utc, "visitor_tz": tz, "method": zoom["method"], "status": status,
                "zoom_meeting_id": zoom.get("meeting_id"), "join_url": zoom.get("join_url"), "passcode": zoom.get("passcode"),
                "zoom_event_id": zoom.get("zoom_event_id"), "handoff_url": zoom.get("handoff_url"), "manage_token": token,
-               "origin": origin, "company_line": lead["company"], "zoom_error": zoom.get("error")}
+               "origin": origin, "company_line": lead["company"], "zoom_error": zoom.get("error"),
+               "zoom_reschedule_url": zoom.get("reschedule_url"), "zoom_cancel_url": zoom.get("cancel_url"), "zoom_run": zoom.get("run")}
     try:
         booking["id"] = deps.store_booking(booking)
     except Exception as e:  # the Zoom side is done; never lose it silently
@@ -289,6 +310,14 @@ def cancel(booking: dict[str, Any], service: BookingService | None = None, deps:
                 log.error(zoom_note)
     elif booking.get("method") == "scheduler":
         zoom_note = "Cancelled here; please also cancel the event in Zoom Scheduler."
+    elif booking.get("method") == "browser":
+        if booking.get("zoom_cancel_url") and browser_booking.available():
+            res = browser_booking.cancel(booking["zoom_cancel_url"])
+            if not (res.get("ok") and res.get("status") == "cancelled"):
+                zoom_note = f"Zoom Scheduler could not be updated automatically ({res.get('status')}); please cancel the event in Zoom."
+                log.error(zoom_note)
+        else:
+            zoom_note = "Cancelled here; please also cancel the event in Zoom Scheduler."
     if mark is None:
         from app import store_bookings as sb
 
@@ -308,3 +337,102 @@ def cancel(booking: dict[str, Any], service: BookingService | None = None, deps:
 
 
 __all__ = ["Deps", "ConfirmRequest", "confirm", "review", "cancel", "default_deps", "manage_urls"]
+
+
+# ---------------------------------------------------------------- reschedule
+def reschedule(service: BookingService, booking: dict[str, Any], start: str, visitor_tz: str, deps: Deps | None = None,
+               mark: Callable[..., bool] | None = None, mail: Callable[[dict], None] | None = None) -> dict[str, Any]:
+    """Move an active booking to a new open time. Browser-made bookings are moved on Zoom through the scheduler's own
+    reschedule link; hand-offs (pending_zoom) just get a new held time and a fresh prefilled link. Bookings made through
+    the Zoom APIs are not moved here (cancel and book again)."""
+    deps = deps or default_deps()
+    if booking.get("status") not in ACTIVE:
+        return {"status": "invalid", "message": "That booking is no longer active."}
+    try:
+        tz = parse_tz(visitor_tz or booking.get("visitor_tz") or settings.host_timezone)
+        start_utc = parse_start(start)
+    except InvalidTimeError as e:
+        return {"status": "invalid", "message": f"That time could not be read ({e}). Please pick it again."}
+    now = service.now()
+    if start_utc < now + timedelta(minutes=5):
+        return {"status": "slot_taken", "message": "That time has already passed. Please pick another."}
+    if booking.get("start_utc") and start_utc == booking["start_utc"]:
+        return {"status": "invalid", "message": "That is the time you already have."}
+    method = booking.get("method")
+    if method not in ("browser", "handoff"):
+        return {"status": "unsupported", "message": "This booking was made through Zoom's API and can't be moved from here yet. "
+                                                    "Cancel it from your confirmation email and book a new time."}
+    try:
+        schedule = service.schedule_by_slug(booking["schedule_slug"])
+    except AvailabilityError:
+        schedule = None
+    if schedule is None:
+        return {"status": "unavailable", "message": "Deep's scheduler isn't responding right now. Please try again in a minute.", "retry": True}
+    try:
+        slots, _ = service._fetch(schedule, start_utc - timedelta(hours=1), start_utc + timedelta(hours=1), tz)
+    except AvailabilityError as e:
+        log.warning("reschedule: availability check failed: %s", e)
+        return {"status": "unavailable", "message": "Zoom's scheduler isn't responding right now, so I can't move the call. Please try again in a minute.", "retry": True}
+    end_utc = start_utc + timedelta(minutes=schedule.duration_min)
+    busy = []
+    try:
+        busy = [b for b in deps.busy(start_utc - timedelta(hours=2), end_utc + timedelta(hours=2)) if b[0] != booking.get("start_utc")]
+    except Exception as e:
+        log.warning("busy lookup failed: %s", e)
+    taken = not any(sl.start_utc == start_utc for sl in slots) or any(b0 < end_utc and start_utc < b1 for b0, b1 in busy)
+    if taken:
+        avail.invalidate(schedule.slug)
+        data = avail.availability(service, schedule.slug, None, tz, busy_fn=deps.busy, use_cache=False)
+        return {"status": "slot_taken", "message": "That time is not open. Here are the nearest open times.",
+                "alternatives": avail.nearest(data, start_utc, 3) if data.get("ok") else [], "schedule": _schedule_view(schedule)}
+    run = None
+    join_url = handoff_url = None
+    if method == "browser":
+        if not booking.get("zoom_reschedule_url") or not browser_booking.available():
+            return {"status": "unsupported", "message": "This booking can't be moved automatically right now. Cancel it from your "
+                                                        "confirmation email and book a new time, or reply to the email."}
+        res = browser_booking.reschedule(booking["zoom_reschedule_url"], start_utc)
+        run = browser_booking.summary(res)
+        if res.get("status") == "slot_unavailable":
+            avail.invalidate(schedule.slug)
+            data = avail.availability(service, schedule.slug, None, tz, busy_fn=deps.busy, use_cache=False)
+            return {"status": "slot_taken", "message": "Zoom reports that time is no longer open. Here are the nearest open times.",
+                    "alternatives": avail.nearest(data, start_utc, 3) if data.get("ok") else [], "schedule": _schedule_view(schedule)}
+        if not (res.get("ok") and res.get("status") == "rescheduled"):
+            log.error("browser reschedule failed: %s %s", res.get("status"), res.get("message"))
+            return {"status": "error", "message": "Zoom's scheduler did not accept the change. Your original time still stands; "
+                                                  "please try again in a minute or reply to your confirmation email.", "retry": True}
+        join_url = (res.get("links") or {}).get("join")
+    else:
+        handoff_url = BookingService._handoff_url(schedule.booking_link or settings.zoom_booking_base, booking["name"], booking["email"], start_utc)
+    if mark is None:
+        from app import store_bookings as sb
+
+        mark = sb.reschedule
+    try:
+        mark(int(booking["id"]), start_utc, end_utc, run, join_url, handoff_url)
+    except Exception as e:
+        log.error("reschedule store failed: %s", e)
+    old_label = Slot(booking["start_utc"], 0).label(tz) if booking.get("start_utc") else ""
+    moved = dict(booking, previous_start_utc=booking.get("start_utc"), start_utc=start_utc, end_utc=end_utc, visitor_tz=tz,
+                 join_url=join_url or booking.get("join_url"), handoff_url=handoff_url or booking.get("handoff_url"), zoom_run=run)
+    moved.update(manage_urls(int(booking["id"]), booking.get("manage_token", "")))
+    avail.invalidate(schedule.slug)
+    if mail is None:
+        from app.booking.email import send_reschedule_emails
+
+        mail = send_reschedule_emails
+    try:
+        mail(dict(moved, old_label_visitor=old_label))
+    except Exception as e:
+        log.error("reschedule emails failed to queue: %s", e)
+    try:
+        deps.log_event("booking_rescheduled", booking.get("session_id"),
+                       {"booking_id": booking["id"], "method": method, "from": str(booking.get("start_utc")), "to": str(start_utc)})
+    except Exception:
+        pass
+    view = _booking_view(moved)
+    status = "rescheduled" if method == "browser" else "pending_zoom"
+    msg = (f"Moved: {schedule.name}, now {view['label_visitor']}." if status == "rescheduled"
+           else f"Your new time is held: {schedule.name}, {view['label_visitor']}. Finish on Zoom to make it final.")
+    return {"status": status, "message": msg, "booking": view, "old_label_visitor": old_label, "emails_queued": True}

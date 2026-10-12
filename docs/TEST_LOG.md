@@ -1,5 +1,29 @@
 # Test log
 
+## 2026-10-12 — browser booking + reschedule on the public Zoom Scheduler page (version 2026.10.12.1)
+
+docs/BROWSER_BOOKING.md. `scripts/zoom_browser_worker.py` (jev-ultrafast in its own Python 3.12 env at `D:\jev\venv`,
+browser-harness pointed at a headless Edge/Chrome the worker launches; deterministic slot selection; `jev` or `script`
+driver for the form; independent verification; links captured), `app/booking/browser_booking.py` (subprocess runner),
+flow: browser step before the hand-off, `reschedule()`, cancel through the scheduler's cancel link; `POST
+/booking/{id}/reschedule`; widget: "Reschedule your call" on the welcome screen, typed "reschedule my call", two-step
+picker, "Move my call", moved card; `booking_mode` in `/widget-config`.
+
+```
+pytest: 134 passed, 1 skipped (tests/test_browser_booking.py: 10)
+model-free probe of https://scheduler.zoom.us/sreedeep/discovery-call through jev's snapshot: slot buttons labelled
+  "Select slot on 15/10/2026, 4:30:00 pm"; form = First Name, Last Name, Email Address, Add Attendees, notes; the
+  "Book" button sits at y=797, below jev's 780 px viewport -> the worker emulates 1120x1240 (then Back/Book observable)
+worker dry run, script driver, Deep's real page, 2026-10-15 16:30 IST: slot picked ("Select slot on 15/10/2026,
+  16:30:00" with the en-GB locale's 24 h clock), four fields filled, stopped before Book, 28 s, nothing booked
+worker, jev driver, no key: fails closed ("TYPESAFE_API_KEY is not set"), no browser launched
+HTTP: POST /booking/999999/reschedule as a stranger -> 404; empty body -> 422; /widget-config booking_mode=handoff
+browser suite (headless Edge, 8089): all 110 widget checks passed (reschedule section: welcome action, step 1 of 2, review, move, row carries
+  previous_start_utc)
+NOT yet run (needs a schedule in the user's own Zoom account + the TypeSafe key): pressing Book for real, the
+  confirmation page wording/links, reschedule and cancel pages, reCAPTCHA Enterprise behaviour in headless Chrome.
+```
+
 ## 2026-10-11 — proactive outreach rules (version 2026.10.11.1)
 
 docs/OUTREACH.md. `app/outreach.py` (rules, matcher, cooldown, attribution, stats, 5 starter rules), tables

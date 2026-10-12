@@ -107,6 +107,11 @@ CREATE TABLE IF NOT EXISTS bookings (
     company_line    TEXT,
     zoom_error      TEXT
 );
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS zoom_reschedule_url TEXT;   -- links read off the scheduler's confirmation page
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS zoom_cancel_url TEXT;       -- (method 'browser', app/booking/browser_booking.py)
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS zoom_run JSONB;             -- the worker's result summary
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS previous_start_utc TIMESTAMPTZ;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rescheduled_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS bookings_start_idx ON bookings(start_utc);
 CREATE INDEX IF NOT EXISTS bookings_email_idx ON bookings(lower(email));
 

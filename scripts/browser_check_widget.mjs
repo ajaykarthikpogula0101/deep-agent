@@ -216,6 +216,19 @@ try {
   const bk = await fetch(`${BASE}/admin/bookings?days=1`, { headers: { "X-Admin-Token": TOKEN } });
   if (bk.ok) { const d = await bk.json(); const mine = d.items.find((x) => x.notes === "browser test booking"); check(!!mine && ["confirmed", "pending_zoom"].includes(mine.status) && !!mine.start_utc, `booking: stored in the bookings table (${mine && mine.method})`); }
   else check(false, "admin bookings reachable");
+  // reschedule from the chat (docs/BROWSER_BOOKING.md): the welcome screen offers it for the upcoming booking, two steps, the held time moves
+  await evaluate(P("launcher", "(el.newChat(), true)")); await waitFor(P("launcher", "!!sh.querySelector('.welcome .act.resched')"), 15000, "reschedule action on the welcome screen"); await sleep(200);
+  check(await evaluate(P("launcher", "/Reschedule your call/.test(sh.querySelector('.welcome .act.resched').textContent) && el._me.memory.upcoming.can_reschedule === true")), "reschedule: welcome screen offers 'Reschedule your call' for the upcoming booking");
+  await evaluate(P("launcher", "(sh.querySelector('.welcome .act.resched').click(), true)")); await waitFor(P("launcher", "!!sh.querySelector('.avail .time')"), 30000, "reschedule grid"); await sleep(300);
+  check(await evaluate(P("launcher", "/Pick a new time/.test(sh.querySelector('.bk-t').textContent) && /Step 1 of 2/.test(sh.querySelector('.bk-t').textContent) && /Currently /.test(sh.querySelector('.ahead').textContent)")), "reschedule: 'Pick a new time', step 1 of 2, current time shown");
+  await evaluate(P("launcher", "(() => { const ts = [...sh.querySelectorAll('.avail .time')]; (ts[1] || ts[0]).click(); return true; })()")); await sleep(300);
+  check(await evaluate(P("launcher", "/Confirm the change/.test(sh.querySelector('.bk-t').textContent) && /Currently/.test(sh.querySelector('.sumbox').textContent) && /New time/.test(sh.querySelector('.sumbox').textContent) && /Move my call/.test(sh.querySelector('.avail .confirm').textContent)")), "reschedule: review shows the current and the new time with 'Move my call'");
+  await evaluate(P("launcher", "(sh.querySelector('.avail .confirm').click(), true)")); await waitFor(P("launcher", "!!sh.querySelector('.booked')"), 60000, "reschedule result"); await sleep(300);
+  const moved = await evaluate(P("launcher", "(() => { const b = sh.querySelector('.booked'); return { text: b.textContent, hist: el._history[el._history.length - 1].content }; })()"));
+  check(/One last step on Zoom|Your call is moved/.test(moved.text) && /Was /.test(moved.text) && /^(New time held|Booking moved):/.test(moved.hist), "reschedule: result card shows the new time and the old one; history records it: " + moved.hist.slice(0, 70).replace(/\n/g, " "));
+  const bk2 = await (await fetch(`${BASE}/admin/bookings?days=1`, { headers: { "X-Admin-Token": TOKEN } })).json();
+  const mine2 = bk2.items.find((x) => x.notes === "browser test booking" && x.status !== "cancelled");
+  check(!!mine2 && !!mine2.previous_start_utc && mine2.start_utc !== mine2.previous_start_utc && !!mine2.rescheduled_at, "reschedule: the booking row carries the new start, the previous one and when it moved");
   try { const bl = await (await fetch(`${BASE}/admin/bookings?days=1`, { headers: { "X-Admin-Token": TOKEN } })).json(); const mine = bl.items.find((x) => x.notes === "browser test booking" && x.status !== "cancelled"); if (mine) { const c = await fetch(`${BASE}/admin/bookings/${mine.id}/cancel`, { method: "POST", headers: { "X-Admin-Token": TOKEN } }); check(c.ok, "booking: test booking cancelled again (admin cancel endpoint)"); } } catch { check(false, "booking: cleanup"); }
 
   await ask("launcher", "Can I talk to a real person?");

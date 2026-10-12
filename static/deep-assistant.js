@@ -24,7 +24,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.11.1';
+const VERSION = '2026.10.12.1';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -382,7 +382,10 @@ const store = { get(k) { try { return sessionStorage.getItem(k); } catch { retur
 const local = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 const typeIcon = (s) => { const h = `${s.slug} ${s.name}`.toLowerCase(); return /walkthrough|demo/.test(h) ? SVG.play : /gtm|strategy/.test(h) ? SVG.target : SVG.chat; };
 const BK_STEPS = ['type', 'time', 'details', 'review'];
+const RS_STEPS = ['time', 'review'];  // rescheduling an existing booking
+const RS_TITLES = { time: 'Pick a new time', review: 'Confirm the change' };
 const BK_TITLES = { type: 'Choose a meeting', time: 'Pick a time', details: 'Your details', review: 'Review and confirm' };
+const RESCHED_RE = /\b(reschedule|re-schedule|move|change|shift|postpone|push)\b/i, CALL_RE = /\b(call|meeting|booking|appointment|slot|time|it)\b/i;
 
 class DeepAssistant extends HTMLElement {
   static get observedAttributes() { return ['api', 'token', 'theme', 'mode', 'open', 'title', 'subtitle', 'suggestions', 'user-name', 'user-email', 'tabs', 'shortcut', 'privacy-url', 'greeting', 'page-context']; }
@@ -718,6 +721,8 @@ class DeepAssistant extends HTMLElement {
     const acts = w.querySelector('.acts');
     if (mem && mem.upcoming && (mem.upcoming.join_url || mem.upcoming.handoff_url)) { const u = mem.upcoming; const a = document.createElement('a'); a.className = 'act book'; a.href = u.join_url || u.handoff_url; a.target = '_blank'; a.rel = 'noopener';
       a.innerHTML = `<span class="ai">${SVG.cal}</span><span class="al">${esc(u.status === 'confirmed' ? 'Join your call' : 'Confirm your call on Zoom')}<small>${esc(u.schedule_name + ' · ' + u.label_visitor)}</small></span>${SVG.chev}`; acts.appendChild(a); }
+    if (mem && mem.upcoming && mem.upcoming.can_reschedule) { const u = mem.upcoming; const b = document.createElement('button'); b.type = 'button'; b.className = 'act resched';
+      b.innerHTML = `<span class="ai">${SVG.clock}</span><span class="al">Reschedule your call<small>Pick a new time for ${esc(u.schedule_name)}</small></span>${SVG.chev}`; b.onclick = () => this.startReschedule(u, 'Reschedule my call'); acts.appendChild(b); }
     this._actions().forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'act' + (x.book ? ' book' : ''); b.innerHTML = `<span class="ai">${SVG[x.icon] || SVG.spark}</span><span class="al">${esc(x.label)}</span>${SVG.chev}`; b.onclick = () => this._runAction(x, 'suggestion'); acts.appendChild(b); });
     this.$log.appendChild(w);
   }
@@ -901,21 +906,22 @@ class DeepAssistant extends HTMLElement {
     if (el._bk && el.contains(el._bk.card)) return el._bk;
     el.querySelectorAll(':scope > .ln').forEach((x) => x.remove()); el.classList.add('hascard'); el.closest('.row').classList.add('wide');
     const card = document.createElement('div'); card.className = 'bk card avail'; card.setAttribute('role', 'group'); card.setAttribute('aria-label', 'Book a meeting'); el.appendChild(card);
-    const f = { el, card, step: 'type', types: null, schedule: null, avail: null, day: null, slot: null, who: null, prefill: {}, prefer: null, notice: null, alts: null };
+    const f = { el, card, step: 'type', types: null, schedule: null, avail: null, day: null, slot: null, who: null, prefill: {}, prefer: null, notice: null, alts: null, mode: 'book', booking: null };
     el._bk = f; return f;
   }
   _bkGo(f, step, focus = true) { f.step = step; this._bkRender(f, focus); }
   _bkRender(f, focus) {
-    const c = f.card, i = BK_STEPS.indexOf(f.step); c.innerHTML = '';
+    const STEPS = f.mode === 'reschedule' ? RS_STEPS : BK_STEPS, TITLES = f.mode === 'reschedule' ? RS_TITLES : BK_TITLES;
+    const c = f.card, i = STEPS.indexOf(f.step); c.innerHTML = '';
     if (f.step !== 'done') {
       const head = document.createElement('div'); head.className = 'bk-head';
-      head.innerHTML = `${i > 0 ? `<button type="button" class="bk-back" aria-label="Back to ${BK_TITLES[BK_STEPS[i - 1]].toLowerCase()}" title="Back">${SVG.back}</button>` : ''}<div class="bk-t"><b tabindex="-1">${BK_TITLES[f.step]}</b><span>Step ${i + 1} of 4</span></div>`;
-      const back = head.querySelector('.bk-back'); if (back) back.onclick = () => { f.notice = null; this._bkGo(f, BK_STEPS[i - 1]); if (BK_STEPS[i - 1] === 'type' && !f.types) this._bkLoadTypes(f); if (BK_STEPS[i - 1] === 'time' && !f.avail) this._bkLoadAvail(f); };
-      c.appendChild(head); c.insertAdjacentHTML('beforeend', `<div class="bk-prog" aria-hidden="true">${BK_STEPS.map((s, j) => `<i class="${j <= i ? 'on' : ''}"></i>`).join('')}</div>`);
+      head.innerHTML = `${i > 0 ? `<button type="button" class="bk-back" aria-label="Back to ${TITLES[STEPS[i - 1]].toLowerCase()}" title="Back">${SVG.back}</button>` : ''}<div class="bk-t"><b tabindex="-1">${TITLES[f.step]}</b><span>Step ${i + 1} of ${STEPS.length}</span></div>`;
+      const back = head.querySelector('.bk-back'); if (back) back.onclick = () => { f.notice = null; this._bkGo(f, STEPS[i - 1]); if (STEPS[i - 1] === 'type' && !f.types) this._bkLoadTypes(f); if (STEPS[i - 1] === 'time' && !f.avail) this._bkLoadAvail(f); };
+      c.appendChild(head); c.insertAdjacentHTML('beforeend', `<div class="bk-prog" aria-hidden="true">${STEPS.map((s, j) => `<i class="${j <= i ? 'on' : ''}"></i>`).join('')}</div>`);
     }
     if (f.notice) c.insertAdjacentHTML('beforeend', `<div class="banner" role="alert">${SVG.alert}<span>${esc(f.notice)}</span></div>`);
     const body = document.createElement('div'); body.className = 'bk'; c.appendChild(body);
-    ({ type: () => this._bkType(f, body), time: () => this._bkTime(f, body), details: () => this._bkDetails(f, body), review: () => this._bkReview(f, body), done: () => this._bkDone(f, body) })[f.step]();
+    ({ type: () => this._bkType(f, body), time: () => this._bkTime(f, body), details: () => this._bkDetails(f, body), review: () => (f.mode === 'reschedule' ? this._rsReview(f, body) : this._bkReview(f, body)), done: () => this._bkDone(f, body) })[f.step]();
     if (focus) { const t = c.querySelector('.bk-t b, .bk-ok'); if (t) { t.setAttribute('tabindex', '-1'); t.focus({ preventScroll: true }); } }
     requestAnimationFrame(() => this._reveal(c));
   }
@@ -959,14 +965,15 @@ class DeepAssistant extends HTMLElement {
   }
   _bkTime(f, body) {
     const s = f.schedule || {};
-    body.insertAdjacentHTML('beforeend', `<div class="ahead"><b>${esc(s.name || 'Meeting')}</b><span>${s.duration_min ? s.duration_min + ' min · ' : ''}Zoom video call${s.description ? ' · ' + esc(s.description) : ''}</span></div>`);
+    body.insertAdjacentHTML('beforeend', f.mode === 'reschedule' && f.booking ? `<div class="ahead"><b>${esc(s.name || 'Meeting')}</b><span>Currently ${esc(f.booking.label_visitor)} · pick the new time below</span></div>`
+      : `<div class="ahead"><b>${esc(s.name || 'Meeting')}</b><span>${s.duration_min ? s.duration_min + ' min · ' : ''}Zoom video call${s.description ? ' · ' + esc(s.description) : ''}</span></div>`);
     const d = f.avail;
     if (!d) { body.insertAdjacentHTML('beforeend', '<div class="sk" style="padding:0"><span class="l"><i></i><i></i></span></div><p class="note" role="status">Loading open times…</p>'); return; }
     if (!d.ok) {
       body.insertAdjacentHTML('beforeend', `<div class="banner">${SVG.alert}<span>${esc(d.message || "Availability couldn't be loaded right now.")}</span></div><div class="hrow"><button type="button" class="btn retry">${SVG.reset}<span>Try again</span></button>${d.fallback_link ? `<a class="btn" href="${esc(d.fallback_link)}" target="_blank" rel="noopener">Open the scheduler ${SVG.ext}</a>` : ''}</div>`);
       body.querySelector('.retry').onclick = () => this._bkLoadAvail(f); return;
     }
-    const pick = (sl) => { f.slot = sl; f.notice = null; this._bkGo(f, 'details'); this._emit('action', { action: 'booking_time', label: sl.label_visitor, kind: 'booking' }); };
+    const pick = (sl) => { f.slot = sl; f.notice = null; this._bkGo(f, f.mode === 'reschedule' ? 'review' : 'details'); this._emit('action', { action: f.mode === 'reschedule' ? 'reschedule_time' : 'booking_time', label: sl.label_visitor, kind: 'booking' }); };
     if (f.alts && f.alts.length) {
       const alt = document.createElement('div'); alt.innerHTML = `<p class="note" style="margin-bottom:6px">Nearest open times</p>`; const row = document.createElement('div'); row.className = 'hrow';
       f.alts.forEach((sl) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn sm'; b.textContent = sl.label_visitor; b.onclick = () => pick(sl); row.appendChild(b); }); alt.appendChild(row); body.appendChild(alt);
@@ -1023,7 +1030,7 @@ class DeepAssistant extends HTMLElement {
   }
   async _bkConfirm(f, btn, stat) {
     const back = f.card.querySelector('.bk-back'); const lock = (on) => { btn.disabled = on; btn.classList.toggle('loading', on); btn.textContent = on ? 'Booking…' : 'Confirm booking'; if (back) back.disabled = on; };
-    lock(true); stat.className = 'note sstat'; stat.textContent = 'Checking the time with Zoom and booking…';
+    lock(true); stat.className = 'note sstat'; stat.textContent = this._cfg.booking_mode === 'browser' ? 'Booking it on Zoom for you. This can take up to a minute; please keep this open…' : 'Checking the time with Zoom and booking…';
     const s = f.schedule, w = f.who || {}; let res = null, status = 0;
     try { const r = await fetch(this._url('/booking/confirm'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ schedule_slug: s.slug, start: f.slot.start_iso, name: w.name, email: w.email, company: w.company, notes: w.notes, timezone: this.tz }) }); status = r.status; res = r.ok ? await r.json() : null; } catch {}
     const fail = (msg) => { lock(false); stat.className = 'note sstat warn'; stat.textContent = msg; };
@@ -1035,15 +1042,55 @@ class DeepAssistant extends HTMLElement {
     if (res.status === 'invalid') { f.notice = res.message || 'Please check your details.'; this._bkGo(f, 'details'); return; }
     fail((res.message || "That didn't work.") + ' Nothing was booked; please try again.');
   }
+  // ---------------------------------------------------------------- rescheduling an existing booking (docs/BROWSER_BOOKING.md)
+  startReschedule(up, label) {
+    if (this._busy || !up || !up.id) return; this.showView('chat'); this._clearFollowups();
+    const text = label || 'Reschedule my call', intro = `Sure. Your ${up.schedule_name} is on ${up.label_visitor}. Pick a new time and I'll move it.`;
+    const user = this._add('user', '', Date.now()); this._setText(user, text);
+    const bot = this._add('bot', '', Date.now()); this._setText(bot, intro);
+    this._transcript.push({ role: 'user', text, ts: Date.now() }, { role: 'bot', text: intro, ts: Date.now() });
+    this._history.push({ role: 'user', content: text }, { role: 'assistant', content: intro }); this._history = this._history.slice(-12); this._persist(); this._markLast();
+    this._emit('booking', { status: 'reschedule_started', bookingId: up.id, schedule: up.schedule_slug || null });
+    const f = this._bkFlow(bot); f.mode = 'reschedule'; f.booking = up; f.schedule = { slug: up.schedule_slug, name: up.schedule_name, duration_min: up.duration_min };
+    this._bkGo(f, 'time'); this._bkLoadAvail(f);
+  }
+  _rsReview(f, body) {
+    const s = f.schedule || {}, u = f.booking || {};
+    const rows = [['Meeting', s.name], ['Currently', u.label_visitor], ['New time', f.slot.label_visitor], ['Duration', s.duration_min ? `${s.duration_min} min · Zoom` : 'Zoom']].filter((r) => r[1]);
+    body.innerHTML = `<div class="sumbox">${rows.map(([k, v]) => `<div class="sumrow"><span>${k}</span><b>${esc(v)}</b></div>`).join('')}</div>
+      <button class="btn primary block confirm" type="button">Move my call</button><p class="note sstat" role="status">Your current time stays until you confirm.</p>`;
+    const btn = body.querySelector('.confirm'); btn.onclick = () => this._rsConfirm(f, btn, body.querySelector('.sstat'));
+  }
+  async _rsConfirm(f, btn, stat) {
+    const back = f.card.querySelector('.bk-back'); const lock = (on) => { btn.disabled = on; btn.classList.toggle('loading', on); btn.textContent = on ? 'Moving…' : 'Move my call'; if (back) back.disabled = on; };
+    lock(true); stat.className = 'note sstat'; stat.textContent = f.booking.method === 'browser' ? 'Moving it on Zoom for you. This can take up to a minute; please keep this open…' : 'Updating your held time…';
+    let res = null, status = 0;
+    try { const r = await fetch(this._url(`/booking/${encodeURIComponent(f.booking.id)}/reschedule`), { method: 'POST', headers: this._headers(), body: JSON.stringify({ start: f.slot.start_iso, timezone: this.tz }) }); status = r.status; res = r.ok ? await r.json() : null; } catch {}
+    const fail = (msg) => { lock(false); stat.className = 'note sstat warn'; stat.textContent = msg; };
+    if (status === 429) return fail('Too many attempts. Please wait a minute and try again. Your current time still stands.');
+    if (status === 404) return fail("I couldn't find that booking on this device. Use the link in your confirmation email instead.");
+    if (!res) return fail("Couldn't reach the server. Your current time still stands. Please try again.");
+    if (res.status === 'rescheduled' || res.status === 'pending_zoom') { f.result = res; this._bkGo(f, 'done'); this._rsMoved(res); return; }
+    if (res.status === 'slot_taken') { f.notice = res.message || 'That time is not open. Please pick another.'; f.alts = res.alternatives || null; f.slot = null; this._bkGo(f, 'time'); this._bkLoadAvail(f); return; }
+    fail((res.message || "That didn't work.") + (res.status === 'unsupported' ? '' : ' Your current time still stands.'));
+  }
+  _rsMoved(res) {
+    const b = res.booking, pending = res.status !== 'rescheduled';
+    const line = pending ? `New time held: ${b.schedule_name} on ${b.label_visitor}; confirm on Zoom to make it final.` : `Booking moved: ${b.schedule_name} to ${b.label_visitor}.`;
+    this._history.push({ role: 'assistant', content: line }); this._history = this._history.slice(-12);
+    this._transcript.push({ role: 'bot', text: line, ts: Date.now() }); this._persist(); this._announce(pending ? 'New time held. One last step on Zoom.' : 'Call moved.');
+    this._emit('booking', { status: res.status, bookingId: b.id, joinUrl: b.join_url || null, handoffUrl: b.handoff_url || null, slot: b.start_iso, schedule: b.schedule_slug, email: b.email });
+    this._loadMe().catch(() => {});
+  }
   _bkDone(f, body) {
-    const res = f.result, b = res.booking, pending = res.status !== 'confirmed';
+    const res = f.result, b = res.booking, pending = res.status !== 'confirmed' && res.status !== 'rescheduled', moved = f.mode === 'reschedule';
     body.innerHTML = `<div class="booked">
-      <div class="bk-ok" tabindex="-1">${pending ? `<span class="pend">${SVG.clock}</span><span>One last step on Zoom</span>` : `<svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>You're booked</span>`}</div>
+      <div class="bk-ok" tabindex="-1">${pending ? `<span class="pend">${SVG.clock}</span><span>One last step on Zoom</span>` : `<svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>${moved ? 'Your call is moved' : "You're booked"}</span>`}</div>
       <div class="bk-when">${esc(b.label_visitor)}</div><div class="bk-sub">${esc(b.schedule_name)} · ${b.duration_min} min · ${esc(b.visitor_tz)}</div>
-      ${pending ? `<p class="note">Your time is held. Confirm it on the Zoom scheduler (your details are prefilled) to make it final.</p>` : ''}
+      ${pending ? `<p class="note">Your ${moved ? 'new ' : ''}time is held. Confirm it on the Zoom scheduler (your details are prefilled) to make it final.</p>` : ''}${moved && res.old_label_visitor ? `<p class="note">Was ${esc(res.old_label_visitor)}.</p>` : ''}
       <div class="hrow" style="margin-top:6px">${pending && b.handoff_url ? `<a class="btn primary" href="${esc(b.handoff_url)}" target="_blank" rel="noopener">Confirm on Zoom ${SVG.ext}</a>` : ''}${b.join_url ? `<a class="btn primary" href="${esc(b.join_url)}" target="_blank" rel="noopener">${SVG.video}Join Zoom</a>` : ''}${b.ics_url ? `<a class="btn" href="${esc(b.ics_url)}" download>${SVG.cal}Add to calendar</a>` : ''}</div>
       <ul class="nexts">
-        ${res.emails_queued ? `<li>${SVG.checkc}<span>A confirmation${b.join_url ? ' with the Zoom link' : ''} is on its way to <b>${esc(b.email)}</b></span></li>` : ''}
+        ${res.emails_queued ? `<li>${SVG.checkc}<span>${moved ? 'An updated invite' : 'A confirmation'}${b.join_url ? ' with the Zoom link' : ''} is on its way to <b>${esc(b.email)}</b></span></li>` : ''}
         ${b.ics_url ? `<li>${SVG.checkc}<span>Add it to your calendar so it doesn't slip</span></li>` : ''}
         <li>${SVG.spark.replace('aria-hidden', 'class="nx" aria-hidden')}<span>Want to prepare? Ask me anything before the call.</span></li>
       </ul></div>`;
@@ -1282,6 +1329,8 @@ class DeepAssistant extends HTMLElement {
     text = (text || this.$q.value).trim(); const files = this._attachments.filter((a) => a.id);
     if ((!text && !files.length) || this._busy) return; if (this._attachments.some((a) => a.xhr)) return;
     if (!this.api) { this._add('bot', 'This assistant has no api attribute set.'); return; }
+    const up = this._me && this._me.memory && this._me.memory.upcoming;
+    if (text && !files.length && up && up.can_reschedule && RESCHED_RE.test(text) && CALL_RE.test(text)) { this.$q.value = ''; this._autosize(); this._closePops(); return this.startReschedule(up, text); }
     if (this._view !== 'chat') this.showView('chat');
     this.$q.value = ''; this._autosize(); this._closePops(); this._clearFollowups(); this._setBusy(true);
     const shown = (text || (files.length > 1 ? 'Please look at the attached files.' : 'Please look at the attached file.')) + files.map((a) => `\n[attached: ${a.name}](/uploads/${a.id})`).join('');

@@ -105,6 +105,22 @@ class Settings(BaseSettings):
     zoom_avail_param_tz: str = Field(default="time_zone", alias="ZOOM_AVAIL_PARAM_TZ")
     zoom_enable_api_booking: bool = Field(default=False, alias="ZOOM_ENABLE_API_BOOKING")
     zoom_host_user_id: str = Field(default="", alias="ZOOM_HOST_USER_ID")  # host's user id or email for POST /users/{id}/meetings
+    zoom_booking_test_url: str = Field(default="", alias="ZOOM_BOOKING_TEST_URL")  # a scheduler page in YOUR account for live browser tests
+
+    # Browser booking on the public scheduler page (docs/BROWSER_BOOKING.md): no Zoom credentials needed
+    browser_booking_enabled: bool = Field(default=False, alias="BROWSER_BOOKING_ENABLED")
+    browser_booking_driver: str = Field(default="auto", alias="BROWSER_BOOKING_DRIVER")  # auto | jev (TypeSafe) | script (no model)
+    browser_booking_dry_run: bool = Field(default=False, alias="BROWSER_BOOKING_DRY_RUN")  # fill but never press Book (testing)
+    browser_booking_timeout: int = Field(default=150, alias="BROWSER_BOOKING_TIMEOUT")
+    typesafe_api_key: str = Field(default="", alias="TYPESAFE_API_KEY")
+    typesafe_model: str = Field(default="jev-latest", alias="TYPESAFE_MODEL")
+    text_model_api_key: str = Field(default="", alias="TEXT_MODEL_API_KEY")  # empty = the chat model key
+    text_model_base_url: str = Field(default="", alias="TEXT_MODEL_BASE_URL")  # empty = LLM_BASE_URL
+    text_model: str = Field(default="", alias="TEXT_MODEL")  # empty = CHAT_MODEL
+    text_model_reasoning: str = Field(default="none", alias="TEXT_MODEL_REASONING")
+    jev_python: str = Field(default="", alias="JEV_PYTHON")  # interpreter of the jev environment (Python 3.12)
+    jev_browser_path: str = Field(default="", alias="JEV_BROWSER_PATH")  # Chrome/Edge binary; empty = auto-detect
+    jev_cdp_url: str = Field(default="", alias="JEV_CDP_URL")  # an already running browser (http://127.0.0.1:9222); empty = launch one per run
 
     # Email
     smtp_host: str = Field(default="", alias="SMTP_HOST")

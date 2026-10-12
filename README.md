@@ -63,7 +63,8 @@ app/chat.py    retrieve -> refuse/answer/book -> SSE stream
 app/main.py    FastAPI, CORS allow-list, scheduler
 static/        chat page + embeddable widget
 docs/          PLAN.md, FAILURE_MODES.md, TEST_LOG.md; features: WIDGET.md, BOOKING.md, AGENT_UI.md, AUTOMATIONS.md,
-               MEMORY_VOICE.md, OUTREACH.md (proactive outreach rules: Console → Outreach)
+               MEMORY_VOICE.md, OUTREACH.md (proactive outreach rules), BROWSER_BOOKING.md (bookings and
+               reschedules completed on the public Zoom Scheduler page by a jev-ultrafast browser worker)
 ```
 
 ## Quickest local start (Windows)

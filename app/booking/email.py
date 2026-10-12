@@ -93,6 +93,34 @@ def send_booking_emails(booking: dict[str, Any], mailer=None) -> None:
                    kind="booking_host", ref=booking.get("id"))
 
 
+def send_reschedule_emails(booking: dict[str, Any], mailer=None) -> None:
+    """Both sides hear about the new time; the visitor copy carries a fresh .ics invite."""
+    from app import mailer as m
+    from app.booking import ics
+
+    mailer = mailer or m.default
+    tpl = templates.get_templates()
+    v = templates.build_vars(templates.booking_to_lead(booking), tpl)
+    was = booking.get("old_label_visitor") or "the earlier time"
+    pending = booking.get("status") == "pending_zoom" or booking.get("method") == "handoff"
+    subject = f"Moved: {v['title']} now on {v['date_visitor']}"
+    body_v = (f"Hi {v['first_name']},\n\nYour {v['title']} with {v['host_name']} has moved from {was} to {v['date_visitor']} ({v['visitor_tz']}).\n\n"
+              + (f"One last step: confirm the new time on Zoom here: {booking.get('handoff_url')}\n\n" if pending and booking.get("handoff_url") else "")
+              + (f"Join link: {booking['join_url']}\n\n" if booking.get("join_url") else "")
+              + (f"Need to change it again? {booking['manage_url']}\n\n" if booking.get("manage_url") else "")
+              + f"{v['host_name']}\n{v['site']}\n")
+    att = [("invite.ics", ics.build(booking, tpl.get("host_name") or "Deep"), "text/calendar")]
+    cta = ("Confirm on Zoom", booking["handoff_url"]) if pending and booking.get("handoff_url") else (("Join Zoom", booking["join_url"]) if booking.get("join_url") else None)
+    if booking.get("email"):
+        mailer.enqueue(booking["email"], subject, body_v, html=templates.html_wrap(subject, body_v, cta), attachments=att,
+                       reply_to=settings.host_email, kind="reschedule_visitor", ref=booking.get("id"))
+    body_h = (f"The visitor moved their call.\n\nName:   {v['name']}\nEmail:  {v['email']}\nCall:   {v['title']}\nWas:    {was}\nNow:    {v['date']}\n"
+              + ("Status: held, waiting for the visitor to confirm on Zoom\n" if pending else "Status: rescheduled on Zoom Scheduler\n"))
+    mailer.enqueue(settings.host_email, f"[{v['brand']}] Moved: {v['name']} · {v['title']} · {v['date']}", body_h,
+                   html=templates.html_wrap(subject, body_h, cta if not pending else None), attachments=att, reply_to=booking.get("email"),
+                   kind="reschedule_host", ref=booking.get("id"))
+
+
 def send_cancel_emails(booking: dict[str, Any], mailer=None) -> None:
     from app import mailer as m
 

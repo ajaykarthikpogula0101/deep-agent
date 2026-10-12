@@ -9,7 +9,8 @@ from app.db import conn
 
 COLS = ["id", "created_at", "lead_id", "session_id", "name", "email", "company", "notes", "schedule_slug", "schedule_name",
         "duration_min", "start_utc", "end_utc", "visitor_tz", "method", "zoom_meeting_id", "join_url", "passcode", "zoom_event_id",
-        "handoff_url", "status", "manage_token", "cancelled_at", "origin", "company_line", "zoom_error"]
+        "handoff_url", "status", "manage_token", "cancelled_at", "origin", "company_line", "zoom_error",
+        "zoom_reschedule_url", "zoom_cancel_url", "zoom_run", "previous_start_utc", "rescheduled_at"]
 
 
 def insert(b: dict[str, Any]) -> int:
@@ -17,15 +18,44 @@ def insert(b: dict[str, Any]) -> int:
         row = c.execute(
             """INSERT INTO bookings(lead_id, session_id, name, email, company, notes, schedule_slug, schedule_name, duration_min,
                                     start_utc, end_utc, visitor_tz, method, zoom_meeting_id, join_url, passcode, zoom_event_id,
-                                    handoff_url, status, manage_token, origin, company_line, zoom_error)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                                    handoff_url, status, manage_token, origin, company_line, zoom_error,
+                                    zoom_reschedule_url, zoom_cancel_url, zoom_run)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+               RETURNING id""",
             (b.get("lead_id"), b.get("session_id"), b["name"], b["email"], b.get("company") or None, b.get("notes") or None,
              b["schedule_slug"], b.get("schedule_name"), b["duration_min"], b["start_utc"], b["end_utc"], b["visitor_tz"],
              b["method"], b.get("zoom_meeting_id"), b.get("join_url"), b.get("passcode"), b.get("zoom_event_id"),
              b.get("handoff_url"), b["status"], b["manage_token"], b.get("origin") or None, b.get("company_line") or None,
-             b.get("zoom_error"))).fetchone()
+             b.get("zoom_error"), b.get("zoom_reschedule_url"), b.get("zoom_cancel_url"),
+             json.dumps(b["zoom_run"], default=str) if b.get("zoom_run") else None)).fetchone()
         c.commit()
     return int(row[0])
+
+
+def reschedule(booking_id: int, start_utc: datetime, end_utc: datetime, run: dict[str, Any] | None = None,
+               join_url: str | None = None, handoff_url: str | None = None) -> bool:
+    """Move an active booking to a new time (keeps the old start in previous_start_utc)."""
+    with conn() as c:
+        n = c.execute(
+            """UPDATE bookings SET previous_start_utc = start_utc, start_utc = %s, end_utc = %s, rescheduled_at = now(),
+                      zoom_run = COALESCE(%s::jsonb, zoom_run), join_url = COALESCE(%s, join_url), handoff_url = COALESCE(%s, handoff_url)
+               WHERE id = %s AND status IN ('confirmed', 'pending_zoom')""",
+            (start_utc, end_utc, json.dumps(run, default=str) if run else None, join_url, handoff_url, booking_id)).rowcount
+        c.commit()
+    return n > 0
+
+
+def owned_by_visitor(booking_id: int, visitor_id: str | None, session_id: str | None = None) -> bool:
+    """The booking was made in a chat session of this browser (visitor id) or in this very session."""
+    if not visitor_id and not session_id:
+        return False
+    with conn() as c:
+        row = c.execute(
+            """SELECT 1 FROM bookings b WHERE b.id = %s AND b.session_id IS NOT NULL
+               AND (b.session_id = COALESCE(%s::text, '') OR EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = b.session_id
+                                                                     AND s.visitor_id = %s::text))""",
+            (booking_id, session_id, visitor_id)).fetchone()
+    return row is not None
 
 
 def get(booking_id: int) -> dict[str, Any] | None:

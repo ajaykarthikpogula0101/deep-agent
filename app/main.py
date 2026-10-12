@@ -21,6 +21,7 @@ from fastapi.responses import Response
 
 from app import conversations, digest, guidance, identity, inbox, mailer, media, memory, nudge, outreach, store_bookings, suggestions, templates, titles, tracking
 from app.booking import availability as avail
+from app.booking import browser_booking
 from app.booking import flow, ics
 from app.booking.service import BookingService
 from app.booking.email import send_host_brief, send_test
@@ -34,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.11.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.12.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -203,6 +204,11 @@ class ConfirmIn(BaseModel):
     email: str = Field(min_length=3, max_length=200)
     company: str = Field(default="", max_length=120)
     notes: str = Field(default="", max_length=1000)
+    timezone: str = Field(default="UTC", max_length=64)
+
+
+class RescheduleIn(BaseModel):
+    start: str = Field(min_length=10, max_length=40)
     timezone: str = Field(default="UTC", max_length=64)
 
 
@@ -402,7 +408,7 @@ def conversations_read(session_id: str, request: Request, x_visitor_id: str | No
 def widget_config(request: Request):
     if not _origin_ok(request):
         raise HTTPException(403, "origin not allowed")
-    return {**media.widget_config(), "version": APP_VERSION, "suggestions": suggestions.current()}
+    return {**media.widget_config(), "version": APP_VERSION, "suggestions": suggestions.current(), "booking_mode": browser_booking.mode()}
 
 
 @app.post("/upload")
@@ -592,10 +598,40 @@ def booking_manage(booking_id: int, t: str = ""):
     return _manage_page("Your booking", f"<p><b>{v['schedule_name']}</b><br>{v['label_visitor']}<br>{v['duration_min']} min with Deep</p>"
                         + (f"<p><a style='color:#F28C28' href='{v['join_url']}'>Join Zoom</a></p>" if v.get("join_url") else "")
                         + f"<p><a style='color:#F28C28' href='{v['ics_url']}'>Add to calendar (.ics)</a></p>"
-                        f"<p style='margin-top:24px'>Need a different time? Cancel below, then pick a new one in the chat on "
+                        f"<p style='margin-top:24px'>Need a different time? Open the chat on "
+                        f"<a style='color:#F28C28' href='{settings.site_base_url}'>{settings.site_base_url.replace('https://', '')}</a> and say "
+                        f"\"reschedule my call\". Or cancel below, then pick a new one in the chat on "
                         f"<a style='color:#F28C28' href='{settings.site_base_url}'>{settings.site_base_url.replace('https://', '')}</a>.</p>"
                         f"<form method='post' action='/booking/{booking_id}/cancel?t={t}'><button style='background:#E5484D;color:#fff;border:0;"
                         f"padding:12px 20px;border-radius:999px;font-size:15px;cursor:pointer'>Cancel this booking</button></form>")
+
+
+@app.post("/booking/{booking_id}/reschedule")
+def booking_reschedule(booking_id: int, body: RescheduleIn, request: Request, t: str = "", x_session_id: str | None = Header(default=None),
+                       x_visitor_id: str | None = Header(default=None)):
+    """Move a booking to a new open time: from the chat (the booking belongs to this visitor's sessions) or with the
+    manage token from the email. Browser-made bookings are moved on Zoom Scheduler by the browser worker."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    b = store_bookings.get(booking_id)
+    sid = (x_session_id or "").strip()[:64] or None
+    vid = (x_visitor_id or "").strip()[:64] or None
+    owned = bool(b) and ((t and b.get("manage_token") == t) or store_bookings.owned_by_visitor(booking_id, vid, sid))
+    if not b or not owned:
+        raise HTTPException(404, "booking not found")
+    if not _booking_limiter.allow(sid or _client_ip(request)):
+        raise HTTPException(429, "Too many booking attempts. Please wait a minute and try again.")
+    try:
+        res = flow.reschedule(_booking_service, b, body.start, body.timezone)
+    except Exception as e:
+        log.error("reschedule failed: %s", e)
+        return {"status": "error", "message": "Zoom or the server did not respond. Your original time still stands.", "retry": True}
+    if res.get("status") in ("rescheduled", "pending_zoom") and sid:
+        v = res["booking"]
+        line = (f"Booking moved: {v['schedule_name']} to {v['label_visitor']}." if res["status"] == "rescheduled"
+                else f"New time held: {v['schedule_name']} on {v['label_visitor']}; the visitor still has to confirm on Zoom.")
+        inbox.log_message(sid, "assistant", line, outcome="booking", question=f"[reschedule] {b.get('schedule_slug')} {v['start_iso']}")
+    return res
 
 
 @app.post("/booking/{booking_id}/cancel")
