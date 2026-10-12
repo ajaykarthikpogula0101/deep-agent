@@ -272,15 +272,23 @@ def open_page(url: str, tz: str):
     return b
 
 
-def safe_observe(b, tries: int = 6):
-    """jev's observe() retries stale pages but not a daemon timeout, which happens when a click starts a navigation and
-    the post-input wait promise dies with the old document. Drop that pending wait and observe again."""
-    for i in range(tries):
+PAGE_PATIENCE = 75.0  # Zoom's page took 3 s to draw in the morning and up to 35 s in the evening; the daemon answers
+#                       "timed out after 5s" while the renderer is busy, so observations are retried for this long
+
+
+def safe_observe(b, budget_s: float = PAGE_PATIENCE):
+    """jev's observe() retries stale pages but not a daemon timeout, which happens while a heavy page is still loading or
+    when a click starts a navigation and the post-input wait promise dies with the old document. Keep trying within
+    the budget; drop the pending post-input wait between attempts."""
+    deadline = time.monotonic() + budget_s
+    last: Exception | None = None
+    while True:
         try:
             return b.observe(screenshot=False)
-        except Exception:
+        except Exception as e:
+            last = e
             b.after_input = None
-            if i == tries - 1:
+            if time.monotonic() >= deadline:
                 raise
             time.sleep(1.0)
 
@@ -288,18 +296,16 @@ def safe_observe(b, tries: int = 6):
 def observe(b, want=None, timeout=15.0):
     """Observe until `want(page)` holds (the React app draws its controls after load)."""
     deadline = time.monotonic() + timeout
-    page = safe_observe(b)
+    page = safe_observe(b, max(timeout, 10.0))
     while want and not want(page) and time.monotonic() < deadline:
         time.sleep(0.3)
-        page = safe_observe(b)
+        page = safe_observe(b, max(deadline - time.monotonic(), 5.0))
     return page
 
 
-def act_retry(b, page, pick, text=None, tries=4):
+def act_retry(b, page, pick, text=None, tries=6):
     """pick(page) -> an observed action or None. jev raises StalePage BEFORE any input when the page changed since the
     observation (the calendar re-rendering, a loading spinner), so observing again and retrying is safe."""
-    from jev_ultrafast.browser import StalePage
-
     for i in range(tries):
         a = pick(page)
         if not a:
@@ -310,10 +316,10 @@ def act_retry(b, page, pick, text=None, tries=4):
             else:
                 b.act(a, page)
             return page, a
-        except StalePage:
+        except Exception:  # StalePage, or the daemon's 5 s timeout while the renderer is busy: both happen before input
             if i == tries - 1:
                 raise
-            time.sleep(0.7)
+            time.sleep(1.0)
             page = safe_observe(b)
     return page, None
 
@@ -361,7 +367,7 @@ def screenshot(b, path: str | None) -> str | None:
 
 def select_slot(b, start: datetime, log: list[str]) -> tuple[Any, str | None]:
     """Click the wanted slot. Uses the month calendar (and next month) to reach other weeks. Returns (page, error)."""
-    page = observe(b, lambda pg: has_slots(pg) or any(a["label"].lower().startswith("choose") for a in clicks(pg)), timeout=15)
+    page = observe(b, lambda pg: has_slots(pg) or any(a["label"].lower().startswith("choose") for a in clicks(pg)), timeout=PAGE_PATIENCE)
     for attempt in range(4):
         page, hit = act_retry(b, page, lambda pg: next((a for a in clicks(pg) if slot_label_matches(a["label"], start)), None))
         if hit:
@@ -507,7 +513,7 @@ def _fill_by_label(b, page, pattern: str, value: str, log: list[str]):
 
 def drive_script(b, task: str, p: dict[str, Any], dry_run: bool, log: list[str]) -> str:
     """No model: known labels on the Zoom Scheduler page."""
-    page = observe(b, lambda pg: bool(fills(pg)) or bool(clicks(pg)), timeout=10)
+    page = observe(b, lambda pg: bool(fills(pg)) or bool(clicks(pg)), timeout=30)
     if task == "book":
         for pat, val in (("first\\s*name", p.get("first_name", "")), ("last\\s*name", p.get("last_name", "") or "-"),
                          ("e-?mail", p.get("email", "")), ("share anything|notes|message|prepare", p.get("notes", ""))):
@@ -587,7 +593,7 @@ def run(task: str, p: dict[str, Any]) -> dict[str, Any]:
             log.append("page open")
             try:
                 if task == "reschedule":  # the manage page shows Reschedule / Cancel first; Reschedule opens the calendar
-                    page = observe(b, lambda pg: has_slots(pg) or any(re.fullmatch(r"\s*reschedule\s*", a["label"], re.I) for a in clicks(pg)), timeout=12)
+                    page = observe(b, lambda pg: has_slots(pg) or any(re.fullmatch(r"\s*reschedule\s*", a["label"], re.I) for a in clicks(pg)), timeout=PAGE_PATIENCE)
                     if not has_slots(page):
                         page, btn = act_retry(b, page, lambda pg: next((a for a in clicks(pg) if re.fullmatch(r"\s*reschedule\s*", a["label"], re.I)), None))
                         if btn:

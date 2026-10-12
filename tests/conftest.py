@@ -17,3 +17,16 @@ def _no_homepage_fetch(monkeypatch):
 
     monkeypatch.setattr(enrich, "fetch_homepage",
                         lambda domain, timeout=3.0: {"company": enrich.from_domain(domain), "source": "test"})
+
+
+@pytest.fixture(autouse=True)
+def _no_browser_booking(monkeypatch):
+    """The browser worker books on the real Zoom scheduler. Unit tests never reach it: the feature reads as disabled
+    and `available()` is False unless a test patches it explicitly (tests/test_browser_booking.py does)."""
+    from app.booking import browser_booking
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "browser_booking_enabled", False)
+    monkeypatch.setattr(settings, "browser_booking_dry_run", True)
+    monkeypatch.setattr(browser_booking, "available", lambda: False)
+    monkeypatch.setattr(browser_booking, "_ensure_browser", lambda: "")

@@ -56,6 +56,14 @@ timing: fresh browser-harness daemon 11-12 s per run, Browser() 1 s on a live da
   A bad TypeSafe response ('Invalid TypeSafe response') seen once -> the model step is retried up to 3 times.
 BROWSER_BOOKING_ENABLED=true in .env from 2026-10-12. Test servers for the browser suite must run with
   BROWSER_BOOKING_ENABLED=false (the suite refuses to run against booking_mode=browser).
+first two bookings from the live widget (user, 15:44 and 15:49 local): the worker gave up after 'selecting the slot'
+  ('Runtime.evaluate timed out after 5s waiting for the daemon' six times while Zoom's page was still loading, 49 s
+  and 10 s to open) and the flow fell back to the hand-off link (pending_zoom), as designed. Fix: observations and
+  code-driven clicks now retry daemon timeouts within a 75 s page budget; BROWSER_BOOKING_TIMEOUT default 240 s;
+  widget notice says 'a minute or two'. Two dry runs through the app after the fix: 95 s (fresh daemon) and 61 s.
+unit tests: with the feature enabled in .env, two booking tests had reached the real worker (past dates -> no
+  booking, but 92 s and a failure). tests/conftest.py now disables browser booking for every test; the runner test
+  restores the real available() explicitly.
 ```
 
 ## 2026-10-11 — proactive outreach rules (version 2026.10.11.1)

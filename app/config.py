@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     browser_booking_enabled: bool = Field(default=False, alias="BROWSER_BOOKING_ENABLED")
     browser_booking_driver: str = Field(default="auto", alias="BROWSER_BOOKING_DRIVER")  # auto | jev (TypeSafe) | script (no model)
     browser_booking_dry_run: bool = Field(default=False, alias="BROWSER_BOOKING_DRY_RUN")  # fill but never press Book (testing)
-    browser_booking_timeout: int = Field(default=150, alias="BROWSER_BOOKING_TIMEOUT")
+    browser_booking_timeout: int = Field(default=240, alias="BROWSER_BOOKING_TIMEOUT")
     typesafe_api_key: str = Field(default="", alias="TYPESAFE_API_KEY")
     typesafe_model: str = Field(default="jev-latest", alias="TYPESAFE_MODEL")
     text_model_api_key: str = Field(default="", alias="TEXT_MODEL_API_KEY")  # empty = the chat model key

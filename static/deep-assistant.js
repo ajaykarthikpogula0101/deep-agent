@@ -1030,7 +1030,7 @@ class DeepAssistant extends HTMLElement {
   }
   async _bkConfirm(f, btn, stat) {
     const back = f.card.querySelector('.bk-back'); const lock = (on) => { btn.disabled = on; btn.classList.toggle('loading', on); btn.textContent = on ? 'Booking…' : 'Confirm booking'; if (back) back.disabled = on; };
-    lock(true); stat.className = 'note sstat'; stat.textContent = this._cfg.booking_mode === 'browser' ? 'Booking it on Zoom for you. This can take up to a minute; please keep this open…' : 'Checking the time with Zoom and booking…';
+    lock(true); stat.className = 'note sstat'; stat.textContent = this._cfg.booking_mode === 'browser' ? 'Booking it on Zoom for you. This can take a minute or two; please keep this open…' : 'Checking the time with Zoom and booking…';
     const s = f.schedule, w = f.who || {}; let res = null, status = 0;
     try { const r = await fetch(this._url('/booking/confirm'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ schedule_slug: s.slug, start: f.slot.start_iso, name: w.name, email: w.email, company: w.company, notes: w.notes, timezone: this.tz }) }); status = r.status; res = r.ok ? await r.json() : null; } catch {}
     const fail = (msg) => { lock(false); stat.className = 'note sstat warn'; stat.textContent = msg; };
@@ -1063,7 +1063,7 @@ class DeepAssistant extends HTMLElement {
   }
   async _rsConfirm(f, btn, stat) {
     const back = f.card.querySelector('.bk-back'); const lock = (on) => { btn.disabled = on; btn.classList.toggle('loading', on); btn.textContent = on ? 'Moving…' : 'Move my call'; if (back) back.disabled = on; };
-    lock(true); stat.className = 'note sstat'; stat.textContent = f.booking.method === 'browser' ? 'Moving it on Zoom for you. This can take up to a minute; please keep this open…' : 'Updating your held time…';
+    lock(true); stat.className = 'note sstat'; stat.textContent = f.booking.method === 'browser' ? 'Moving it on Zoom for you. This can take a minute or two; please keep this open…' : 'Updating your held time…';
     let res = null, status = 0;
     try { const r = await fetch(this._url(`/booking/${encodeURIComponent(f.booking.id)}/reschedule`), { method: 'POST', headers: this._headers(), body: JSON.stringify({ start: f.slot.start_iso, timezone: this.tz }) }); status = r.status; res = r.ok ? await r.json() : null; } catch {}
     const fail = (msg) => { lock(false); stat.className = 'note sstat warn'; stat.textContent = msg; };

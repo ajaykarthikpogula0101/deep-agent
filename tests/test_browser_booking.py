@@ -29,6 +29,7 @@ spec.loader.exec_module(worker)  # type: ignore[union-attr]
 
 SCHED = normalize_schedules(SCHEDULES, settings.zoom_booking_base)[0]
 START = datetime(2026, 10, 15, 11, 0, tzinfo=timezone.utc)  # Thu 16:30 IST
+REAL_AVAILABLE = bb.available  # captured before the conftest fixture replaces it
 
 
 # ---------------------------------------------------------------- worker helpers
@@ -95,6 +96,7 @@ def test_run_parses_the_last_json_line_and_handles_timeouts(monkeypatch):
 
     monkeypatch.setattr(bb.subprocess, "run", fake_run)
     monkeypatch.setattr(bb, "_ensure_browser", lambda: "http://127.0.0.1:9999")  # no real browser in unit tests
+    monkeypatch.setattr(bb, "available", REAL_AVAILABLE)  # conftest disables it for every other test
     monkeypatch.setattr(settings, "browser_booking_enabled", True)
     monkeypatch.setattr(settings, "browser_booking_driver", "script")
     monkeypatch.setattr(settings, "typesafe_api_key", "")  # the real .env may carry a key; this test is about the script driver
