@@ -37,6 +37,8 @@ let failures = 0; const check = (c, label) => { console.log((c ? "PASS " : "FAIL
 try {
   await connect();
   const DEMO = await (await fetch(`${BASE}/demo/token`)).json(); const DEMO_EMAIL = DEMO.email || "ada@lovelace.org";
+  // never book on the real Zoom calendar from a test run: the server under test must not be in browser-booking mode
+  try { const cfg = await (await fetch(`${BASE}/widget-config`)).json(); if (cfg.booking_mode === "browser") { console.error("REFUSING: this server books on the real Zoom calendar (booking_mode=browser). Start the test server with BROWSER_BOOKING_ENABLED=false."); process.exit(2); } } catch {}
   await call("Page.navigate", { url: `${BASE}/demo` });
   await waitFor("customElements.get('deep-assistant') && document.getElementById('panel').shadowRoot && document.getElementById('panel').shadowRoot.querySelector('.welcome .act')", 20000, "component to render");
   check(await evaluate(P("panel", "sh.querySelectorAll('.welcome .act').length")) === 4, "panel renders the four welcome actions");

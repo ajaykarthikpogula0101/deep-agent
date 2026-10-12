@@ -94,6 +94,7 @@ def test_run_parses_the_last_json_line_and_handles_timeouts(monkeypatch):
         return subprocess.CompletedProcess(cmd, 0, stdout="noise\n" + json.dumps({"ok": True, "status": "booked", "links": {"join": "https://zoom.us/j/1"}}) + "\n", stderr="")
 
     monkeypatch.setattr(bb.subprocess, "run", fake_run)
+    monkeypatch.setattr(bb, "_ensure_browser", lambda: "http://127.0.0.1:9999")  # no real browser in unit tests
     monkeypatch.setattr(settings, "browser_booking_enabled", True)
     monkeypatch.setattr(settings, "browser_booking_driver", "script")
     monkeypatch.setattr(settings, "typesafe_api_key", "")  # the real .env may carry a key; this test is about the script driver
@@ -102,6 +103,7 @@ def test_run_parses_the_last_json_line_and_handles_timeouts(monkeypatch):
     cmd, kw = calls[0]
     assert cmd[1].endswith("zoom_browser_worker.py") and cmd[2:4] == ["--task", "book"]
     assert kw["env"]["BROWSER_BOOKING_DRIVER"] == "script" and kw["env"]["BH_TELEMETRY"] == "0" and "TYPESAFE_API_KEY" not in kw["env"]
+    assert kw["env"]["JEV_CDP_URL"] == "http://127.0.0.1:9999"
     sent = json.load(open(cmd[5], encoding="utf-8")) if Path(cmd[5]).exists() else None
     assert sent is None  # the payload file is removed after the run
     assert bb.driver() == "script" and bb.available() is True and bb.mode() == "browser"

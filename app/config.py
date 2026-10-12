@@ -120,7 +120,8 @@ class Settings(BaseSettings):
     text_model_reasoning: str = Field(default="none", alias="TEXT_MODEL_REASONING")
     jev_python: str = Field(default="", alias="JEV_PYTHON")  # interpreter of the jev environment (Python 3.12)
     jev_browser_path: str = Field(default="", alias="JEV_BROWSER_PATH")  # Chrome/Edge binary; empty = auto-detect
-    jev_cdp_url: str = Field(default="", alias="JEV_CDP_URL")  # an already running browser (http://127.0.0.1:9222); empty = launch one per run
+    jev_cdp_url: str = Field(default="", alias="JEV_CDP_URL")  # an already running browser (http://127.0.0.1:9222); empty = the app keeps one
+    jev_persistent_browser: bool = Field(default=True, alias="JEV_PERSISTENT_BROWSER")  # false = the worker launches a browser per run
 
     # Email
     smtp_host: str = Field(default="", alias="SMTP_HOST")

@@ -13,12 +13,17 @@ JEV_CDP_URL, BROWSER_BOOKING_TIMEOUT, BROWSER_BOOKING_DRY_RUN. `run` is the only
 """
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
+import shutil
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -63,6 +68,93 @@ def mode() -> str:
     return "browser" if available() else "handoff"
 
 
+_browser: dict[str, Any] = {"proc": None, "url": "", "profile": ""}
+_browser_lock = threading.Lock()
+BROWSER_CANDIDATES = [
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser",
+]
+
+
+def _browser_binary() -> str | None:
+    for c in ([settings.jev_browser_path] if settings.jev_browser_path else []) + BROWSER_CANDIDATES:
+        if c and os.path.exists(c):
+            return c
+    for name in ("google-chrome", "chromium", "chromium-browser", "msedge", "chrome"):
+        w = shutil.which(name)
+        if w:
+            return w
+    return None
+
+
+def _alive(url: str) -> bool:
+    try:
+        urllib.request.urlopen(url.rstrip("/") + "/json/version", timeout=2).read()
+        return True
+    except Exception:
+        return False
+
+
+def _ensure_browser() -> str:
+    """One headless automation browser per app process (JEV_CDP_URL for the worker), so browser-harness keeps its daemon
+    between runs: a run then starts in ~2 s instead of ~15 s. Relaunched if it died. Empty string = let the worker launch
+    its own browser per run."""
+    if settings.jev_cdp_url:
+        return settings.jev_cdp_url
+    if not settings.jev_persistent_browser:
+        return ""
+    with _browser_lock:
+        if _browser["url"] and _alive(_browser["url"]):
+            return _browser["url"]
+        exe = _browser_binary()
+        if not exe:
+            return ""
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        profile = _browser["profile"] or tempfile.mkdtemp(prefix="deep-zoom-app-")
+        try:
+            proc = subprocess.Popen([exe, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run", "--no-default-browser-check",
+                                     f"--remote-debugging-port={port}", f"--user-data-dir={profile}", "--window-size=1120,1240", "--lang=en-GB", "about:blank"],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as e:
+            log.warning("automation browser did not start: %s", e)
+            return ""
+        url = f"http://127.0.0.1:{port}"
+        for _ in range(60):
+            if _alive(url):
+                break
+            if proc.poll() is not None:
+                return ""
+            __import__("time").sleep(0.4)
+        else:
+            proc.kill()
+            return ""
+        _browser.update(proc=proc, url=url, profile=profile)
+        log.info("automation browser up on %s", url)
+        return url
+
+
+def _stop_browser() -> None:
+    p = _browser.get("proc")
+    if p and p.poll() is None:
+        try:
+            p.terminate()
+            p.wait(timeout=5)
+        except Exception:
+            try:
+                p.kill()
+            except Exception:
+                pass
+    if _browser.get("profile"):
+        shutil.rmtree(_browser["profile"], ignore_errors=True)
+    _browser.update(proc=None, url="", profile="")
+
+
+atexit.register(_stop_browser)
+
+
 def _env() -> dict[str, str]:
     env = dict(os.environ)
     env.update({
@@ -78,8 +170,9 @@ def _env() -> dict[str, str]:
     })
     if settings.jev_browser_path:
         env["JEV_BROWSER_PATH"] = settings.jev_browser_path
-    if settings.jev_cdp_url:
-        env["JEV_CDP_URL"] = settings.jev_cdp_url
+    cdp = _ensure_browser()
+    if cdp:
+        env["JEV_CDP_URL"] = cdp
     for k in ("TYPESAFE_API_KEY", "JEV_BROWSER_PATH", "JEV_CDP_URL"):
         if not env.get(k):
             env.pop(k, None)

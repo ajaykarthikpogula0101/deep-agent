@@ -44,8 +44,18 @@ LIVE cancel attempt on the SAME manage link: Zoom had retired that token on resc
   longer active ... may have been canceled or rescheduled' and the verifier wrongly matched 'canceled' -> FALSE
   POSITIVE, the booking stayed live. Fixed: STALE_RE -> status link_expired (never success); links are captured after
   a reschedule as well and stored on the row; the new manage link comes from Zoom's 'rescheduled' email.
-NOT yet run: the real cancel through the new manage link (user-run), then a full book -> reschedule -> cancel cycle
-  relying only on automatically captured links.
+LIVE cancel through the new manage link (user-run): Cancel -> 'Cancel Appointment' -> page read 'Your appointment with
+  Sreedeep Surapaneni has been canceled.' 104 s.
+LIVE full cycle (user-run, links captured by the worker only): booked Fri 23 Oct 21:30 (100 s, link captured by
+  pressing Reschedule on the confirmation page: /manage/<token>/rescheduling) -> moved to Thu 22 Oct 21:00 through
+  it (102 s, fresh token captured) -> cancelled through the fresh token (86 s). Calendar clean afterwards.
+timing: fresh browser-harness daemon 11-12 s per run, Browser() 1 s on a live daemon -> the app now keeps one headless
+  browser per process (JEV_CDP_URL for the worker), second dry run opened the page in 7 s instead of 32 s. Zoom's page
+  itself took 3 s in the morning and 20-35 s in the evening to draw its slots (also in a plain tab); the worker waits.
+  Cancel's 'final click' is now 'Cancel Appointment' (the bare Cancel button no longer triggers the 18 s verify wait).
+  A bad TypeSafe response ('Invalid TypeSafe response') seen once -> the model step is retried up to 3 times.
+BROWSER_BOOKING_ENABLED=true in .env from 2026-10-12. Test servers for the browser suite must run with
+  BROWSER_BOOKING_ENABLED=false (the suite refuses to run against booking_mode=browser).
 ```
 
 ## 2026-10-11 — proactive outreach rules (version 2026.10.11.1)

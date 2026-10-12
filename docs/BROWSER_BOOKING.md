@@ -1,4 +1,4 @@
-# Browser booking on Zoom Scheduler (version 2026.10.12.1)
+# Browser booking on Zoom Scheduler (version 2026.10.12.1, live since 2026-10-12)
 
 Bookings and reschedules completed on Deep's **public** scheduler page by a browser worker, so the chat can confirm a
 time without Zoom API credentials. The worker is built on [jev-ultrafast](https://github.com/browser-use/jev-ultrafast)
@@ -82,28 +82,48 @@ The worker launches its own headless browser per run on a throw-away profile and
 browser-harness telemetry and update checks are switched off (`BH_TELEMETRY=0`, `BH_UPDATE_CHECK=0`). Runs leave a
 screenshot of the final page under `uploads/zoom-runs/` and a summary on the booking row (`bookings.zoom_run`).
 
-## Testing, and what has been verified so far
+## Verified live (2026-10-12, Deep's real scheduler, authorised by the user)
 
-* `pytest tests/test_browser_booking.py` (8): slot-label matching in both clocks and date orders, verification,
-  goals, link capture, the subprocess runner (timeouts, bad output), and the flow: booking through the worker with
-  links stored, fall back to the hand-off link, taken slots, reschedule (browser and hand-off), cancel, the emails.
-* **Live dry run on Deep's real page (2026-10-12, script driver, no key):** picked "Select slot on 15/10/2026,
-  16:30:00", filled first name, last name, email and notes, stopped before Book, 28 s. Nothing was booked.
-  ```
-  python scripts/zoom_browser_worker.py --task book --payload-file dryrun.json     # with "dry_run": true
-  ```
-* **Not yet verified, needs a test schedule:** pressing Book (the page carries reCAPTCHA Enterprise, which may
-  challenge a headless browser), the confirmation page wording and its reschedule/cancel links, and the
-  reschedule/cancel pages themselves. Do the first real run against a schedule in **your own** Zoom account
-  (`ZOOM_BOOKING_TEST_URL`), never against Deep's calendar:
-  ```
-  python scripts/zoom_browser_worker.py --task book --payload-file live.json       # "url": ZOOM_BOOKING_TEST_URL, "dry_run": false
-  python scripts/zoom_browser_worker.py --task reschedule --payload-file move.json # "url": the reschedule link from the result
-  python scripts/zoom_browser_worker.py --task cancel --payload-file cancel.json   # "url": the cancel link
-  ```
-  If the confirmation wording differs from what `verify_text` expects, adjust `BOOKED_RE` / `RESCHEDULED_RE` /
-  `CANCELLED_RE` in the worker; the page text of every run is in the result (`page_text`).
-* The jev driver needs `TYPESAFE_API_KEY`; run the same dry run with `"driver": "jev"` first.
+| Run | Result | Time |
+|---|---|---|
+| Dry runs (script and jev drivers) | slot picked, four fields filled, stopped before Book | 28 s / 34 s |
+| Booking (jev) | "Confirmed. You are booked with Sreedeep Surapaneni ... Friday, October 23, 2026, 21:30 - 21:45"; reCAPTCHA Enterprise did not challenge | 42 s |
+| Reschedule through the manage link (jev) | "Confirmed. Your appointment ... has been rescheduled. ... Thursday, October 22, 2026, 21:00 - 21:15"; the typed reason appeared in Zoom's email | 114 s |
+| Cancel through the manage link (jev) | "Your appointment with Sreedeep Surapaneni has been canceled." (Cancel, then Cancel Appointment) | 104 s |
+| Full cycle on captured links only | booked, moved, cancelled, each verified; calendar clean afterwards | 100 + 102 + 86 s |
+
+Facts about Zoom's pages the worker relies on:
+
+* The confirmation page's Reschedule and Cancel are **buttons**, not links. Pressing Reschedule navigates to
+  `https://scheduler.zoom.us/manage/<token>/rescheduling`; the worker records that URL and the bare manage URL
+  (`/manage/<token>`), then goes back. Cancel is never pressed during capture.
+* **Every reschedule issues a new token and retires the old one.** A retired link shows "This event is no longer
+  active ... may have been canceled or rescheduled"; the worker reports `link_expired`, never success, and after a
+  reschedule it captures the fresh link, which the app stores on the booking row.
+* The manage page offers Reschedule (opens the same calendar) and Cancel (an inline form with an optional reason and a
+  "Cancel Appointment" button).
+* Zoom's page drew its slots in about 3 s in the morning and 20 to 35 s in the evening; the worker waits for them.
+
+### Speed
+
+browser-harness keeps one daemon per name, bound to the browser it first connected to, and a fresh daemon costs 11 to
+12 s. The app therefore keeps **one headless browser per process** (`JEV_PERSISTENT_BROWSER=true`, default) and hands
+its address to the worker as `JEV_CDP_URL`; the daemon then survives between runs and a run opens the page in a few
+seconds. With `JEV_PERSISTENT_BROWSER=false` the worker launches a browser per run and stops the daemon around it. On a
+server, pointing `JEV_CDP_URL` at a supervised headless Chrome works the same way.
+
+## Testing
+
+* `pytest tests/test_browser_booking.py`: slot-label matching in both clocks and date orders, verification (including
+  the retired-link page), goals, link capture, the subprocess runner, and the flow: booking through the worker with
+  links stored, fall back to the hand-off link, taken slots, reschedule (browser and hand-off, fresh links stored),
+  cancel, the emails.
+* Dry runs never press a final button: `python scripts/zoom_browser_worker.py --task book --payload-file p.json` with
+  `"dry_run": true`, or `browser_booking.book(..., dry_run=True)` from the app.
+* **The widget browser suite refuses to run against a server in browser-booking mode** (it would book on the real
+  calendar). Start test servers with `BROWSER_BOOKING_ENABLED=false`.
+* Every run leaves a screenshot under `uploads/zoom-runs/` and a step list with elapsed seconds in the result
+  (`bookings.zoom_run` on the row).
 
 ## Limits and safety
 

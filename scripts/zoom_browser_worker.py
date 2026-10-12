@@ -210,10 +210,10 @@ class OwnedBrowser:
         self.url = os.environ.get("JEV_CDP_URL", "").strip()
 
     def __enter__(self) -> "OwnedBrowser":
-        stop_daemon()
-        if self.url:
+        if self.url:  # a long-lived automation browser (JEV_CDP_URL): its daemon stays valid between runs, keep it
             os.environ["BU_CDP_URL"] = self.url
             return self
+        stop_daemon()
         exe = find_browser()
         if not exe:
             raise RuntimeError("no Chrome/Edge found; set JEV_BROWSER_PATH or JEV_CDP_URL")
@@ -238,7 +238,8 @@ class OwnedBrowser:
         return self
 
     def __exit__(self, *_a) -> None:
-        stop_daemon()
+        if not self.url:
+            stop_daemon()
         if self.proc:
             try:
                 self.proc.terminate()
@@ -267,14 +268,7 @@ def open_page(url: str, tz: str):
         pass
     b.call("Emulation.setDeviceMetricsOverride", width=VIEWPORT[0], height=VIEWPORT[1], deviceScaleFactor=1, mobile=False)
     b.call("Page.navigate", url=url)
-    deadline = time.monotonic() + 20
-    while time.monotonic() < deadline:
-        try:
-            if b.evaluate("document.readyState") == "complete":
-                break
-        except Exception:
-            pass
-        time.sleep(0.05)
+    time.sleep(1.5)  # let the navigation commit; the callers then observe until the controls they need are drawn
     return b
 
 
@@ -367,7 +361,7 @@ def screenshot(b, path: str | None) -> str | None:
 
 def select_slot(b, start: datetime, log: list[str]) -> tuple[Any, str | None]:
     """Click the wanted slot. Uses the month calendar (and next month) to reach other weeks. Returns (page, error)."""
-    page = observe(b, has_slots, timeout=15)
+    page = observe(b, lambda pg: has_slots(pg) or any(a["label"].lower().startswith("choose") for a in clicks(pg)), timeout=15)
     for attempt in range(4):
         page, hit = act_retry(b, page, lambda pg: next((a for a in clicks(pg) if slot_label_matches(a["label"], start)), None))
         if hit:
@@ -413,11 +407,27 @@ class AttachedAgent:
         a.state = dict(browser=browser, goal=goal, page=page, decision=None, history=[], status="ready", plan=[goal], plan_index=0,
                        decisions=[], text_calls=[], elapsed_ms=0, started_at=None, record=False)
 
-    def run(self, max_steps: int = MAX_FORM_STEPS):
-        for state in self.agent.run():
+    def run(self, max_steps: int = MAX_FORM_STEPS, model_retries: int = 3):
+        a = self.agent
+        retries = 0
+        while a.state["status"] not in {"done", "blocked"}:
+            try:
+                state = a.command("tick")
+            except (ValueError, RuntimeError) as e:
+                msg = str(e)
+                if "budget" in msg:
+                    a.state["status"] = "blocked"
+                    break
+                if retries < model_retries and ("TypeSafe" in msg or "Model" in msg or "provider" in msg):
+                    retries += 1  # a bad or failed model response: nothing was executed, ask again
+                    time.sleep(1.5)
+                    a.state["decision"] = None
+                    a.state["status"] = "ready"
+                    continue
+                raise
             yield state
             if len(state["history"]) >= max_steps:
-                self.agent.state["status"] = "blocked"
+                a.state["status"] = "blocked"
                 break
 
 
@@ -427,12 +437,15 @@ def drive_jev(b, task: str, p: dict[str, Any], start, dry_run: bool, log: list[s
     ag = AttachedAgent(b, goal)
     status = "ready"
     clicked_final = False
+    model_retries = 0
     for state in ag.run():
         status = state["status"]
         if state["history"]:
             h = state["history"][-1]
             log.append(f"jev: {h['operation']} {h['action'][:60]}" + (f" = {h['text'][:40]!r}" if h.get("text") else ""))
-            if h["operation"] == "CLICK" and re.search(r"^(book|schedule|confirm|reschedule|cancel|yes|submit)\b", h["action"], re.I):
+            final_re = (r"^(cancel (appointment|booking|event|meeting)|yes|confirm)\b" if task == "cancel"
+                        else r"^(book|schedule|confirm|reschedule|submit)\b")
+            if h["operation"] == "CLICK" and re.search(final_re, h["action"], re.I):
                 clicked_final = True
         # once the final button was pressed, the page decides, not the model: stop as soon as the outcome is readable
         if clicked_final and not dry_run:
