@@ -233,6 +233,32 @@ def test_reschedule_of_a_handoff_booking_reholds_the_time_with_a_new_prefilled_l
     assert mails[0]["handoff_url"] == marks[0][5] and mails[0]["status"] == "pending_zoom"
 
 
+@respx.mock
+def test_reschedule_of_a_handoff_booking_books_the_new_time_on_zoom_when_the_worker_is_available(monkeypatch):
+    """A hand-off hold was never confirmed on Zoom, so moving it means booking the new time for real: the visitor is
+    never sent to Zoom or to their email."""
+    mock_schedules(); respx.get(url__startswith=avail_url(SCHED.slug)).mock(return_value=httpx.Response(200, json=week_spots()))
+    monkeypatch.setattr(bb, "available", lambda: True)
+    seen = {}
+    monkeypatch.setattr(bb, "book", lambda url, start, name, email, notes, dry_run=None: (seen.update(url=url, start=start, name=name) or
+                        {"ok": True, "status": "booked", "driver": "jev", "links": {"join": "https://zoom.us/j/55", "reschedule": "https://scheduler.zoom.us/manage/h1/rescheduling",
+                                                                                     "cancel": "https://scheduler.zoom.us/manage/h1"}}))
+    marks, mails = [], []
+    b = _browser_booking(method="handoff", status="pending_zoom", join_url=None, zoom_reschedule_url=None, zoom_cancel_url=None, handoff_url="https://scheduler.zoom.us/x?old=1")
+    res = flow.reschedule(svc(), b, "2026-10-07T11:00:00+05:30", "Asia/Kolkata", FakeDeps().deps, mark=lambda *a: marks.append(a) or True, mail=mails.append)
+    assert res["status"] == "rescheduled" and res["message"].startswith("Moved:") and res["booking"]["method"] == "browser" and res["booking"]["join_url"] == "https://zoom.us/j/55"
+    assert seen["name"] == "Ada Lovelace" and seen["start"] == datetime(2026, 10, 7, 5, 30, tzinfo=timezone.utc) and seen["url"].endswith(SCHED.slug)
+    m = marks[0]
+    assert m[4] == "https://zoom.us/j/55" and m[5] is None and m[6].endswith("/h1/rescheduling") and m[7].endswith("/manage/h1") and m[8] == "browser" and m[9] == "confirmed"
+    assert mails[0]["status"] == "confirmed" and mails[0]["method"] == "browser" and not mails[0].get("handoff_url")
+    # the worker fails: fall back to re-holding the time with a fresh prefilled link (the old behaviour)
+    monkeypatch.setattr(bb, "book", lambda *a, **k: {"ok": False, "status": "verify_failed", "message": "?"})
+    res = flow.reschedule(svc(), b, "2026-10-07T11:00:00+05:30", "Asia/Kolkata", FakeDeps().deps, mark=lambda *a: marks.append(a) or True, mail=mails.append)
+    assert res["status"] == "pending_zoom" and marks[-1][5].startswith("https://scheduler.zoom.us/") and marks[-1][8] == "handoff"
+    monkeypatch.setattr(bb, "book", lambda *a, **k: {"ok": False, "status": "slot_unavailable", "message": "gone"})
+    assert flow.reschedule(svc(), b, "2026-10-07T11:00:00+05:30", "Asia/Kolkata", FakeDeps().deps, mark=lambda *a: True, mail=mails.append)["status"] == "slot_taken"
+
+
 def test_cancel_drives_the_scheduler_cancel_link_for_browser_bookings(monkeypatch):
     monkeypatch.setattr(bb, "available", lambda: True)
     calls = []

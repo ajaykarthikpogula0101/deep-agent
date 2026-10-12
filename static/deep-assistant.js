@@ -24,7 +24,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.12.1';
+const VERSION = '2026.10.12.2';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -1093,7 +1093,9 @@ class DeepAssistant extends HTMLElement {
         ${res.emails_queued ? `<li>${SVG.checkc}<span>${moved ? 'An updated invite' : 'A confirmation'}${b.join_url ? ' with the Zoom link' : ''} is on its way to <b>${esc(b.email)}</b></span></li>` : ''}
         ${b.ics_url ? `<li>${SVG.checkc}<span>Add it to your calendar so it doesn't slip</span></li>` : ''}
         <li>${SVG.spark.replace('aria-hidden', 'class="nx" aria-hidden')}<span>Want to prepare? Ask me anything before the call.</span></li>
-      </ul></div>`;
+      </ul>${b.id ? `<p class="note"><button type="button" class="linkbtn rs-change">Need a different time? Change it here</button></p>` : ''}</div>`;
+    const ch = body.querySelector('.rs-change');
+    if (ch) ch.onclick = () => this.startReschedule({ id: b.id, schedule_slug: b.schedule_slug, schedule_name: b.schedule_name, label_visitor: b.label_visitor, duration_min: b.duration_min, method: b.method, can_reschedule: true }, 'Change the time of my call');
   }
   _bkBooked(res) {
     const b = res.booking, pending = res.status !== 'confirmed';
@@ -1101,6 +1103,7 @@ class DeepAssistant extends HTMLElement {
     this._history.push({ role: 'assistant', content: line }); this._history = this._history.slice(-12);
     this._transcript.push({ role: 'bot', text: line, ts: Date.now() }); this._persist(); this._announce(pending ? 'Time held. One last step on Zoom.' : 'Booking confirmed.');
     this._emit('booking', { status: res.status, bookingId: b.id, joinUrl: b.join_url || null, handoffUrl: b.handoff_url || null, slot: b.start_iso, schedule: b.schedule_slug, email: b.email });
+    this._loadMe().catch(() => {});  // the memory now carries this booking, so "reschedule my call" works in this chat
   }
   _onSchedules(bot, items) { const f = this._bkFlow(bot); f.types = items; this._bkGo(f, 'type', false); if (items.some((x) => !x.description)) this._bkLoadTypes(f); }
   _onAvailability(bot, ev) {
@@ -1330,7 +1333,10 @@ class DeepAssistant extends HTMLElement {
     if ((!text && !files.length) || this._busy) return; if (this._attachments.some((a) => a.xhr)) return;
     if (!this.api) { this._add('bot', 'This assistant has no api attribute set.'); return; }
     const up = this._me && this._me.memory && this._me.memory.upcoming;
-    if (text && !files.length && up && up.can_reschedule && RESCHED_RE.test(text) && CALL_RE.test(text)) { this.$q.value = ''; this._autosize(); this._closePops(); return this.startReschedule(up, text); }
+    if (text && !files.length && RESCHED_RE.test(text) && CALL_RE.test(text)) {
+      let u = up; if (!u || !u.can_reschedule) { try { await this._loadMe(); } catch {} u = this._me && this._me.memory && this._me.memory.upcoming; }  // a booking made in this very chat
+      if (u && u.can_reschedule) { this.$q.value = ''; this._autosize(); this._closePops(); return this.startReschedule(u, text); }
+    }
     if (this._view !== 'chat') this.showView('chat');
     this.$q.value = ''; this._autosize(); this._closePops(); this._clearFollowups(); this._setBusy(true);
     const shown = (text || (files.length > 1 ? 'Please look at the attached files.' : 'Please look at the attached file.')) + files.map((a) => `\n[attached: ${a.name}](/uploads/${a.id})`).join('');

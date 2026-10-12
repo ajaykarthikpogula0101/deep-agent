@@ -1,5 +1,20 @@
 # Test log
 
+## 2026-10-12 (late) — rescheduling is done by the agent for every booking (version 2026.10.12.2)
+
+The user's first live reschedules were on a hand-off hold and only re-held the time with a prefilled link (a manual
+step on Zoom); typed "reschedule" right after booking fell through to the model (memory loaded before the booking).
+Now: a hand-off hold is moved by booking the new time on Zoom through the worker (method -> browser, status ->
+confirmed, links stored); the widget refreshes memory after a booking and before a typed reschedule; the done card
+carries "Need a different time? Change it here"; the model no longer points people to their email.
+
+```
+pytest: tests/test_browser_booking.py +1 (hand-off reschedule books through the worker; worker failure re-holds;
+  taken slot -> alternatives)
+live rows from the user's widget session: bookings 61 and 62 made by the worker on Zoom (method browser, links
+  captured); booking 59 (hand-off) rescheduled twice through the chat on the old re-hold path
+```
+
 ## 2026-10-12 — browser booking + reschedule on the public Zoom Scheduler page (version 2026.10.12.1)
 
 docs/BROWSER_BOOKING.md. `scripts/zoom_browser_worker.py` (jev-ultrafast in its own Python 3.12 env at `D:\jev\venv`,

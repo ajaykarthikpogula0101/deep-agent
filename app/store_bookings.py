@@ -34,16 +34,18 @@ def insert(b: dict[str, Any]) -> int:
 
 def reschedule(booking_id: int, start_utc: datetime, end_utc: datetime, run: dict[str, Any] | None = None,
                join_url: str | None = None, handoff_url: str | None = None, reschedule_url: str | None = None,
-               cancel_url: str | None = None) -> bool:
+               cancel_url: str | None = None, method: str | None = None, status: str | None = None) -> bool:
     """Move an active booking to a new time (keeps the old start in previous_start_utc). Zoom issues a fresh manage link
     on every reschedule, so the new reschedule/cancel links replace the old ones when the worker captured them."""
     with conn() as c:
         n = c.execute(
             """UPDATE bookings SET previous_start_utc = start_utc, start_utc = %s, end_utc = %s, rescheduled_at = now(),
                       zoom_run = COALESCE(%s::jsonb, zoom_run), join_url = COALESCE(%s, join_url), handoff_url = COALESCE(%s, handoff_url),
-                      zoom_reschedule_url = COALESCE(%s, zoom_reschedule_url), zoom_cancel_url = COALESCE(%s, zoom_cancel_url)
+                      zoom_reschedule_url = COALESCE(%s, zoom_reschedule_url), zoom_cancel_url = COALESCE(%s, zoom_cancel_url),
+                      method = COALESCE(%s, method), status = COALESCE(%s, status)
                WHERE id = %s AND status IN ('confirmed', 'pending_zoom')""",
-            (start_utc, end_utc, json.dumps(run, default=str) if run else None, join_url, handoff_url, reschedule_url, cancel_url, booking_id)).rowcount
+            (start_utc, end_utc, json.dumps(run, default=str) if run else None, join_url, handoff_url, reschedule_url, cancel_url,
+             method, status, booking_id)).rowcount
         c.commit()
     return n > 0
 

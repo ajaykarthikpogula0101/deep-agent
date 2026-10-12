@@ -406,18 +406,37 @@ def reschedule(service: BookingService, booking: dict[str, Any], start: str, vis
         join_url = links.get("join")
     else:
         links = {}
-        handoff_url = BookingService._handoff_url(schedule.booking_link or settings.zoom_booking_base, booking["name"], booking["email"], start_utc)
+        if browser_booking.available():  # nothing exists on Zoom for a hand-off hold: book the new time for real
+            res = browser_booking.book(schedule.booking_link or f"{settings.zoom_booking_base}/{schedule.slug}", start_utc, booking["name"],
+                                       booking["email"], booking.get("notes") or booking.get("company") or "")
+            run = browser_booking.summary(res)
+            if res.get("status") == "slot_unavailable":
+                avail.invalidate(schedule.slug)
+                data = avail.availability(service, schedule.slug, None, tz, busy_fn=deps.busy, use_cache=False)
+                return {"status": "slot_taken", "message": "Zoom reports that time is no longer open. Here are the nearest open times.",
+                        "alternatives": avail.nearest(data, start_utc, 3) if data.get("ok") else [], "schedule": _schedule_view(schedule)}
+            if res.get("ok") and res.get("status") == "booked":
+                links = res.get("links") or {}
+                join_url = links.get("join")
+                method = "browser"
+            else:
+                log.error("browser booking for a rescheduled hand-off failed (%s); re-holding the time instead", res.get("status"))
+        if method != "browser":
+            handoff_url = BookingService._handoff_url(schedule.booking_link or settings.zoom_booking_base, booking["name"], booking["email"], start_utc)
+    new_status = "confirmed" if method == "browser" else booking.get("status")
     if mark is None:
         from app import store_bookings as sb
 
         mark = sb.reschedule
     try:
-        mark(int(booking["id"]), start_utc, end_utc, run, join_url, handoff_url, links.get("reschedule"), links.get("cancel"))
+        mark(int(booking["id"]), start_utc, end_utc, run, join_url, handoff_url, links.get("reschedule"), links.get("cancel"), method, new_status)
     except Exception as e:
         log.error("reschedule store failed: %s", e)
     old_label = Slot(booking["start_utc"], 0).label(tz) if booking.get("start_utc") else ""
-    moved = dict(booking, previous_start_utc=booking.get("start_utc"), start_utc=start_utc, end_utc=end_utc, visitor_tz=tz,
-                 join_url=join_url or booking.get("join_url"), handoff_url=handoff_url or booking.get("handoff_url"), zoom_run=run)
+    moved = dict(booking, previous_start_utc=booking.get("start_utc"), start_utc=start_utc, end_utc=end_utc, visitor_tz=tz, method=method,
+                 status=new_status, join_url=join_url or booking.get("join_url"), handoff_url=handoff_url if method != "browser" else None,
+                 zoom_run=run, zoom_reschedule_url=links.get("reschedule") or booking.get("zoom_reschedule_url"),
+                 zoom_cancel_url=links.get("cancel") or booking.get("zoom_cancel_url"))
     moved.update(manage_urls(int(booking["id"]), booking.get("manage_token", "")))
     avail.invalidate(schedule.slug)
     if mail is None:

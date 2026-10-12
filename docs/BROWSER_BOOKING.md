@@ -14,7 +14,11 @@ executor only acts on elements it observed.
 * **Reschedule.** A returning visitor with an upcoming call sees "Reschedule your call" on the welcome screen, and
   typing "reschedule my call" or "move my meeting" opens the same picker. Two steps: pick a new time, confirm. The
   worker moves it on Zoom through the scheduler's own reschedule link; both sides get a "Moved:" email with a fresh
-  invite. Hand-off bookings (the old path) get a new held time and a new prefilled link.
+  invite. A hand-off booking (a time held before the worker existed, never confirmed on Zoom) is moved by booking the
+  new time on Zoom for real, so it becomes a confirmed browser booking; only if the worker is unavailable does it fall
+  back to re-holding the time with a new prefilled link. The visitor is never sent to Zoom or to their email to do it.
+  The picker opens from the welcome screen, from "Need a different time?" under the booking card, and from typing
+  "reschedule my call" (also right after booking in the same chat).
 * **Cancel.** The cancel link in the email now also cancels the Zoom event for browser-made bookings.
 
 Order of attempts in `flow._book_on_zoom`: Zoom Scheduler API → Meetings API → **browser worker** → prefilled hand-off
