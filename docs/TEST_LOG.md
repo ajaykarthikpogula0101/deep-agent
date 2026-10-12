@@ -17,6 +17,9 @@ model-free probe of https://scheduler.zoom.us/sreedeep/discovery-call through je
 worker dry run, script driver, Deep's real page, 2026-10-15 16:30 IST: slot picked ("Select slot on 15/10/2026,
   16:30:00" with the en-GB locale's 24 h clock), four fields filled, stopped before Book, 28 s, nothing booked
 worker, jev driver, no key: fails closed ("TYPESAFE_API_KEY is not set"), no browser launched
+worker, jev driver WITH the TypeSafe key (later the same day), Deep's real page, 2026-10-16 14:00 IST, dry run: slot
+  picked by code, then Jev chose TYPE_TEXT First Name / Last Name / Email Address / notes in order, the text model
+  (openai/gpt-4.1-mini via OpenRouter) typed the exact values, DONE at the form, 34 s, nothing submitted
 HTTP: POST /booking/999999/reschedule as a stranger -> 404; empty body -> 422; /widget-config booking_mode=handoff
 browser suite (headless Edge, 8089): all 110 widget checks passed (reschedule section: welcome action, step 1 of 2, review, move, row carries
   previous_start_utc)
