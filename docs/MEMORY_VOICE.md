@@ -30,6 +30,14 @@ Where it shows:
 Endpoints: `GET /me` now returns `memory` (`returning, visits, name, email, company, lang, last_topic, upcoming,
 headline, line`) for the `X-Visitor-Id` header. `VISITOR_MEMORY=false` turns everything off.
 
+### Reschedules and cancels (added 2026-10-13)
+
+`profile()` also returns `recent_change`: the latest booking the visitor moved or cancelled in the last 14 days. The
+welcome line then reads "Your … moved to … and it's confirmed. A reminder lands in your inbox the day before" or "You
+cancelled your … on …. Whenever it suits you, pick a new time", the welcome screen offers "Book a new time" after a
+cancel, the chat shows a toast right after the action, and the model's memory block carries the change (and the fact
+that a reminder email is coming) so "when is my call?" is answered from the current state.
+
 ## Multilingual voice
 
 * Text already answers in the visitor's language (docs/AUTOMATIONS.md §10). The call view now follows:

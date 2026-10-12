@@ -19,7 +19,7 @@ import re
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import conversations, digest, guidance, identity, inbox, mailer, media, memory, nudge, outreach, store_bookings, suggestions, templates, titles, tracking
+from app import conversations, digest, guidance, identity, inbox, mailer, media, memory, nudge, outreach, reminders, store_bookings, suggestions, templates, titles, tracking
 from app.booking import availability as avail
 from app.booking import browser_booking
 from app.booking import flow, ics
@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.13.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.13.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -80,6 +80,9 @@ def _startup() -> None:
     if settings.nudge_enabled:  # hourly: remind visitors whose Zoom hand-off is still unconfirmed (app/nudge.py)
         _scheduler.add_job(nudge.run, CronTrigger.from_crontab("15 * * * *", timezone=settings.host_timezone),
                            id="nudges", replace_existing=True, misfire_grace_time=1800)
+    if settings.reminder_enabled:  # hourly: the day-before reminder for upcoming bookings (app/reminders.py)
+        _scheduler.add_job(reminders.run, CronTrigger.from_crontab("45 * * * *", timezone=settings.host_timezone),
+                           id="reminders", replace_existing=True, misfire_grace_time=1800)
     if settings.outreach_enabled:  # starter outreach rules, once (app/outreach.py)
         outreach.seed_if_empty()
     _scheduler.start()
@@ -408,7 +411,8 @@ def conversations_read(session_id: str, request: Request, x_visitor_id: str | No
 def widget_config(request: Request):
     if not _origin_ok(request):
         raise HTTPException(403, "origin not allowed")
-    return {**media.widget_config(), "version": APP_VERSION, "suggestions": suggestions.current(), "booking_mode": browser_booking.mode()}
+    return {**media.widget_config(), "version": APP_VERSION, "suggestions": suggestions.current(), "booking_mode": browser_booking.mode(),
+            "reminders": settings.reminder_enabled}
 
 
 @app.post("/upload")
@@ -774,6 +778,12 @@ def admin_digest_preview(days: int = 7, rich: int = 0, x_admin_token: str | None
 def admin_digest_send(days: int = 7, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
     return digest.send(days)
+
+
+@app.post("/admin/reminders/run")
+def admin_reminders_run(x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return reminders.run()
 
 
 @app.post("/admin/nudge/run")

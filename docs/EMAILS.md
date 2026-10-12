@@ -56,3 +56,19 @@ Templates are stored in the `settings` table under `tpl:*` keys; the defaults li
   `{method_line}` (Scheduler API / Meetings API / hand-off) and the same invite.
 * Both go through `app/mailer.py` (background, 3 attempts with backoff); the booking succeeds even if SMTP is down.
   Console → Emails previews and send-tests both.
+
+## Added 2026-10-13: lifecycle emails (moved, cancelled, reminder)
+
+Three more visitor emails, all editable in Console → Emails and all with the same warm shape as the booking
+confirmation (greeting by first name, a thank-you line, the facts, what happens next, a sign-off):
+
+| Email | Template | When | Default subject |
+|---|---|---|---|
+| Call moved | `visitor_rescheduled` | after a reschedule from the chat or the manage link (carries the updated .ics) | `Your call with {host_name} has moved: {title} now on {date_visitor}` |
+| Call cancelled | `visitor_cancelled` | after a cancel from the chat or the manage link | `Your call with {host_name} is cancelled: {title} on {date_visitor}` |
+| Day-before reminder | `visitor_reminder` | `REMINDER_BEFORE_HOURS` (24) before every upcoming booking, once (app/reminders.py) | `Reminder: {title} with {host_name} tomorrow, {date_visitor}` |
+
+New variables: `{old_date}` / `{old_date_visitor}` (the time a moved call had before) and `{booking_link}` (the Zoom
+scheduler page). `{next_step}` follows the booking's real state: a confirmed call says "join with the Zoom link", a hold
+that still needs confirming on Zoom repeats the prefilled link. The host keeps receiving the short "Moved" / "Cancelled"
+notes as before.

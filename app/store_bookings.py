@@ -10,7 +10,7 @@ from app.db import conn
 COLS = ["id", "created_at", "lead_id", "session_id", "name", "email", "company", "notes", "schedule_slug", "schedule_name",
         "duration_min", "start_utc", "end_utc", "visitor_tz", "method", "zoom_meeting_id", "join_url", "passcode", "zoom_event_id",
         "handoff_url", "status", "manage_token", "cancelled_at", "origin", "company_line", "zoom_error",
-        "zoom_reschedule_url", "zoom_cancel_url", "zoom_run", "previous_start_utc", "rescheduled_at"]
+        "zoom_reschedule_url", "zoom_cancel_url", "zoom_run", "previous_start_utc", "rescheduled_at", "reminder_sent_at"]
 
 
 def insert(b: dict[str, Any]) -> int:

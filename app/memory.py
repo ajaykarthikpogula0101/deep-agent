@@ -46,7 +46,7 @@ def _ago(dt: datetime | None, now: datetime | None = None) -> str:
 
 def _empty() -> dict[str, Any]:
     return {"returning": False, "visits": 0, "first_seen": None, "last_seen": None, "name": None, "email": None,
-            "company": None, "topics": [], "questions": [], "upcoming": None, "open_handover": None, "lang": None}
+            "company": None, "topics": [], "questions": [], "upcoming": None, "open_handover": None, "lang": None, "recent_change": None}
 
 
 def profile(visitor_id: str | None, user_id: str | None = None, current_session: str | None = None) -> dict[str, Any]:
@@ -99,6 +99,21 @@ def profile(visitor_id: str | None, user_id: str | None = None, current_session:
                                  "schedule_slug": up[8], "method": up[9], "duration_min": up[3], "visitor_tz": tz,
                                  "can_reschedule": movable and up[2] > datetime.now(timezone.utc) + timedelta(minutes=30),
                                  "can_cancel": up[2] > datetime.now(timezone.utc) + timedelta(minutes=5)}
+            rc = c.execute(
+                """SELECT id, schedule_name, start_utc, previous_start_utc, duration_min, visitor_tz, status, rescheduled_at, cancelled_at
+                   FROM bookings WHERE session_id = ANY(%s)
+                     AND (rescheduled_at > now() - interval '14 days' OR cancelled_at > now() - interval '14 days')
+                   ORDER BY GREATEST(COALESCE(rescheduled_at, 'epoch'::timestamptz), COALESCE(cancelled_at, 'epoch'::timestamptz)) DESC
+                   LIMIT 1""", (sids,)).fetchone()
+            if rc:
+                from app.booking.zoom import Slot
+
+                tz = rc[5] or settings.host_timezone
+                cancelled = rc[8] is not None and (rc[7] is None or rc[8] >= rc[7])
+                p["recent_change"] = {"id": rc[0], "kind": "cancelled" if cancelled else "rescheduled", "schedule_name": rc[1],
+                                      "label_visitor": Slot(rc[2], rc[4] or 0).label(tz),
+                                      "old_label_visitor": Slot(rc[3], rc[4] or 0).label(tz) if rc[3] else None,
+                                      "when": rc[8] if cancelled else rc[7], "status": rc[6]}
             ho = c.execute(
                 """SELECT ts FROM leads WHERE session_id = ANY(%s) AND status = 'handover' AND ts > now() - interval '14 days'
                    ORDER BY ts DESC LIMIT 1""", (sids,)).fetchone()
@@ -121,9 +136,16 @@ def greeting(p: dict[str, Any], now: datetime | None = None) -> dict[str, str] |
     first = (p.get("name") or "").strip().split(" ")[0] if p.get("name") else ""
     headline = f"Welcome back{', ' + first if first else ''}! 👋"
     up = p.get("upcoming")
-    if up:
+    rc = p.get("recent_change")
+    if up and rc and rc.get("kind") == "rescheduled" and rc.get("id") == up.get("id"):
+        state = "it's confirmed" if up.get("status") == "confirmed" else "it's held until you confirm it on Zoom"
+        line = (f"Your {up['schedule_name']} with Deep moved to {up['label_visitor']} and {state}. "
+                f"A reminder lands in your inbox the day before. Anything to prepare?")
+    elif up:
         state = "is confirmed" if up.get("status") == "confirmed" else "is held, waiting for your confirmation on Zoom"
         line = f"Your {up['schedule_name']} with Deep on {up['label_visitor']} {state}. Anything else I can help with?"
+    elif rc and rc.get("kind") == "cancelled":
+        line = f"You cancelled your {rc['schedule_name']} on {rc['label_visitor']}. Whenever it suits you, pick a new time and I'll set it up."
     elif p.get("open_handover"):
         line = f"Your message to the team from {_ago(p['open_handover'], now)} is with Deep; a reply comes by email. What else can I do?"
     elif p.get("topics"):
@@ -151,6 +173,14 @@ def prompt_block(p: dict[str, Any], now: datetime | None = None) -> str:
     if up:
         lines.append(f"- Upcoming booking: {up['schedule_name']} on {up['label_visitor']} "
                      f"({'confirmed' if up.get('status') == 'confirmed' else 'held; they still have to confirm on Zoom'}).")
+    rc = p.get("recent_change")
+    if rc and rc.get("kind") == "rescheduled" and up and rc.get("id") == up.get("id"):
+        lines.append(f"- They moved that call {_ago(rc.get('when'), now)}" + (f" from {rc['old_label_visitor']}" if rc.get("old_label_visitor") else "") + ".")
+    elif rc and rc.get("kind") == "cancelled" and not up:
+        lines.append(f"- They cancelled their {rc['schedule_name']} on {rc['label_visitor']} {_ago(rc.get('when'), now)}; they have no booking now. "
+                     "If a call would help, offer to book a new time (never assume why they cancelled).")
+    if up and settings.reminder_enabled:
+        lines.append(f"- A reminder email goes to them {settings.reminder_before_hours} hours before the call; they do not need to do anything for it.")
     if p.get("open_handover"):
         lines.append(f"- They asked the team for a human reply {_ago(p['open_handover'], now)}; Deep replies by email.")
     if up and up.get("can_reschedule"):
@@ -172,4 +202,5 @@ def public(p: dict[str, Any]) -> dict[str, Any]:
     g = greeting(p)
     return {"returning": bool(p.get("returning")), "visits": p.get("visits") or 0, "name": p.get("name"), "email": p.get("email"),
             "company": p.get("company"), "lang": p.get("lang"), "last_topic": (p.get("topics") or [None])[0],
-            "upcoming": p.get("upcoming"), "headline": g["headline"] if g else None, "line": g["line"] if g else None}
+            "upcoming": p.get("upcoming"), "recent_change": p.get("recent_change"),
+            "headline": g["headline"] if g else None, "line": g["line"] if g else None}

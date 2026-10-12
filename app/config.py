@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     digest_cron: str = Field(default="0 9 * * 1", alias="DIGEST_CRON")  # Monday 09:00, host timezone
     nudge_enabled: bool = Field(default=True, alias="NUDGE_ENABLED")
     nudge_after_hours: int = Field(default=24, alias="NUDGE_AFTER_HOURS")
+    reminder_enabled: bool = Field(default=True, alias="REMINDER_ENABLED")  # day-before reminder email for every upcoming booking
+    reminder_before_hours: int = Field(default=24, alias="REMINDER_BEFORE_HOURS")
     enrich_enabled: bool = Field(default=True, alias="ENRICH_ENABLED")
     suggestions_days: int = Field(default=30, alias="SUGGESTIONS_DAYS")
     multilingual: bool = Field(default=True, alias="MULTILINGUAL")

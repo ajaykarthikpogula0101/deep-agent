@@ -78,6 +78,31 @@ a = Actions([b1])
 b1 = Button("What shipped before that?")
 ```
 
+Prose first, then the block (key numbers):
+
+Lake B2B's database settled at 800 million+ contacts and 80 million+ companies. [1] The pitch leads with competitor lookalike mapping. [2]
+
+```openui-lang
+root = Card("Lake B2B in numbers", [s1, s2, c, a])
+s1 = Stat("Contacts", "800M+")
+s2 = Stat("Companies", "80M+")
+c = Callout("The pitch leads with competitor lookalike mapping, not database size", "info")
+a = Actions([b1])
+b1 = Button("What is competitor lookalike mapping?")
+```
+
+Prose first, then the block (products of one company):
+
+Lake B2B's growth stack has four products: Lake Current, Lake Stream, Lake Harvest and ChampMail. [1]
+
+```openui-lang
+root = Card("Lake B2B products", [l, a])
+l = List(["Lake Current", "Lake Stream", "Lake Harvest", "ChampMail"])
+a = Actions([b1, b2])
+b1 = Button("What does Lake Current do?")
+b2 = Button("Open the Lake B2B page", Action([@OpenUrl("https://deependhq.com/company/lake-b2b")]))
+```
+
 ## Final Verification
 Before finishing, walk your output and verify:
 1. root = Card(...) is the FIRST line (for optimal streaming).
@@ -89,4 +114,5 @@ Before finishing, walk your output and verify:
 - Keep it small: at most one Table (6 rows x 4 columns) or one List/KeyValue/Steps (6 items), at most 4 Stats, at most 3 Buttons, under 20 statements.
 - Buttons: Button("question") sends exactly that label to you as the visitor's next message (any @ToAssistant argument is ignored), so phrase the label as the visitor would. @OpenUrl("https://...") only with a URL whose host is deependhq.com, copied from the url of a <source> you cited, or https://scheduler.zoom.us/sreedeep to book a call. No other host, ever.
 - Never put a person's or client's name in the card (rule 3) and never a number that is not in <sources>.
+- A table cell or value you do not know is written as a dash (-), never "N/A", "unknown" or a guess; drop a column nobody has a value for.
 - If a fact is uncertain, leave that line out of the card rather than guessing: a wrong line is worse than a shorter card.

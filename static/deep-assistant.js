@@ -24,7 +24,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.13.1';
+const VERSION = '2026.10.13.2';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -728,6 +728,8 @@ class DeepAssistant extends HTMLElement {
       a.innerHTML = `<span class="ai">${SVG.cal}</span><span class="al">${esc(u.status === 'confirmed' ? 'Join your call' : 'Confirm your call on Zoom')}<small>${esc(u.schedule_name + ' · ' + u.label_visitor)}</small></span>${SVG.chev}`; acts.appendChild(a); }
     if (mem && mem.upcoming && mem.upcoming.can_reschedule) { const u = mem.upcoming; const b = document.createElement('button'); b.type = 'button'; b.className = 'act resched';
       b.innerHTML = `<span class="ai">${SVG.clock}</span><span class="al">Reschedule your call<small>Pick a new time for ${esc(u.schedule_name)}</small></span>${SVG.chev}`; b.onclick = () => this.startReschedule(u, 'Reschedule my call'); acts.appendChild(b); }
+    if (mem && !mem.upcoming && mem.recent_change && mem.recent_change.kind === 'cancelled') { const r = mem.recent_change; const b = document.createElement('button'); b.type = 'button'; b.className = 'act book rebook';
+      b.innerHTML = `<span class="ai">${SVG.cal}</span><span class="al">Book a new time<small>You cancelled ${esc(r.schedule_name + ' · ' + r.label_visitor)}</small></span>${SVG.chev}`; b.onclick = () => this.startBooking(null, 'Book a new time'); acts.appendChild(b); }
     if (mem && mem.upcoming && mem.upcoming.can_cancel) { const u = mem.upcoming; const b = document.createElement('button'); b.type = 'button'; b.className = 'act cancelcall';
       b.innerHTML = `<span class="ai">${SVG.x || SVG.close || SVG.alert}</span><span class="al">Cancel your call<small>${esc(u.schedule_name + ' · ' + u.label_visitor)}</small></span>${SVG.chev}`; b.onclick = () => this.startCancel(u, 'Cancel my call'); acts.appendChild(b); }
     this._actions().forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'act' + (x.book ? ' book' : ''); b.innerHTML = `<span class="ai">${SVG[x.icon] || SVG.spark}</span><span class="al">${esc(x.label)}</span>${SVG.chev}`; b.onclick = () => this._runAction(x, 'suggestion'); acts.appendChild(b); });
@@ -1086,6 +1088,7 @@ class DeepAssistant extends HTMLElement {
     const line = pending ? `New time held: ${b.schedule_name} on ${b.label_visitor}; confirm on Zoom to make it final.` : `Booking moved: ${b.schedule_name} to ${b.label_visitor}.`;
     this._history.push({ role: 'assistant', content: line }); this._history = this._history.slice(-12);
     this._transcript.push({ role: 'bot', text: line, ts: Date.now() }); this._persist(); this._announce(pending ? 'New time held. One last step on Zoom.' : 'Call moved.');
+    this._toast(pending ? `New time held: ${b.label_visitor}` : `Your call is now on ${b.label_visitor}`);
     this._emit('booking', { status: res.status, bookingId: b.id, joinUrl: b.join_url || null, handoffUrl: b.handoff_url || null, slot: b.start_iso, schedule: b.schedule_slug, email: b.email });
     this._loadMe().catch(() => {});
   }
@@ -1099,6 +1102,7 @@ class DeepAssistant extends HTMLElement {
       <ul class="nexts">
         ${res.emails_queued ? `<li>${SVG.checkc}<span>${moved ? 'An updated invite' : 'A confirmation'}${b.join_url ? ' with the Zoom link' : ''} is on its way to <b>${esc(b.email)}</b></span></li>` : ''}
         ${b.ics_url ? `<li>${SVG.checkc}<span>Add it to your calendar so it doesn't slip</span></li>` : ''}
+        ${this._cfg.reminders ? `<li>${SVG.checkc}<span>We'll email you a reminder the day before</span></li>` : ''}
         <li>${SVG.spark.replace('aria-hidden', 'class="nx" aria-hidden')}<span>Want to prepare? Ask me anything before the call.</span></li>
       </ul>${b.id ? `<p class="note"><button type="button" class="linkbtn rs-change">Need a different time? Change it here</button> · <button type="button" class="linkbtn cx-open">Cancel this booking</button></p>` : ''}</div>`;
     const up = { id: b.id, schedule_slug: b.schedule_slug, schedule_name: b.schedule_name, label_visitor: b.label_visitor, duration_min: b.duration_min, method: b.method, can_reschedule: true, can_cancel: true };
@@ -1142,6 +1146,7 @@ class DeepAssistant extends HTMLElement {
     const line = `Booking cancelled: ${b.schedule_name || up.schedule_name} on ${b.label_visitor || up.label_visitor}.`;
     this._history.push({ role: 'assistant', content: line }); this._history = this._history.slice(-12);
     this._transcript.push({ role: 'bot', text: line, ts: Date.now() }); this._persist(); this._announce('Call cancelled.');
+    this._toast('Your call is cancelled. A confirmation is on its way to you and to Deep.');
     this._emit('booking', { status: 'cancelled', bookingId: up.id, schedule: b.schedule_slug || up.schedule_slug || null });
     this._loadMe().catch(() => {});
     const ok = card.querySelector('.bk-ok'); if (ok) ok.focus({ preventScroll: true });

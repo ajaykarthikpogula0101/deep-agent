@@ -89,6 +89,45 @@ DEFAULTS: dict[str, str] = {
         "The calendar invite is attached. {manage_line}\n\n"
         "{host_name}\n{site}\n"
     ),
+    # after a reschedule / cancel from the chat or the manage link, and the day-before reminder (app/reminders.py)
+    "visitor_rescheduled_enabled": "true",
+    "visitor_rescheduled_subject": "{headline}: {title} now on {date_visitor}",
+    "visitor_rescheduled_body": (
+        "Hi {first_name},\n\n"
+        "Thanks for letting us know. {headline}.\n\n"
+        "Call:     {title} ({duration} min) with {host_name}\n"
+        "Was:      {old_date_visitor}\n"
+        "Now:      {date_visitor} ({visitor_tz})\n"
+        "Zoom:     {join_url}\n"
+        "{meeting_line}\n\n"
+        "{next_step}\n\n"
+        "The updated calendar invite is attached. {manage_line}\n\n"
+        "See you then,\n{host_name}\n{site}\n"
+    ),
+    "visitor_cancelled_enabled": "true",
+    "visitor_cancelled_subject": "{headline}: {title} on {date_visitor}",
+    "visitor_cancelled_body": (
+        "Hi {first_name},\n\n"
+        "Thanks for letting us know. {headline}.\n\n"
+        "Call:     {title} with {host_name}\n"
+        "Was:      {date_visitor} ({visitor_tz})\n\n"
+        "If your plans change you are always welcome back: open the chat on {site} and say \"book a call\", "
+        "or pick a time at {booking_link}.\n\n"
+        "All the best,\n{host_name}\n{site}\n"
+    ),
+    "visitor_reminder_enabled": "true",
+    "visitor_reminder_subject": "Reminder: {title} with {host_name} tomorrow, {date_visitor}",
+    "visitor_reminder_body": (
+        "Hi {first_name},\n\n"
+        "A quick reminder that your {title} with {host_name} is tomorrow.\n\n"
+        "When:     {date_visitor} ({visitor_tz})\n"
+        "Zoom:     {join_url}\n"
+        "{meeting_line}\n"
+        "Topic:    {reason}\n\n"
+        "{next_step}\n\n"
+        "{manage_line}\n\n"
+        "Looking forward to it,\n{host_name}\n{site}\n"
+    ),
     "host_booking_subject": "[{brand}] New booking: {name} · {title} · {date}",
     "host_booking_body": (
         "New booking through the website assistant ({method_line}).\n\n"
@@ -117,7 +156,8 @@ DEFAULTS: dict[str, str] = {
 
 KINDS = {"handoff": "Demo request, handing off to Zoom", "booked": "Demo booked", "enquiry": "Enquiry, scheduler unavailable",
          "handover": "Visitor wants a human reply", "nudge": "Reminder: Zoom booking not yet confirmed",
-         "confirmed": "Booked in chat", "pending_zoom": "Booked in chat, Zoom confirmation pending"}
+         "confirmed": "Booked in chat", "pending_zoom": "Booked in chat, Zoom confirmation pending",
+         "rescheduled": "Booking moved", "cancelled": "Booking cancelled", "reminder": "Reminder sent"}
 
 NEXT_STEP = {
     "handoff": "One last step: confirm the time on Zoom here, your details are already filled in: {link}",
@@ -127,15 +167,19 @@ NEXT_STEP = {
     "nudge": "Confirm it here, your details are already filled in: {link}",
     "confirmed": "Join with the Zoom link above when it's time. Nothing else to do.",
     "pending_zoom": "One last step: confirm the time on Zoom here, your details are already filled in: {link}",
+    "cancelled": "",
 }
 
-HEADLINE = {"confirmed": "Your call with {host_name} is confirmed", "pending_zoom": "Your call with {host_name}: one last step"}
+HEADLINE = {"confirmed": "Your call with {host_name} is confirmed", "pending_zoom": "Your call with {host_name}: one last step",
+            "rescheduled": "Your call with {host_name} has moved", "cancelled": "Your call with {host_name} is cancelled",
+            "reminder": "See you tomorrow"}
 METHOD_LINE = {"scheduler": "booked on the Zoom Scheduler", "meeting": "Zoom meeting created",
                "handoff": "time held in chat; the visitor still has to confirm on Zoom"}
 
 VARIABLES = ["brand", "title", "duration", "kind", "name", "first_name", "email", "reason", "date", "date_visitor", "visitor_tz",
              "host_tz", "link", "next_step", "origin", "note", "company", "host_name", "host_email", "site",
-             "headline", "join_url", "meeting_id", "passcode", "meeting_line", "ics_url", "manage_url", "manage_line", "method_line"]
+             "headline", "join_url", "meeting_id", "passcode", "meeting_line", "ics_url", "manage_url", "manage_line", "method_line",
+             "old_date", "old_date_visitor", "booking_link"]
 
 _VAR = re.compile(r"\{([a-z_]+)\}")
 _cache: dict[str, tuple[float, dict[str, str]]] = {}
@@ -221,12 +265,15 @@ def build_vars(lead: dict[str, Any], tpl: dict[str, str] | None = None) -> dict[
         "site": settings.site_base_url.replace("https://", "").replace("http://", ""),
         "join_url": lead.get("join_url") or "", "meeting_id": str(lead.get("meeting_id") or ""), "passcode": lead.get("passcode") or "",
         "ics_url": lead.get("ics_url") or "", "manage_url": lead.get("manage_url") or "",
+        "old_date": lead.get("old_label_host") or "", "old_date_visitor": lead.get("old_label_visitor") or "",
+        "booking_link": settings.zoom_booking_base,
     }
     v["meeting_line"] = (f"Meeting ID {v['meeting_id']}" + (f" · Passcode {v['passcode']}" if v["passcode"] else "")) if v["meeting_id"] else ""
     v["manage_line"] = f"Need to change it? Cancel or reschedule here: {v['manage_url']}" if v["manage_url"] else ""
     v["method_line"] = METHOD_LINE.get(lead.get("method") or "", "")
     v["headline"] = render(HEADLINE.get(status, ""), v)
-    v["next_step"] = render(NEXT_STEP.get(status, ""), v)
+    # a moved or reminded booking keeps the next step of its real state (confirmed / still to confirm on Zoom)
+    v["next_step"] = render(NEXT_STEP.get(lead.get("booking_status") or status, ""), v)
     return v
 
 
@@ -254,6 +301,7 @@ def render_visitor(lead: dict[str, Any], tpl: dict[str, str] | None = None) -> t
     tpl = tpl or get_templates()
     status = lead.get("status")
     kind = ("handover" if status == "handover" else "nudge" if status == "nudge"
+            else "rescheduled" if status == "rescheduled" else "cancelled" if status == "cancelled" else "reminder" if status == "reminder"
             else "confirmed" if status in ("confirmed", "pending_zoom")
             else "booking" if status in ("handoff", "booked", "enquiry") else None)
     if not kind or (tpl.get(f"visitor_{kind}_enabled", "true").strip().lower() not in ("true", "1", "yes", "on")):
@@ -292,39 +340,81 @@ def render_booking_host(b: dict[str, Any], tpl: dict[str, str] | None = None) ->
     return subject or f"[{v['brand']}] New booking", _tidy(render(tpl["host_booking_body"], v))
 
 
-def html_wrap(subject: str, body: str, cta: tuple[str, str] | None = None) -> str:
-    """The plain-text email as a simple dark/orange HTML card (the text version is always sent alongside)."""
+EMAIL_ACCENT = "#F28C28"
+EMAIL_INK = "#151B32"
+
+
+def html_wrap(subject: str, body: str, cta: tuple[str, str] | None = None, *, audience: str = "visitor") -> str:
+    """The plain-text email (always sent alongside as the text part) as a light, branded HTML card.
+
+    Layout: an orange accent bar and the "ask deep >_" wordmark, the subject as the title, the greeting paragraph a little
+    larger, every "Label:   value" run of lines as a facts panel (label muted, value strong), the call-to-action as a pill
+    button, then the closing lines and a quiet footer. Inline styles only (email clients), 600 px, explicit colours
+    (dark-mode clients keep it readable), nothing loaded from the web. `audience` = "visitor" | "host" only changes
+    the footer sentence."""
     import html as h
 
-    def line(ln: str) -> str:
-        t = h.escape(ln)
-        t = re.sub(r"(https?://[^\s<]+)", r'<a href="\1" style="color:#F28C28">\1</a>', t)
-        m = re.match(r"^([A-Za-z ]{1,12}):(\s+)(.*)$", t)
-        if m and m.group(2):
-            return f'<tr><td style="color:#8A8D93;padding:3px 12px 3px 0;white-space:nowrap;vertical-align:top">{m.group(1)}</td><td style="padding:3px 0">{m.group(3)}</td></tr>'
-        return f'<p style="margin:0 0 12px">{t}</p>'
+    def inline(text: str) -> str:
+        t = h.escape(text)
+        return re.sub(r"(https?://[^\s<]+)", rf'<a href="\1" style="color:{EMAIL_ACCENT};text-decoration:underline;word-break:break-all">\1</a>', t)
 
-    parts, table = [], []
+    blocks: list[str] = []
+    facts: list[tuple[str, str]] = []
+    greeted = False
+
+    def flush_facts() -> None:
+        if not facts:
+            return
+        rows = "".join(
+            f'<tr><td style="padding:9px 14px 9px 0;color:#68718A;font-size:12px;letter-spacing:.04em;text-transform:uppercase;'
+            f'white-space:nowrap;vertical-align:top;border-top:1px solid #E9EBF2">{h.escape(k)}</td>'
+            f'<td style="padding:9px 0;color:{EMAIL_INK};font-size:15px;font-weight:600;vertical-align:top;border-top:1px solid #E9EBF2;'
+            f'word-break:break-word">{v}</td></tr>' for k, v in facts)
+        rows = rows.replace("border-top:1px solid #E9EBF2", "border-top:0", 2)  # the first row has no rule above it
+        blocks.append(f'<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:4px 0 18px;'
+                      f'background:#F7F8FC;border:1px solid #E9EBF2;border-radius:12px;padding:6px 16px">{rows}</table>')
+        facts.clear()
+
     for ln in body.splitlines():
-        piece = line(ln) if ln.strip() else ""
-        if piece.startswith("<tr>"):
-            table.append(piece)
+        if not ln.strip():
             continue
-        if table:
-            parts.append('<table style="border-collapse:collapse;font-size:15px;margin:0 0 12px">' + "".join(table) + "</table>")
-            table = []
-        if piece:
-            parts.append(piece)
-    if table:
-        parts.append('<table style="border-collapse:collapse;font-size:15px;margin:0 0 12px">' + "".join(table) + "</table>")
-    button = (f'<p style="margin:20px 0"><a href="{h.escape(cta[1])}" style="display:inline-block;background:#F28C28;color:#1A1208;'
-              f'font-weight:600;text-decoration:none;padding:12px 22px;border-radius:999px">{h.escape(cta[0])}</a></p>') if cta and cta[1] else ""
+        m = re.match(r"^([A-Za-z ]{1,12}):(\s+)(.*)$", ln)
+        if m and m.group(2):
+            facts.append((m.group(1), inline(m.group(3))))
+            continue
+        flush_facts()
+        if not greeted and re.match(r"^(Hi|Hello|Dear)\b", ln):
+            blocks.append(f'<p style="margin:0 0 14px;font-size:17px;color:{EMAIL_INK}">{inline(ln)}</p>')
+            greeted = True
+        else:
+            blocks.append(f'<p style="margin:0 0 14px;color:#2B3147">{inline(ln)}</p>')
+    flush_facts()
+    button = ""
+    if cta and cta[1]:
+        button = (f'<table role="presentation" cellspacing="0" cellpadding="0" style="margin:6px 0 22px"><tr><td style="background:{EMAIL_ACCENT};'
+                  f'border-radius:999px"><a href="{h.escape(cta[1])}" style="display:inline-block;padding:13px 26px;color:#1A1208;font-weight:700;'
+                  f'font-size:15px;text-decoration:none">{h.escape(cta[0])}</a></td></tr></table>')
+        # the button goes right after the facts (or the greeting) so the next step is above the fold
+        at = next((i + 1 for i, b in enumerate(blocks) if b.startswith("<table")), min(1, len(blocks)))
+        blocks.insert(at, button)
     site = settings.site_base_url.replace("https://", "").replace("http://", "")
-    return (f'<!doctype html><html><body style="margin:0;background:#000;padding:24px 12px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">'
-            f'<div style="max-width:560px;margin:0 auto;background:#0F0F10;border:1px solid #1F1F22;border-radius:16px;padding:28px;color:#F2F3F5;font-size:15px;line-height:1.55">'
-            f'<div style="color:#F28C28;font-weight:700;font-size:13px;letter-spacing:.04em;margin-bottom:14px">ask deep &gt;_</div>'
-            f'<h1 style="font-size:20px;margin:0 0 16px">{h.escape(subject)}</h1>' + "".join(parts) + button +
-            f'<p style="color:#8A8D93;font-size:12px;margin:20px 0 0">Sent by the {h.escape(site)} assistant.</p></div></body></html>')
+    foot = ("Sent by the website assistant. Reply to this email to reach the visitor directly." if audience == "host"
+            else f"Sent by the {h.escape(site)} assistant. Reply to this email and a person reads it.")
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<meta name="color-scheme" content="light"><title>{h.escape(subject)}</title></head>'
+            f'<body style="margin:0;padding:28px 12px;background:#F3F4F8;font-family:-apple-system,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;'
+            f'-webkit-font-smoothing:antialiased">'
+            f'<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;max-width:600px;margin:0 auto"><tr><td>'
+            f'<div style="height:5px;background:{EMAIL_ACCENT};border-radius:16px 16px 0 0"></div>'
+            f'<div style="background:#FFFFFF;border:1px solid #E4E7F2;border-top:0;border-radius:0 0 16px 16px;padding:28px 30px 24px;'
+            f'font-size:15px;line-height:1.6;color:{EMAIL_INK}">'
+            f'<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;margin-bottom:18px"><tr>'
+            f'<td style="font-weight:800;font-size:14px;letter-spacing:.02em;color:{EMAIL_INK}">ask <span style="color:{EMAIL_ACCENT}">deep &gt;_</span></td>'
+            f'<td style="text-align:right;font-size:12px;color:#68718A">{h.escape(site)}</td></tr></table>'
+            f'<h1 style="font-size:21px;line-height:1.3;margin:0 0 18px;color:{EMAIL_INK}">{h.escape(subject)}</h1>'
+            + "".join(blocks) +
+            f'<p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #E9EBF2;color:#8A91A6;font-size:12px;line-height:1.5">{foot}</p>'
+            f'</div><p style="text-align:center;color:#A1A7B8;font-size:11px;margin:14px 0 0">{h.escape(site)}</p></td></tr></table></body></html>')
 
 
 SAMPLE_LEAD: dict[str, Any] = {
@@ -364,6 +454,10 @@ def preview(kind: str, overrides: dict[str, str] | None = None) -> dict[str, str
         r = render_booking_visitor(SAMPLE_BOOKING, tpl)
         s, b = r if r else ("(disabled)", "")
         return {"subject": s, "body": b}
+    if kind in ("visitor_rescheduled", "visitor_cancelled", "visitor_reminder"):
+        r = render_booking_visitor(sample_booking_for(kind.split("_", 1)[1]), tpl)
+        s, b = r if r else ("(disabled)", "")
+        return {"subject": s, "body": b}
     if kind == "host":
         s, b = render_host(lead, tpl)
     else:
@@ -374,4 +468,13 @@ def preview(kind: str, overrides: dict[str, str] | None = None) -> dict[str, str
 
 
 def previews(overrides: dict[str, str] | None = None) -> dict[str, dict[str, str]]:
-    return {k: preview(k, overrides) for k in ("host", "visitor_booking", "visitor_handover", "visitor_nudge", "visitor_confirmed", "host_booking")}
+    return {k: preview(k, overrides) for k in ("host", "visitor_booking", "visitor_handover", "visitor_nudge", "visitor_confirmed", "host_booking",
+                                                "visitor_rescheduled", "visitor_cancelled", "visitor_reminder")}
+
+
+def sample_booking_for(kind: str) -> dict[str, Any]:
+    """The sample booking in the state a lifecycle email describes: moved (with the old time), cancelled, or reminded."""
+    b = dict(SAMPLE_BOOKING, status=kind, booking_status="cancelled" if kind == "cancelled" else "confirmed")
+    if kind == "rescheduled":
+        b.update(old_label_visitor="Tue 06 Oct, 10:00 (America/New_York)", old_label_host="Tue 06 Oct, 19:30 (Asia/Kolkata)")
+    return b

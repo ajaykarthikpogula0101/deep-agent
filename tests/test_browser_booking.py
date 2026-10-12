@@ -289,6 +289,6 @@ def test_reschedule_emails_render_for_both_sides():
     send_reschedule_emails(b, mailer=m)
     assert len(m.items) == 2
     to, subject, body, kw = m.items[0]
-    assert to == "ada@lovelace.org" and subject.startswith("Moved:") and "Tue 06 Oct" in body and "Wed 07 Oct, 11:00" in body and "zoom.us/j/9" in body
+    assert to == "ada@lovelace.org" and subject.startswith("Your call with Deep has moved:") and "Tue 06 Oct" in body and "Wed 07 Oct, 11:00" in body and "zoom.us/j/9" in body
     assert kw["attachments"][0][0] == "invite.ics" and kw["kind"] == "reschedule_visitor"
     assert m.items[1][0] == settings.host_email and "Moved:" in m.items[1][1] and "Was:" in m.items[1][2]

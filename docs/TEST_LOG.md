@@ -1,5 +1,22 @@
 # Test log
 
+## 2026-10-13 — lifecycle emails, day-before reminder, memory after reschedule/cancel, email layout (version 2026.10.13.2)
+
+Three new editable visitor emails (moved, cancelled, day-before reminder) with greeting / thank-you / facts / next step /
+sign-off (docs/EMAILS.md); `app/reminders.py` hourly job (`bookings.reminder_sent_at`, `reminder:since`); memory
+`recent_change` -> welcome line, "Book a new time" action after a cancel, toasts after move/cancel, reminder note on the
+booked card, model memory block; digest email opens "Hi Deep, here is what your website assistant handled this week…"
+and signs off; card prompt: no "N/A" cells + two more examples; every host and visitor HTML email now uses the light
+branded layout (`templates.html_wrap`: accent bar, wordmark, facts panel, pill button, audience footer).
+
+```
+pytest: 217 passed, 1 skipped (tests/test_reminders.py: 4 incl. the Postgres round trip of the reminder job + memory)
+widget suite (8089, BROWSER_BOOKING_ENABLED=false): 127 checks pass (suggestion-action count now ignores memory actions)
+rich digest preview on 8089: 51,808 chars, opening "Hi Deep, here is what your website assistant handled this week:
+  198 conversations and 33 bookings.", closing "Have a good week, Deep. Your website assistant."
+email previews: visitor_confirmed / host_booking / visitor_cancelled rendered and screenshotted with the new layout
+```
+
 ## 2026-10-13 — answer cards + rich weekly digest (version 2026.10.13.1)
 
 docs/UI_CARDS.md. Server side (owner A): `app/ui_cards.py` (prompt section, trigger policy, `FenceSplitter` routing one

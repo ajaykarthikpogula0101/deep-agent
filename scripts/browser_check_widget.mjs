@@ -57,7 +57,7 @@ try {
   await waitFor("customElements.get('deep-assistant') && document.getElementById('panel').shadowRoot && document.getElementById('panel').shadowRoot.querySelector('.welcome .act')", 20000, "component to render");
   check(await evaluate(P("panel", "sh.querySelectorAll('.welcome .act').length")) === 4, "panel renders the four welcome actions");
   await evaluate(P("panel", "(el.setAttribute('theme', 'light'), true)")); await sleep(100);  // the demo page sets theme=auto; the Indigo Dream light look is what we verify
-  check(await evaluate(P("launcher", "sh.querySelectorAll('.welcome .act').length")) === 3, "launcher renders custom welcome actions from the suggestions attribute");
+  check(await evaluate(P("launcher", "[...sh.querySelectorAll('.welcome .act')].filter(a => a.tagName === 'BUTTON' && !/rebook|resched|cancelcall/.test(a.className)).length")) === 3, "launcher renders custom welcome actions from the suggestions attribute (memory actions such as 'Book a new time' not counted)");
   check(await evaluate("getComputedStyle(document.getElementById('panel').shadowRoot.querySelector('.panel')).fontFamily.includes('Inter')"), "component uses the Indigo Dream type stack (Inter, then system fonts)");
   await waitFor(P("panel", "el._online === true"), 10000, "health check"); check(true, "health check passes inside the component");
   // Indigo Dream interface: navy header, app background, welcome screen, more-menu, composer with Voice/send, privacy footer

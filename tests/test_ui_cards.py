@@ -271,7 +271,7 @@ def test_prompt_section_content_and_trigger_policy(monkeypatch):
     assert "Query(" not in sec and "$binding" not in sec and "## Hoisting" not in sec
     assert "11. Language:" in prompts.SYSTEM_PROMPT
     text = ui_cards.PROMPT_FILE.read_bytes()
-    assert b"\r" not in text and text.endswith(b"\n") and not text.endswith(b"\n\n") and text.count(b"\n") == 92
+    assert b"\r" not in text and text.endswith(b"\n") and not text.endswith(b"\n\n") and text.count(b"\n") == 118
     monkeypatch.setattr(settings, "ui_cards_enabled", True)
     assert ui_cards.wanted(True, False) is True
     assert ui_cards.wanted(True, True) is False

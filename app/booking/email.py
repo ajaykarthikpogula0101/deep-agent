@@ -89,7 +89,7 @@ def send_booking_emails(booking: dict[str, Any], mailer=None) -> None:
                        reply_to=settings.host_email, kind="booking_visitor", ref=booking.get("id"))
     s, b = templates.render_booking_host(booking, tpl)
     cta_h = ("Join Zoom", booking["join_url"]) if booking.get("join_url") else None
-    mailer.enqueue(settings.host_email, s, b, html=templates.html_wrap(s, b, cta_h), attachments=att, reply_to=booking.get("email"),
+    mailer.enqueue(settings.host_email, s, b, html=templates.html_wrap(s, b, cta_h, audience="host"), attachments=att, reply_to=booking.get("email"),
                    kind="booking_host", ref=booking.get("id"))
 
 
@@ -104,20 +104,18 @@ def send_reschedule_emails(booking: dict[str, Any], mailer=None) -> None:
     was = booking.get("old_label_visitor") or "the earlier time"
     pending = booking.get("status") == "pending_zoom" or booking.get("method") == "handoff"
     subject = f"Moved: {v['title']} now on {v['date_visitor']}"
-    body_v = (f"Hi {v['first_name']},\n\nYour {v['title']} with {v['host_name']} has moved from {was} to {v['date_visitor']} ({v['visitor_tz']}).\n\n"
-              + (f"One last step: confirm the new time on Zoom here: {booking.get('handoff_url')}\n\n" if pending and booking.get("handoff_url") else "")
-              + (f"Join link: {booking['join_url']}\n\n" if booking.get("join_url") else "")
-              + (f"Need to change it again? {booking['manage_url']}\n\n" if booking.get("manage_url") else "")
-              + f"{v['host_name']}\n{v['site']}\n")
     att = [("invite.ics", ics.build(booking, tpl.get("host_name") or "Deep"), "text/calendar")]
     cta = ("Confirm on Zoom", booking["handoff_url"]) if pending and booking.get("handoff_url") else (("Join Zoom", booking["join_url"]) if booking.get("join_url") else None)
-    if booking.get("email"):
-        mailer.enqueue(booking["email"], subject, body_v, html=templates.html_wrap(subject, body_v, cta), attachments=att,
+    # the visitor copy is the editable "visitor_rescheduled" template (Console -> Emails); the link rides as `link` for the next step
+    r = templates.render_booking_visitor(dict(booking, status="rescheduled", booking_status="pending_zoom" if pending else "confirmed",
+                                              old_label_visitor=was, old_label_host=booking.get("old_label_host") or ""), tpl)
+    if r and booking.get("email"):
+        mailer.enqueue(booking["email"], r[0], r[1], html=templates.html_wrap(r[0], r[1], cta), attachments=att,
                        reply_to=settings.host_email, kind="reschedule_visitor", ref=booking.get("id"))
     body_h = (f"The visitor moved their call.\n\nName:   {v['name']}\nEmail:  {v['email']}\nCall:   {v['title']}\nWas:    {was}\nNow:    {v['date']}\n"
               + ("Status: held, waiting for the visitor to confirm on Zoom\n" if pending else "Status: rescheduled on Zoom Scheduler\n"))
     mailer.enqueue(settings.host_email, f"[{v['brand']}] Moved: {v['name']} · {v['title']} · {v['date']}", body_h,
-                   html=templates.html_wrap(subject, body_h, cta if not pending else None), attachments=att, reply_to=booking.get("email"),
+                   html=templates.html_wrap(subject, body_h, cta if not pending else None, audience="host"), attachments=att, reply_to=booking.get("email"),
                    kind="reschedule_host", ref=booking.get("id"))
 
 
@@ -125,31 +123,50 @@ def send_cancel_emails(booking: dict[str, Any], mailer=None) -> None:
     from app import mailer as m
 
     mailer = mailer or m.default
-    v = templates.build_vars(templates.booking_to_lead(booking))
+    tpl = templates.get_templates()
+    v = templates.build_vars(templates.booking_to_lead(booking), tpl)
     subject = f"Cancelled: {v['title']} on {v['date_visitor']}"
-    body_v = (f"Hi {v['first_name']},\n\nYour {v['title']} with {v['host_name']} on {v['date_visitor']} has been cancelled.\n\n"
-              f"To pick a new time, open the chat on {v['site']} and say 'book a call', or use {settings.zoom_booking_base}.\n\n{v['host_name']}\n{v['site']}\n")
     body_h = (f"Cancelled by the visitor.\n\nName:   {v['name']}\nEmail:  {v['email']}\nCall:   {v['title']}\nWas:    {v['date']}\n"
               + (f"Note:   {booking['zoom_note']}\n" if booking.get("zoom_note") else ""))
-    if booking.get("email"):
-        mailer.enqueue(booking["email"], subject, body_v, html=templates.html_wrap(subject, body_v, None), reply_to=settings.host_email,
-                       kind="cancel_visitor", ref=booking.get("id"))
-    mailer.enqueue(settings.host_email, f"[{v['brand']}] {subject} · {v['name']}", body_h, html=templates.html_wrap(subject, body_h, None),
+    r = templates.render_booking_visitor(dict(booking, status="cancelled", booking_status="cancelled"), tpl)  # editable "visitor_cancelled"
+    if r and booking.get("email"):
+        mailer.enqueue(booking["email"], r[0], r[1], html=templates.html_wrap(r[0], r[1], ("Book a new time", settings.site_base_url)),
+                       reply_to=settings.host_email, kind="cancel_visitor", ref=booking.get("id"))
+    mailer.enqueue(settings.host_email, f"[{v['brand']}] {subject} · {v['name']}", body_h, html=templates.html_wrap(subject, body_h, None, audience="host"),
                    reply_to=booking.get("email"), kind="cancel_host", ref=booking.get("id"))
+
+
+def send_reminder_email(booking: dict[str, Any], mailer=None) -> bool:
+    """The day-before reminder (app/reminders.py): the editable "visitor_reminder" template with the join or confirm link.
+    Returns False when the template is disabled or the booking has no email."""
+    from app import mailer as m
+
+    mailer = mailer or m.default
+    tpl = templates.get_templates()
+    pending = booking.get("status") == "pending_zoom" or booking.get("method") == "handoff"
+    r = templates.render_booking_visitor(dict(booking, status="reminder", booking_status="pending_zoom" if pending else "confirmed"), tpl)
+    if not r or not booking.get("email"):
+        return False
+    cta = ("Confirm on Zoom", booking["handoff_url"]) if pending and booking.get("handoff_url") else (("Join Zoom", booking["join_url"]) if booking.get("join_url") else None)
+    mailer.enqueue(booking["email"], r[0], r[1], html=templates.html_wrap(r[0], r[1], cta), reply_to=settings.host_email,
+                   kind="reminder_visitor", ref=booking.get("id"))
+    return True
 
 
 def send_test(kind: str) -> dict:
     """Console → Emails → 'Send test': the sample lead rendered with the current templates, to the host inbox."""
     if kind == "host_booking":
         subject, body = templates.render_booking_host(templates.SAMPLE_BOOKING)
-        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=templates.html_wrap(subject, body, ("Join Zoom", templates.SAMPLE_BOOKING["join_url"]))),
+        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=templates.html_wrap(subject, body, ("Join Zoom", templates.SAMPLE_BOOKING["join_url"]), audience="host")),
                 "to": settings.host_email, "subject": subject}
-    if kind == "visitor_confirmed":
-        r = templates.render_booking_visitor(templates.SAMPLE_BOOKING)
+    if kind in ("visitor_confirmed", "visitor_rescheduled", "visitor_cancelled", "visitor_reminder"):
+        sample = templates.SAMPLE_BOOKING if kind == "visitor_confirmed" else templates.sample_booking_for(kind.split("_", 1)[1])
+        r = templates.render_booking_visitor(sample)
         if not r:
             return {"ok": False, "error": "that visitor email is disabled"}
         subject, body = r
-        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=templates.html_wrap(subject, body, ("Join Zoom", templates.SAMPLE_BOOKING["join_url"]))),
+        cta = ("Book a new time", settings.site_base_url) if kind == "visitor_cancelled" else ("Join Zoom", templates.SAMPLE_BOOKING["join_url"])
+        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=templates.html_wrap(subject, body, cta)),
                 "to": settings.host_email, "subject": subject}
     if kind == "host":
         subject, body = render_brief(templates.SAMPLE_LEAD)

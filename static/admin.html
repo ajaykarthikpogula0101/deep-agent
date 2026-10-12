@@ -148,6 +148,18 @@
           <label><input type="checkbox" name="visitor_nudge_enabled"> send this email (once per lead; "mark confirmed" on a conversation stops it)</label>
           <label class="mono muted">subject<input name="visitor_nudge_subject" style="width:100%"></label>
           <label class="mono muted">body<textarea name="visitor_nudge_body" style="min-height:180px"></textarea></label>
+          <h2>Visitor email after moving a call (chat or manage link)</h2>
+          <label><input type="checkbox" name="visitor_rescheduled_enabled"> send this email (carries the updated invite)</label>
+          <label class="mono muted">subject<input name="visitor_rescheduled_subject" style="width:100%"></label>
+          <label class="mono muted">body<textarea name="visitor_rescheduled_body" style="min-height:200px"></textarea></label>
+          <h2>Visitor email after cancelling a call</h2>
+          <label><input type="checkbox" name="visitor_cancelled_enabled"> send this email</label>
+          <label class="mono muted">subject<input name="visitor_cancelled_subject" style="width:100%"></label>
+          <label class="mono muted">body<textarea name="visitor_cancelled_body" style="min-height:160px"></textarea></label>
+          <h2>Visitor reminder the day before the call</h2>
+          <label><input type="checkbox" name="visitor_reminder_enabled"> send this email (once per booking, 24 h before; REMINDER_BEFORE_HOURS)</label>
+          <label class="mono muted">subject<input name="visitor_reminder_subject" style="width:100%"></label>
+          <label class="mono muted">body<textarea name="visitor_reminder_body" style="min-height:180px"></textarea></label>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <button class="btn primary" type="submit">Save templates</button>
             <button class="btn" type="button" id="tplreset">Reset all to defaults</button>
@@ -161,6 +173,9 @@
         <div class="card"><h2>Preview · visitor hand-over <button class="btn" type="button" data-test="visitor_handover" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_handover"></pre></div>
         <div class="card"><h2>Preview · visitor reminder <button class="btn" type="button" data-test="visitor_nudge" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_nudge"></pre></div>
         <div class="card"><h2>Preview · visitor booking confirmation (chat) <button class="btn" type="button" data-test="visitor_confirmed" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_confirmed"></pre></div>
+        <div class="card"><h2>Preview · visitor call moved <button class="btn" type="button" data-test="visitor_rescheduled" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_rescheduled"></pre></div>
+        <div class="card"><h2>Preview · visitor call cancelled <button class="btn" type="button" data-test="visitor_cancelled" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_cancelled"></pre></div>
+        <div class="card"><h2>Preview · visitor day-before reminder <button class="btn" type="button" data-test="visitor_reminder" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_reminder"></pre></div>
         <div class="card"><h2>Preview · host new booking (chat) <button class="btn" type="button" data-test="host_booking" style="float:right">send test</button></h2><pre class="pv" id="pv-host_booking"></pre></div>
         <p class="status" id="teststatus"></p>
       </div>
@@ -309,11 +324,12 @@ $('caform').onsubmit = async e => { e.preventDefault(); const f = e.target; $('c
   try { await api('/admin/custom-answers', { method: 'POST', body: JSON.stringify({ question: f.question.value.trim(), answer: f.answer.value.trim(), link: f.link.value.trim() || null }) }); f.reset(); $('castatus').textContent = 'added'; loadAnswers(); } catch (err) { $('castatus').textContent = err.message; } };
 
 // ---- email templates
-const TPL_KEYS = ['brand_default', 'host_name', 'brand_map', 'host_subject', 'host_body', 'visitor_booking_enabled', 'visitor_booking_subject', 'visitor_booking_body', 'visitor_handover_enabled', 'visitor_handover_subject', 'visitor_handover_body', 'visitor_nudge_enabled', 'visitor_nudge_subject', 'visitor_nudge_body', 'visitor_confirmed_enabled', 'visitor_confirmed_subject', 'visitor_confirmed_body', 'host_booking_subject', 'host_booking_body'];
+const TPL_KEYS = ['brand_default', 'host_name', 'brand_map', 'host_subject', 'host_body', 'visitor_booking_enabled', 'visitor_booking_subject', 'visitor_booking_body', 'visitor_handover_enabled', 'visitor_handover_subject', 'visitor_handover_body', 'visitor_nudge_enabled', 'visitor_nudge_subject', 'visitor_nudge_body', 'visitor_confirmed_enabled', 'visitor_confirmed_subject', 'visitor_confirmed_body', 'host_booking_subject', 'host_booking_body',
+  'visitor_rescheduled_enabled', 'visitor_rescheduled_subject', 'visitor_rescheduled_body', 'visitor_cancelled_enabled', 'visitor_cancelled_subject', 'visitor_cancelled_body', 'visitor_reminder_enabled', 'visitor_reminder_subject', 'visitor_reminder_body'];
 let tplDefaults = {};
 function tplValues() { const f = $('tplform'), out = {}; TPL_KEYS.forEach(k => { const el = f.elements[k]; out[k] = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value; }); return out; }
 function tplFill(t) { const f = $('tplform'); TPL_KEYS.forEach(k => { const el = f.elements[k]; if (el.type === 'checkbox') el.checked = /^(true|1|yes|on)$/i.test(t[k] || ''); else el.value = t[k] || ''; }); }
-function showPreviews(p) { for (const k of ['host', 'visitor_booking', 'visitor_handover', 'visitor_nudge', 'visitor_confirmed', 'host_booking']) { const x = p[k]; $('pv-' + k).innerHTML = `<b>Subject:</b> ${esc(x.subject)}\n\n${esc(x.body)}`; } }
+function showPreviews(p) { for (const k of ['host', 'visitor_booking', 'visitor_handover', 'visitor_nudge', 'visitor_confirmed', 'host_booking', 'visitor_rescheduled', 'visitor_cancelled', 'visitor_reminder']) { if (!p[k]) continue; const x = p[k]; $('pv-' + k).innerHTML = `<b>Subject:</b> ${esc(x.subject)}\n\n${esc(x.body)}`; } }
 async function loadEmails() {
   const d = await api('/admin/email-templates'); tplDefaults = d.defaults; tplFill(d.templates); showPreviews(d.previews);
   $('vars').innerHTML = d.variables.map(v => `<span class="chip">{${v}}</span>`).join('');

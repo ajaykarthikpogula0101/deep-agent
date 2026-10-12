@@ -145,6 +145,18 @@ small openui-lang program (`root = EmailTemplate(...)`, `EmailStats`, `EmailList
   The hand-over text and custom answers remain in the language they were written in.
 * Event kind `language` records the detected code and the English query for the console/debugging.
 
+## 11. Day-before reminder (added 2026-10-13)
+
+`app/reminders.py` runs hourly at :45 (host timezone). Every active booking made in the chat (confirmed, or held and
+still to be confirmed on Zoom) that starts within `REMINDER_BEFORE_HOURS` (24) and more than an hour away gets the
+`visitor_reminder` email once (`bookings.reminder_sent_at`), with the join link, or the confirm link for a pending hold.
+Only bookings created after the feature went live are considered (`settings` key `reminder:since`). `REMINDER_ENABLED`
+switches it off; `POST /admin/reminders/run` runs it now. The booked card in the chat tells the visitor a reminder is
+coming, and the model knows it too (memory block).
+
+The digest email (section 6) now opens with "Hi {host}, here is what your website assistant handled this week: N
+conversations and M bookings." and closes with a sign-off; the model is told to write both from DATA.
+
 ## Operations
 
 * Scheduler jobs (`app/main.py` startup): `recrawl`, `tracking_purge`, `weekly_digest`, `nudges`.
