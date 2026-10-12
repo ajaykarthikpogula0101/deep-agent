@@ -30,3 +30,14 @@ def _no_browser_booking(monkeypatch):
     monkeypatch.setattr(settings, "browser_booking_dry_run", True)
     monkeypatch.setattr(browser_booking, "available", lambda: False)
     monkeypatch.setattr(browser_booking, "_ensure_browser", lambda: "")
+
+
+@pytest.fixture(autouse=True)
+def _no_rich_digest(monkeypatch):
+    """The rich digest calls the model and Node. Unit tests keep the plain text path unless they patch these
+    themselves (tests/test_digest_rich.py does)."""
+    from app import digest_rich
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "digest_rich_email", False)
+    monkeypatch.setattr(digest_rich, "available", lambda: False)

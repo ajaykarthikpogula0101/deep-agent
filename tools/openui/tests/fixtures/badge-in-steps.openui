@@ -1,0 +1,2 @@
+root = Card("Steps with a stray badge", [st])
+st = Steps([Step("Kick-off", "day 1"), Badge("not a step"), "plain string", Step("Launch", "day 30", "went live")], "Phases")

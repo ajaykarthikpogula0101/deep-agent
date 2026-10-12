@@ -1,0 +1,69 @@
+{
+ "root": {
+  "type": "element",
+  "typeName": "Card",
+  "props": {
+   "title": "Steps with a stray badge",
+   "children": [
+    {
+     "type": "element",
+     "typeName": "Steps",
+     "props": {
+      "steps": [
+       {
+        "type": "element",
+        "typeName": "Step",
+        "props": {
+         "title": "Kick-off",
+         "when": "day 1"
+        },
+        "partial": false,
+        "hasDynamicProps": false
+       },
+       {
+        "type": "element",
+        "typeName": "Badge",
+        "props": {
+         "label": "not a step"
+        },
+        "partial": false,
+        "hasDynamicProps": false
+       },
+       {
+        "type": "element",
+        "typeName": "Step",
+        "props": {
+         "title": "Launch",
+         "when": "day 30",
+         "detail": "went live"
+        },
+        "partial": false,
+        "hasDynamicProps": false
+       }
+      ],
+      "title": "Phases"
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "st"
+    }
+   ]
+  },
+  "partial": false,
+  "hasDynamicProps": false,
+  "statementId": "root"
+ },
+ "meta": {
+  "incomplete": false,
+  "unresolved": [],
+  "orphaned": [],
+  "statementCount": 2,
+  "errors": [
+   {
+    "code": "type-mismatch",
+    "statementId": "st",
+    "path": "/steps/2"
+   }
+  ]
+ }
+}

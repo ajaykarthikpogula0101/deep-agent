@@ -1,0 +1,4 @@
+root = Card("Stat with an object value", [s1, s2, bd])
+s1 = Stat("Bad", {a: 1})
+s2 = Stat("Good", 42, "fine")
+bd = Badge("Live", "x hidden btn")

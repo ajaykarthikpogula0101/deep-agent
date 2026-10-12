@@ -1,0 +1,5 @@
+root = Card("Bare steps", [a])
+a = Actions([b1, b2, b3])
+b1 = Button("Book a call", @OpenUrl("https://scheduler.zoom.us/sreedeep"))
+b2 = Button("Set then open", Action([@Set($x, 1), @OpenUrl("https://www.deependhq.com/x?y=1")]))
+b3 = Button("my email is a@b.co")

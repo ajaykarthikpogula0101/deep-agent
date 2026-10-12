@@ -1,5 +1,86 @@
 # Test log
 
+## 2026-10-13 — answer cards + rich weekly digest (version 2026.10.13.1)
+
+docs/UI_CARDS.md. Server side (owner A): `app/ui_cards.py` (prompt section, trigger policy, `FenceSplitter` routing one
+openui-lang block out of the token stream into `ui` SSE events, `with_marker` for custom answers), `app/chat.py` (`ui`
+events, `max_tokens` 800 on card-eligible turns, prose-only inbox/history, `ui_card` events row, splitter flushed in a
+`finally`), `app/rag/ui_cards_prompt.txt` (committed verbatim; `tools/openui/gen_prompts.mjs` must reproduce it byte for
+byte), eight settings in `app/config.py` / `.env.example`. Decision 18 resolved as (b): no Dockerfile change; the rich
+digest needs Node on the host (the Windows `run.ps1` deployment), Cloud Run keeps the plain text.
+
+```
+pytest: tests/test_ui_cards.py 24 passed (splitter: every single cut, 1/3/7-char chunks and random 5-cut splits for the
+  fenced, openui-tagged, bare, CRLF, mid-line `root = Card(`, prose-after-bare-program, blank-lines-between-statements,
+  too-long, second-block and unclosed cases; trigger policy; prompt content (92 lines, no CR); chat routing with the
+  guardrails fake model: eligible turn, UI_CARDS_ENABLED=false byte-identical, contained ui_card log failure, holdback
+  flush on a provider error, unclosed fence on a provider error, refusal/hand-over/injection without ui, booking turn,
+  custom answer with and without a fence)
+pytest: tests/test_guardrails.py tests/test_inbox.py tests/test_memory.py tests/test_inchat_booking.py 36 passed (unchanged)
+```
+Widget side (owner B): `static/deep-ui.js` (vanilla renderer, textContent only, slot/URL allowlists), `static/deep-ui-lib.mjs`
+(LIBRARY / LIMITS / ALLOWED_HOSTS / BOOK_URL), `static/vendor/openui-lang-core.min.mjs` (lang-core 0.4.1, 79,774 B, built by
+`tools/openui/build_vendor.mjs`), `static/deep-assistant.js` §3.4 (`ui` events, transcript `ui` field, restore, `_uiAsk`).
+Digest (owner C): `app/digest_rich.py` + `app/digest.py` (`data_for_model`, `build(rich=)`, `send` with the HTML alternative),
+`tools/openui/render_email.mjs`, `gen_prompts.mjs`, `prompts.mjs`, the console "preview rich email" button.
+
+Integration run (all three merged on e9aaaca; Windows, Node 24, Postgres in Docker):
+
+```
+pytest tests -q (OPENBLAS_NUM_THREADS=1, FASTEMBED_CACHE_PATH=D:hf-models): 201 passed, 1 skipped in 25 s
+  (test_ui_cards.py 24, test_digest_rich.py 42, test_digest.py 5 unchanged, every pre-existing test unchanged)
+node --check: all 16 changed/new .js/.mjs files ok
+tools/openui: npm test -> node --test: 33 pass / 0 fail (lib drift 3, parser 8, renderer 13 with jsdom, render_email 9);
+  DEEP_UI_FAKEDOM=1 renderer path verified by owner B (13 pass)
+npm run build:vendor: SHA256 ef760252...66ab before and after (no diff); npm run gen:prompts: app/rag/ui_cards_prompt.txt
+  unchanged (6,634 chars, 92 LF), tools/openui/email_prompt.txt regenerated (18,988 chars) after the Leads rule change
+server on 127.0.0.1:8089 (BROWSER_BOOKING_ENABLED=false, WIDGET_DEMO=true), /healthz version 2026.10.13.1:
+  POST /chat with the suite's custom-answer fixture -> status lang status custom token ui:start ui:chunk ui:end meta done;
+    token text is the prose only, chunks joined == end.program, end.complete true
+  POST /chat "What does Lake B2B do?" -> status x4 lang sources status(writing) token x95 meta done (no ui event; unchanged)
+  GET /admin/digest?days=7 -> plain preview as before (+ data, html:null); GET /admin/digest?days=7&rich=1 -> html 49,642
+    chars (model 19 s, node 0.7 s), console href present, 25 lead e-mails in the mail == 25 in DATA, fallback_reason null
+browser suite: node scripts/browser_check_widget.mjs http://127.0.0.1:8089 -> "all widget checks passed", 127 PASS / 0 FAIL
+  (the 13 new cards: checks included); no leftover "zq card fixture" custom answer; edge-profile deleted; server stopped
+```
+
+Integration fixes (outside the three owners' reports): `tools/openui/package.json` `test` script is `node --test` (Node 24
+rejects `node --test tests/`); `digest_rich.ask_model` `max_tokens` 1800 -> 6000 (a real week with 25 leads is ~8k chars and
+was cut off) and a `finish_reason == "length"` warning; unresolved references no longer fail the render (gpt-4.1-mini
+plans the leads list from the bookings count and leaves dangling refs; the parser drops them, `last_stats()["unresolved"]`
+counts them) while `sane_html` now also requires the e-mail addresses in the mail to be exactly those in DATA (multiset:
+no lead dropped, duplicated or invented); the e-mail prompt's Leads bullet says "Leads" with one item per DATA.leads entry
+(no count for the model to compute). Not done: no SMTP send was triggered (POST /admin/digest/send) and no Docker build
+(decision 18 = b).
+
+Review-fix pass (three reviews: regressions, security, spec; the design's "Amendments" section lists every deviation):
+`_agent_loop` skips the splitter flush on `GeneratorExit` (Stop / disconnect mid-card used to raise "generator ignored
+GeneratorExit", logged as a provider error and stored as an `error` event; new test `test_stop_mid_card_closes_quietly`);
+a custom answer without a block keeps its single `token` event byte for byte (`ui_cards.has_block`); the bare `root = Card(`
+opener is ignored inside any other ``` fence in the prose (new test, every chunking); `digest_rich.check_program` also
+rejects scheme-only `https:host`, CSS `url(` and a non-`#hex` button colour, matches forbidden components as words and no
+longer treats a visitor's "intent data: yes" as a `data:` URL; `render_email.mjs` rejects non-`#hex` `*Color` props (a
+tracking pixel through `backgroundColor`); Node runs with a minimal environment (`node_env()`: no API keys, SMTP, Zoom or
+admin secrets reach the child); `sane_html` also requires the questions, resolution-rate and satisfaction numbers (the
+guard for a stat tile dropped as an unresolved reference); `data_for_model` takes the subject `build()` already rendered;
+the vendor bundle stubs lang-core's telemetry module (no PostHog key / capture URL in the file, 78,952 B, deterministic);
+console fallback status via `textContent`; docs (`AUTOMATIONS.md` reasons `error`/`unresolved`, env, cost; `UI_CARDS.md`
+fence rule, Stop path, first-surviving-step buttons, the `/demo` restore quirk; `AGENT_UI.md` paragraph; `WIDGET.md`
+`npm test`). Test weakening removed (`or` branches, unused parameter).
+
+```
+pytest -q (OPENBLAS_NUM_THREADS=1, FASTEMBED_CACHE_PATH=D:\hf-models): 213 passed, 1 skipped in 27 s
+  (test_ui_cards.py 27, test_digest_rich.py 51, test_digest.py 5 unchanged, every pre-existing test unchanged)
+tools/openui: npm test -> node --test: 34 pass / 0 fail (lib drift 3, parser 8, renderer 13 with jsdom, render_email 10)
+node --check: all 14 changed/new .js/.mjs files ok; npm run build:vendor twice: SHA256 b257d234...2526 both times (no diff)
+server on 127.0.0.1:8089 (BROWSER_BOOKING_ENABLED=false, WIDGET_DEMO=true, booking_mode handoff), /healthz 2026.10.13.1:
+  browser suite: node scripts/browser_check_widget.mjs http://127.0.0.1:8089 -> "all widget checks passed", 127 PASS / 0 FAIL;
+    no leftover "zq card fixture" custom answer; edge-profile deleted; server stopped
+  GET /admin/digest?days=7&rich=1 -> html 49,342 chars (model 16.5 s, node 1.2 s), console href present, all five headline
+    numbers present, 25 leads == DATA, 4 unresolved refs (ld26-ld29) dropped by the parser and caught by nothing because
+    sane_html proved the content, fallback_reason null
+```
+
 ## 2026-10-12 (late) — rescheduling is done by the agent for every booking (version 2026.10.12.2)
 
 Also: cancelling from the chat (DELETE /booking/{id}, visitor-owned or manage token): welcome action, link under the

@@ -1,0 +1,22 @@
+{
+  "name": "deependhq-openui-tools",
+  "private": true,
+  "type": "module",
+  "description": "Node-side OpenUI helpers: digest email rendering, prompt generation, the browser bundle of lang-core. Install with: OPENUI_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 npm ci",
+  "scripts": {
+    "build:vendor": "node build_vendor.mjs",
+    "gen:prompts": "node gen_prompts.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@openuidev/lang-core": "0.4.1",
+    "@openuidev/react-email": "0.3.1",
+    "@openuidev/react-lang": "0.4.1",
+    "@react-email/components": "0.0.41",
+    "@react-email/render": "2.1.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.6"
+  },
+  "devDependencies": { "esbuild": "0.25.12", "jsdom": "25.0.1" }
+}

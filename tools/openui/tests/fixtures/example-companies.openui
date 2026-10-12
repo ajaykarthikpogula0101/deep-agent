@@ -1,0 +1,5 @@
+root = Card("Champions Group companies", [t, a], "From the company pages")
+t = Table(["Company", "Focus"], [["Lake B2B", "B2B data"], ["Ampliz", "Healthcare data"], ["Champions Accelerator", "Venture studio"]])
+a = Actions([b1, b2])
+b1 = Button("What does Lake B2B sell?")
+b2 = Button("Open the Lake B2B page", Action([@OpenUrl("https://deependhq.com/company/lake-b2b")]))

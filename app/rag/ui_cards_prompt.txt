@@ -1,0 +1,92 @@
+ANSWER CARD (optional). After your prose answer you MAY add exactly ONE fenced block tagged openui-lang that lays the same answer out as a small card. Rules 1-11 above always win: the card never replaces the prose and never adds information. Every string in the card must restate a fact that is already in your prose and comes from <sources>. Skip the card for refusals or "I don't know", greetings and small talk, one-sentence answers, anything about booking, times or call types, and hand-over to a person. Use it only when the answer has structure: comparing 2+ companies, products or entries; 3+ facts about one thing; a sequence of steps or dated journey entries; key numbers. The card is written in openui-lang, a tiny declarative language:
+
+## Syntax Rules
+
+1. Each statement is on its own line: `identifier = Expression`
+2. `root` is the entry point — every program must define `root = Card(...)`
+3. Expressions are: strings ("..."), numbers, booleans (true/false), null, arrays ([...]), objects ({...}), or component calls TypeName(arg1, arg2, ...)
+4. Use references for readability: define `name = ...` on one line, then use `name` later
+5. EVERY variable (except root) MUST be referenced by at least one other variable. Unreferenced variables are silently dropped and will NOT render. Always include defined variables in their parent's children/items array.
+6. Arguments are POSITIONAL (order matters, not names). Write `SomeComp([children], "row", "l")` NOT `SomeComp([children], direction: "row", gap: "l")` — colon syntax is NOT supported and silently breaks
+7. Optional arguments can be omitted from the end
+- Strings use double quotes with backslash escaping
+
+## Component Signatures
+
+Arguments marked with ? are optional. Sub-components can be inline or referenced; prefer references for better streaming.
+Props typed `ActionExpression` accept an Action([@steps...]) expression. See the Action section for available steps (@ToAssistant, @OpenUrl).
+
+### Card
+Card(title: string, children: (Stat | Table | List | KeyValue | Steps | Badge | Callout | Actions)[], subtitle?: string) — The card; always the root. Title: 2-6 words naming what the card shows. Children render top to bottom
+root = Card(...) is always the first line.
+
+### Content
+Stat(label: string, value: string, note?: string) — One headline number or short value ("3 companies", "day 338"); several Stats in a row become tiles
+Table(columns: string[], rows: string[][], caption?: string) — Compare things side by side; each row is an array aligned to columns, first column is the row name
+List(items: string[], ordered?: boolean) — Short bullet items; ordered=true for a ranking
+KeyValue(pairs: string[][]) — Fact sheet about one thing as [label, value] pairs
+Steps(steps: Step[], title?: string) — A sequence in order: how-it-works steps, phases, dated journey entries
+Step(title: string, when?: string, detail?: string) — One step or journey entry; when = its day and date label such as "day 338 · 2026-10-04"
+Badge(label: string, tone?: "neutral" | "success" | "warning" | "info") — Small status or tag pill ("B2B data", "live"); several Badges in a row become a chip row
+Callout(text: string, tone?: "info" | "success" | "warning") — One highlighted sentence: the takeaway, a caveat, or who this fits
+
+### Next steps
+Actions(buttons: Button[]) — A row of 1-3 next-step buttons, always the last child
+Button(label: string, action?: ActionExpression) — A next step; without an action it sends its label to the assistant as the visitor's next message
+
+## Action — Button Behavior
+
+Action([@steps...]) wires button clicks to operations. Steps are @-prefixed built-in actions. Steps execute in order.
+Buttons without an explicit Action prop automatically send their label to the assistant (equivalent to Action([@ToAssistant(label)])).
+
+Available steps:
+- @ToAssistant("message") — Send a message to the assistant (for conversational buttons like "Tell me more", "Explain this")
+- @OpenUrl("https://...") — Navigate to a URL
+
+Example — simple nav:
+```
+viewBtn = Button("View", Action([@OpenUrl("https://example.com")]))
+```
+
+- Action can be assigned to a variable or inlined: Button("Go", onSubmit) and Button("Go", Action([...])) both work
+
+## Examples
+
+Prose first, then the block (a comparison):
+
+Champions Group has three companies. Lake B2B sells B2B data. [1] Ampliz covers healthcare data. [2] Champions Accelerator runs the venture studio. [3]
+
+```openui-lang
+root = Card("Champions Group companies", [t, a], "From the company pages")
+t = Table(["Company", "Focus"], [["Lake B2B", "B2B data"], ["Ampliz", "Healthcare data"], ["Champions Accelerator", "Venture studio"]])
+a = Actions([b1, b2])
+b1 = Button("What does Lake B2B sell?")
+b2 = Button("Open the Lake B2B page", Action([@OpenUrl("https://deependhq.com/company/lake-b2b")]))
+```
+
+Prose first, then the block (journey entries):
+
+The log is at day 338. [1] On day 337 (2026-10-03) the weekly digest went live [2] and on day 338 (2026-10-04) in-chat booking shipped. [1]
+
+```openui-lang
+root = Card("Latest journey entries", [n, s, a])
+n = Stat("Days logged", "338")
+s = Steps([e1, e2], "Most recent first")
+e1 = Step("In-chat booking shipped", "day 338 · 2026-10-04")
+e2 = Step("Weekly digest went live", "day 337 · 2026-10-03")
+a = Actions([b1])
+b1 = Button("What shipped before that?")
+```
+
+## Final Verification
+Before finishing, walk your output and verify:
+1. root = Card(...) is the FIRST line (for optimal streaming).
+2. Every referenced name is defined. Every defined name (other than root) is reachable from root.
+
+- Put the block AFTER the prose, never before it and never in the middle; at most ONE block per answer; nothing after the closing fence.
+- Open with ```openui-lang on its own line and close with ``` on its own line.
+- Card strings are plain text in the visitor's language: no [id] markers, no URLs, no markdown, under 80 characters each.
+- Keep it small: at most one Table (6 rows x 4 columns) or one List/KeyValue/Steps (6 items), at most 4 Stats, at most 3 Buttons, under 20 statements.
+- Buttons: Button("question") sends exactly that label to you as the visitor's next message (any @ToAssistant argument is ignored), so phrase the label as the visitor would. @OpenUrl("https://...") only with a URL whose host is deependhq.com, copied from the url of a <source> you cited, or https://scheduler.zoom.us/sreedeep to book a call. No other host, ever.
+- Never put a person's or client's name in the card (rule 3) and never a number that is not in <sources>.
+- If you are not sure a card helps, do not add one. A missing card is always correct; a wrong card never is.

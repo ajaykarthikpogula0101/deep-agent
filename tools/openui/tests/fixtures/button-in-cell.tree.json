@@ -1,0 +1,89 @@
+{
+ "root": {
+  "type": "element",
+  "typeName": "Card",
+  "props": {
+   "title": "Weird cells",
+   "children": [
+    {
+     "type": "element",
+     "typeName": "Table",
+     "props": {
+      "columns": [
+       "Company",
+       "Focus"
+      ],
+      "rows": [
+       [
+        "Lake B2B",
+        {
+         "type": "element",
+         "typeName": "Button",
+         "props": {
+          "label": "hidden"
+         },
+         "partial": false,
+         "hasDynamicProps": false
+        }
+       ],
+       [
+        {
+         "a": 1
+        },
+        [
+         1,
+         2
+        ]
+       ]
+      ]
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "t"
+    },
+    {
+     "type": "element",
+     "typeName": "KeyValue",
+     "props": {
+      "pairs": [
+       [
+        "Sells",
+        {
+         "a": 1
+        }
+       ],
+       [
+        "Ok",
+        "fine"
+       ]
+      ]
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "k"
+    }
+   ]
+  },
+  "partial": false,
+  "hasDynamicProps": false,
+  "statementId": "root"
+ },
+ "meta": {
+  "incomplete": false,
+  "unresolved": [],
+  "orphaned": [],
+  "statementCount": 3,
+  "errors": [
+   {
+    "code": "type-mismatch",
+    "statementId": "t",
+    "path": "/rows/2"
+   },
+   {
+    "code": "type-mismatch",
+    "statementId": "k",
+    "path": "/pairs/1"
+   }
+  ]
+ }
+}

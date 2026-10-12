@@ -1,0 +1,7 @@
+root = Card("Latest journey entries", [n, s, a])
+n = Stat("Days logged", "338")
+s = Steps([e1, e2], "Most recent first")
+e1 = Step("In-chat booking shipped", "day 338 · 2026-10-04")
+e2 = Step("Weekly digest went live", "day 337 · 2026-10-03")
+a = Actions([b1])
+b1 = Button("What shipped before that?")

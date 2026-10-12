@@ -18,6 +18,9 @@ Windows notes: use `127.0.0.1` rather than `localhost` in `DATABASE_URL` (Docker
 set `OPENBLAS_NUM_THREADS=1` if numpy complains about memory on a busy machine. Test-mode setup (your own Zoom
 schedule and inbox instead of Deep's) is in `docs/TEST_SETUP.md`.
 
+Optional, for the rich digest e-mail and to rebuild `static/vendor`: `cd tools/openui && OPENUI_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 npm ci`
+(Node 20+; verified on 24.19). Without it the digest is sent as plain text and the chat uses the committed bundle.
+
 Or everything in Docker:
 
 ```bash
@@ -41,6 +44,10 @@ python scripts/verify_zoom.py              # once Zoom S2S credentials are in .e
 
 Set `ALLOWED_ORIGINS=https://deependhq.com,https://www.deependhq.com` (no wildcard) and point the DNS
 for `<assistant-host>` at the Cloud Run / App Runner service.
+
+The component emits `deep-assistant:*` CustomEvents for the host page (`ready`, `question`, `answer`, `sources`,
+`booking`, `handover`, `feedback`, `action`, `ui`, …; full list in docs/WIDGET.md). Answer cards (docs/UI_CARDS.md)
+add `deep-assistant:ui` `{state: 'rendered'|'dropped'|'failed'}` and `deep-assistant:action` with `action: 'ui_button'`.
 
 ## Deploy (Cloud Run)
 

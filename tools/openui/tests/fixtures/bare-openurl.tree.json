@@ -1,0 +1,107 @@
+{
+ "root": {
+  "type": "element",
+  "typeName": "Card",
+  "props": {
+   "title": "Bare steps",
+   "children": [
+    {
+     "type": "element",
+     "typeName": "Actions",
+     "props": {
+      "buttons": [
+       {
+        "type": "element",
+        "typeName": "Button",
+        "props": {
+         "label": "Book a call",
+         "action": {
+          "k": "Comp",
+          "name": "OpenUrl",
+          "args": [
+           {
+            "k": "Str",
+            "v": "https://scheduler.zoom.us/sreedeep"
+           }
+          ]
+         }
+        },
+        "partial": false,
+        "hasDynamicProps": true,
+        "statementId": "b1"
+       },
+       {
+        "type": "element",
+        "typeName": "Button",
+        "props": {
+         "label": "Set then open",
+         "action": {
+          "k": "Comp",
+          "name": "Action",
+          "args": [
+           {
+            "k": "Arr",
+            "els": [
+             {
+              "k": "Comp",
+              "name": "Set",
+              "args": [
+               {
+                "k": "StateRef",
+                "n": "$x"
+               },
+               {
+                "k": "Num",
+                "v": 1
+               }
+              ]
+             },
+             {
+              "k": "Comp",
+              "name": "OpenUrl",
+              "args": [
+               {
+                "k": "Str",
+                "v": "https://www.deependhq.com/x?y=1"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        },
+        "partial": false,
+        "hasDynamicProps": true,
+        "statementId": "b2"
+       },
+       {
+        "type": "element",
+        "typeName": "Button",
+        "props": {
+         "label": "my email is a@b.co"
+        },
+        "partial": false,
+        "hasDynamicProps": false,
+        "statementId": "b3"
+       }
+      ]
+     },
+     "partial": false,
+     "hasDynamicProps": true,
+     "statementId": "a"
+    }
+   ]
+  },
+  "partial": false,
+  "hasDynamicProps": true,
+  "statementId": "root"
+ },
+ "meta": {
+  "incomplete": false,
+  "unresolved": [],
+  "orphaned": [],
+  "statementCount": 5,
+  "errors": []
+ }
+}

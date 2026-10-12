@@ -82,6 +82,17 @@ class Settings(BaseSettings):
     voice_languages: str = Field(default="auto,en,hi,te,ta,es,fr,de", alias="VOICE_LANGUAGES")  # call view language picker
     visitor_memory: bool = Field(default=True, alias="VISITOR_MEMORY")  # return-visitor memory in the greeting and prompt
     outreach_enabled: bool = Field(default=True, alias="OUTREACH_ENABLED")  # proactive outreach rules (docs/OUTREACH.md)
+    # Answer cards (docs/UI_CARDS.md): one optional openui-lang block per answer, rendered by static/deep-ui.js
+    ui_cards_enabled: bool = Field(default=True, alias="UI_CARDS_ENABLED")
+    ui_cards_max_chars: int = Field(default=4000, alias="UI_CARDS_MAX_CHARS")      # per-turn cap on the block
+    ui_cards_max_tokens: int = Field(default=800, alias="UI_CARDS_MAX_TOKENS")     # completion cap on card-eligible turns (500 elsewhere)
+    # Rich weekly digest (docs/AUTOMATIONS.md section 6): composed by the model in openui-lang, rendered to HTML by Node (tools/openui).
+    # Sends the week's leads (name, email, company, reason) and visitor questions to the LLM provider in one call.
+    digest_rich_email: bool = Field(default=True, alias="DIGEST_RICH_EMAIL")
+    digest_model: str = Field(default="", alias="DIGEST_MODEL")                    # empty = CHAT_MODEL
+    digest_model_timeout: int = Field(default=60, alias="DIGEST_MODEL_TIMEOUT")    # seconds for the composing call
+    digest_render_timeout: int = Field(default=60, alias="DIGEST_RENDER_TIMEOUT")  # seconds for node tools/openui/render_email.mjs
+    digest_node: str = Field(default="", alias="DIGEST_NODE")                      # node binary; empty = "node" on PATH
 
     # In-chat booking (docs/BOOKING.md)
     booking_days_ahead: int = Field(default=14, alias="BOOKING_DAYS_AHEAD")

@@ -32,13 +32,27 @@ async function shot(name) { const r = await call("Page.captureScreenshot", { for
 const P = (id, expr) => `(() => { const el = document.getElementById(${JSON.stringify(id)}); const sh = el.shadowRoot; return (${expr}); })()`;
 async function ask(id, text) { await evaluate(P(id, `(el.ask(${JSON.stringify(text)}), true)`)); await sleep(500); await waitFor(P(id, "!el.busy"), 60000, "answer"); await sleep(400); }
 async function lastBot(id) { return evaluate(P(id, `(() => { const rows = [...sh.querySelectorAll('.row.bot')]; const r = rows[rows.length - 1]; const m = r && r.querySelector('.msg');
-  return { text: m ? m.innerText.slice(0, 300) : '', sources: [...(r ? r.querySelectorAll('.sources a') : [])].map(a => a.href), picker: !!(r && r.querySelector('.ctype')), slots: (r ? r.querySelectorAll('.slots .btn') : []).length, hform: !!(r && r.querySelector('.hform')), tools: (r ? r.querySelectorAll('.tool') : []).length }; })()`)); }
+  return { text: m ? m.innerText.slice(0, 300) : '', sources: [...(r ? r.querySelectorAll('.sources a') : [])].map(a => a.href), picker: !!(r && r.querySelector('.ctype')), slots: (r ? r.querySelectorAll('.slots .btn') : []).length, hform: !!(r && r.querySelector('.hform')), tools: (r ? r.querySelectorAll('.tool') : []).length, card: !!(r && r.querySelector('.ui-card')) }; })()`)); }
 let failures = 0; const check = (c, label) => { console.log((c ? "PASS " : "FAIL ") + label); if (!c) failures++; };
+// answer-card fixture (docs/UI_CARDS.md): a custom answer carrying an openui-lang block answers CARD_Q without the model (score ~1.0 vs CUSTOM_ANSWER_MIN_SCORE)
+const CH = { "X-Admin-Token": TOKEN, "Content-Type": "application/json" };
+const CARD_Q = "zq card fixture self-test for the widget suite"; let cardId = null;
+const CARD_ANSWER = 'Three facts for the card test: Lake B2B sells B2B data, Ampliz covers healthcare data, both are Champions Group companies.\n\n```openui-lang\n'
+  + 'root = Card("Card test <b>x</b>", [s, bd, t, a], "from the suite")\n'
+  + 's = Stat("Companies", "3", "<img src=x onerror=alert(1)>")\n'
+  + 'bd = Badge("Live", "success")\n'
+  + 't = Table(["Company", "Focus"], [["Lake B2B", "B2B data"], ["Ampliz", "Healthcare data"]])\n'
+  + 'a = Actions([b1, b2, b3])\n'
+  + 'b1 = Button("What does Lake B2B sell?")\n'
+  + 'b2 = Button("Open the Lake B2B page", Action([@OpenUrl("https://deependhq.com/company/lake-b2b")]))\n'
+  + 'b3 = Button("Bad link", Action([@OpenUrl("javascript:alert(1)")]))\n```';
+const dropCardFixture = async () => { try { const ca = await (await fetch(`${BASE}/admin/custom-answers`, { headers: CH })).json(); for (const it of (ca.items || []).filter((x) => x.question === CARD_Q)) await fetch(`${BASE}/admin/custom-answers/${it.id}`, { method: "DELETE", headers: CH }); } catch {} };
 try {
   await connect();
   const DEMO = await (await fetch(`${BASE}/demo/token`)).json(); const DEMO_EMAIL = DEMO.email || "ada@lovelace.org";
   // never book on the real Zoom calendar from a test run: the server under test must not be in browser-booking mode
   try { const cfg = await (await fetch(`${BASE}/widget-config`)).json(); if (cfg.booking_mode === "browser") { console.error("REFUSING: this server books on the real Zoom calendar (booking_mode=browser). Start the test server with BROWSER_BOOKING_ENABLED=false."); process.exit(2); } } catch {}
+  await dropCardFixture();
   await call("Page.navigate", { url: `${BASE}/demo` });
   await waitFor("customElements.get('deep-assistant') && document.getElementById('panel').shadowRoot && document.getElementById('panel').shadowRoot.querySelector('.welcome .act')", 20000, "component to render");
   check(await evaluate(P("panel", "sh.querySelectorAll('.welcome .act').length")) === 4, "panel renders the four welcome actions");
@@ -119,6 +133,52 @@ try {
   check(await evaluate("document.getElementById('events').textContent.includes('panel  answer')"), "host page received the deep-assistant:answer event");
   await shot("widget_panel.png");
 
+  // ---- answer cards (docs/UI_CARDS.md): the custom-answer fixture streams a 'ui' block; the renderer must show text only, allowlist URLs, persist and restore
+  const mkCard = await fetch(`${BASE}/admin/custom-answers`, { method: "POST", headers: CH, body: JSON.stringify({ question: CARD_Q, answer: CARD_ANSWER }) });
+  cardId = mkCard.ok ? (await mkCard.json()).id : null; check(!!cardId, "cards: test custom answer created through the admin API");
+  const usersBefore = await evaluate(P("panel", "sh.querySelectorAll('.row.user').length"));
+  await ask("panel", CARD_Q);
+  const CARD = "(() => { const rows = [...sh.querySelectorAll('.row.bot')]; const r = rows[rows.length - 1]; return r && r.querySelector('.ui-card'); })()";
+  await waitFor(P("panel", `(() => { const c = ${CARD}; return !!c && c.dataset.uiState === 'done'; })()`), 10000, "card rendered");
+  const cd = await evaluate(P("panel", `(() => { const c = ${CARD}; const msg = c.closest('.msg'); const title = c.querySelector('.ui-head b'); const td = c.querySelector('.ui-table tbody td');
+    return { state: c.dataset.uiState, root: c.dataset.uiRoot, statements: c.dataset.uiStatements, text: msg.innerText, title: title ? title.textContent : '', titleKids: title ? title.children.length : -1,
+      note: (c.querySelector('.ui-stat .n') || {}).textContent || '', imgs: c.querySelectorAll('img, script').length, stat: (c.querySelector('.ui-stat .v') || {}).textContent || '',
+      badges: [...c.querySelectorAll('.ui-badge.success')].map(b => b.textContent), ths: c.querySelectorAll('.ui-table thead th').length, trs: c.querySelectorAll('.ui-table tbody tr').length, tdWeight: td ? getComputedStyle(td).fontWeight : '',
+      btns: [...c.querySelectorAll('.ui-actions .ui-btn')].map(b => ({ action: b.dataset.uiAction, url: b.dataset.uiUrl || null, primary: b.classList.contains('primary'), label: b.textContent })),
+      hascard: msg.classList.contains('hascard'), wide: c.closest('.row').classList.contains('wide'), streaming: msg.classList.contains('streaming'), bg: getComputedStyle(c).backgroundColor }; })()`));
+  check(cd.state === "done" && cd.root === "Card" && cd.statements === "8" && cd.text.startsWith("Three facts") && !cd.text.includes("root = Card") && cd.hascard && cd.wide && !cd.streaming, `cards: custom answer renders a done Card with 8 statements under the prose (statements=${cd.statements})`);
+  check(cd.title === "Card test <b>x</b>" && cd.titleKids === 0 && cd.note.includes("<img") && cd.imgs === 0, "cards: model strings are text only (title '<b>x</b>' literal, '<img' in the note, no img/script elements)");
+  check(cd.stat === "3" && cd.badges.join("|") === "Live" && cd.ths === 2 && cd.trs === 2 && parseInt(cd.tdWeight, 10) >= 600, `cards: Stat '3', one success badge 'Live', 2x2 table with a bold first column (weight ${cd.tdWeight})`);
+  check(cd.btns.length === 2 && cd.btns[0].action === "ask" && cd.btns[0].primary && cd.btns[0].label === "What does Lake B2B sell?" && cd.btns[1].action === "open" && cd.btns[1].url === "https://deependhq.com/company/lake-b2b" && !cd.btns[1].primary, `cards: 2 buttons (ask primary + open to deependhq.com); the javascript: button is not rendered (${cd.btns.map(b => b.action).join(',')})`);
+  await evaluate("(window.__opened = [], window.open = (u, t, f) => (window.__opened.push([u, t, f]), null), true)");
+  await evaluate(P("panel", `((${CARD}).querySelector('.ui-btn[data-ui-action=open]').click(), true)`)); await sleep(100);
+  check(JSON.stringify(await evaluate("window.__opened[0]")) === JSON.stringify(["https://deependhq.com/company/lake-b2b", "_blank", "noopener,noreferrer"]), "cards: the open button calls window.open(url, '_blank', 'noopener,noreferrer')");
+  check(cd.bg === "rgb(240, 242, 249)", `cards: light theme card background --da-subtle (${cd.bg})`);
+  await evaluate(P("panel", "(el.setAttribute('theme', 'dark'), true)")); await sleep(100);
+  const darkBg = await evaluate(P("panel", `getComputedStyle(${CARD}).backgroundColor`));
+  check(darkBg === "rgb(30, 36, 65)", `cards: dark theme card background (${darkBg})`);
+  await evaluate(P("panel", "(el.setAttribute('theme', 'light'), true)")); await sleep(100);
+  check(await evaluate("document.getElementById('events').textContent.includes('panel  ui')"), "cards: host page received the deep-assistant:ui event");
+  const stored = await evaluate(P("panel", "(() => { const tx = JSON.parse(sessionStorage.getItem('da:' + el.api + ':tx:' + el.sessionId) || '[]'); const m = tx[tx.length - 1]; return m && { ui: (m.ui || '').slice(0, 12), text: m.text || '' }; })()"));
+  check(stored && stored.ui === "root = Card(" && !stored.text.includes("```"), "cards: transcript entry keeps the program in .ui and prose-only .text");
+  await call("Page.reload", {});
+  await waitFor("customElements.get('deep-assistant') && document.getElementById('panel').shadowRoot && document.getElementById('panel').shadowRoot.querySelector('.welcome, .row')", 20000, "component after reload");
+  await evaluate(P("panel", "(el.setAttribute('theme', 'light'), true)"));   // the demo page resets to auto
+  await waitFor(P("panel", "el._online === true"), 10000, "health check after reload");
+  // the demo page sets the api attribute only after the component booted, so its boot-time restore read an api-less key (a /demo quirk; widget.js sets api first): re-run the restore now that api is set
+  await evaluate(P("panel", "(el._restore(), true)"));
+  await waitFor(P("panel", "!!sh.querySelector('.row.bot .ui-card[data-ui-state=\"done\"]')"), 10000, "card restored from the transcript");
+  const rs = await evaluate(P("panel", "(() => { const c = sh.querySelector('.row.bot .ui-card[data-ui-state=\"done\"]'); return { stat: (c.querySelector('.ui-stat .v') || {}).textContent || '', users: sh.querySelectorAll('.row.user').length, btns: c.querySelectorAll('.ui-btn').length }; })()"));
+  check(rs.stat === "3" && rs.users === usersBefore + 1 && rs.btns === 2, `cards: after a reload the card is re-rendered from sessionStorage (users ${rs.users}, stat ${rs.stat})`);
+  const botsBefore = await evaluate(P("panel", "sh.querySelectorAll('.row.bot').length"));
+  await evaluate("(window.__acts = [], document.addEventListener('deep-assistant:action', (e) => window.__acts.push(e.detail)), true)");   // the demo page only logs a fixed set of events
+  await evaluate(P("panel", "(sh.querySelector('.row.bot .ui-card .ui-btn[data-ui-action=ask]').click(), true)")); await sleep(500);
+  await waitFor(P("panel", "!el.busy"), 60000, "ask-button answer"); await sleep(400);
+  const rt = await evaluate(P("panel", "({ user: [...sh.querySelectorAll('.row.user .msg')].pop().innerText.trim(), bots: sh.querySelectorAll('.row.bot').length, hist: [...el._history].reverse().find(h => h.role === 'user').content })"));
+  check(rt.user === "What does Lake B2B sell?" && rt.bots === botsBefore + 1 && rt.hist === "What does Lake B2B sell?", `cards: the ask button sends its label as the visitor's next message (${rt.user})`);
+  check(await evaluate("window.__acts.some(a => a.action === 'ui_button' && a.label === 'What does Lake B2B sell?')"), "cards: deep-assistant:action {action:'ui_button', label} reached the host page");
+  { const del = await fetch(`${BASE}/admin/custom-answers/${cardId}`, { method: "DELETE", headers: CH }); check(del.ok, "cards: test custom answer deleted again"); cardId = null; }
+
   // ---- History screen: list, reopen, read state, new chat, navigation
   check(await evaluate(P("panel", "!sh.querySelector('.tabs') && !sh.querySelector('.b-history').hidden")), "nav: History button in the header, no bottom tab bar");
   const firstSid = await evaluate(P("panel", "el.sessionId"));
@@ -155,7 +215,8 @@ try {
   await shot("widget_messages.png");
   await evaluate(P("panel", `(sh.querySelector('.convo[data-sid=${JSON.stringify(firstSid)}]').click(), true)`));
   await waitFor(P("panel", "el.view === 'chat' && el.sessionId === " + JSON.stringify(firstSid)), 10000, "reopen first conversation");
-  check(await evaluate(P("panel", "sh.querySelectorAll('.row.user').length === 2 && [...sh.querySelectorAll('.row.user .msg')].some(m => /Lake B2B/i.test(m.textContent)) && sh.querySelectorAll('.row.bot .tool').length >= 3 && !sh.querySelector('.b-history').hidden")), "history: reopened conversation shows its full history with tools; History stays one tap away");
+  // 4 user rows: the two questions above plus the two the answer-card block adds to this same conversation (CARD_Q and the ask button); drop the card block -> 2
+  check(await evaluate(P("panel", "sh.querySelectorAll('.row.user').length === 4 && [...sh.querySelectorAll('.row.user .msg')].some(m => /Lake B2B/i.test(m.textContent)) && sh.querySelectorAll('.row.bot .tool').length >= 3 && !sh.querySelector('.b-history').hidden")), "history: reopened conversation shows its full history with tools; History stays one tap away");
   await evaluate(P("panel", "(sh.querySelector('.b-history').click(), true)")); await sleep(300);
   check(await evaluate(P("panel", "el.view === 'messages'")), "history: header button returns to the list");
   await evaluate(P("panel", "(sh.querySelector('.back').click(), true)")); await sleep(300);
@@ -341,6 +402,6 @@ try {
     if (orRule && orRule.id) { const del = await fetch(`${BASE}/admin/outreach/rules/${orRule.id}`, { method: "DELETE", headers: AH }); check(del.ok, "outreach: test rule deleted again"); }
   }
 } catch (e) { console.error("ERROR", e.stack || e.message); failures++; try { await shot("widget_error.png"); } catch {} }
-finally { try { ws && ws.close(); } catch {} proc.kill(); await sleep(300); }  // let the socket close before exiting
+finally { if (cardId) await dropCardFixture(); try { ws && ws.close(); } catch {} proc.kill(); await sleep(300); }  // let the socket close before exiting
 console.log(failures ? `${failures} check(s) failed` : "all widget checks passed");
 process.exit(failures ? 1 : 0);

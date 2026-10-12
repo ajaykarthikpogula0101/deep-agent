@@ -1,0 +1,87 @@
+{
+ "root": {
+  "type": "element",
+  "typeName": "Card",
+  "props": {
+   "title": "Latest journey entries",
+   "children": [
+    {
+     "type": "element",
+     "typeName": "Stat",
+     "props": {
+      "label": "Days logged",
+      "value": "338"
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "n"
+    },
+    {
+     "type": "element",
+     "typeName": "Steps",
+     "props": {
+      "steps": [
+       {
+        "type": "element",
+        "typeName": "Step",
+        "props": {
+         "title": "In-chat booking shipped",
+         "when": "day 338 · 2026-10-04"
+        },
+        "partial": false,
+        "hasDynamicProps": false,
+        "statementId": "e1"
+       },
+       {
+        "type": "element",
+        "typeName": "Step",
+        "props": {
+         "title": "Weekly digest went live",
+         "when": "day 337 · 2026-10-03"
+        },
+        "partial": false,
+        "hasDynamicProps": false,
+        "statementId": "e2"
+       }
+      ],
+      "title": "Most recent first"
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "s"
+    },
+    {
+     "type": "element",
+     "typeName": "Actions",
+     "props": {
+      "buttons": [
+       {
+        "type": "element",
+        "typeName": "Button",
+        "props": {
+         "label": "What shipped before that?"
+        },
+        "partial": false,
+        "hasDynamicProps": false,
+        "statementId": "b1"
+       }
+      ]
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "a"
+    }
+   ]
+  },
+  "partial": false,
+  "hasDynamicProps": false,
+  "statementId": "root"
+ },
+ "meta": {
+  "incomplete": false,
+  "unresolved": [],
+  "orphaned": [],
+  "statementCount": 7,
+  "errors": []
+ }
+}

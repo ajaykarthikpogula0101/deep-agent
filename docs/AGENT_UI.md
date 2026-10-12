@@ -33,6 +33,9 @@ it until the Windows setting is turned off.
   | checking_slot | Checking that time with Zoom… | before `book_slot` (review) |
   | writing | Writing… | before each model call (also after tools) |
 
+  Not a status, but on the same stream: `ui` events (`op: start / chunk / end`) carry an optional openui-lang answer
+  card after the prose; `static/deep-ui.js` renders it under the bubble (docs/UI_CARDS.md).
+
   When the stream ends the row collapses into **"Worked for 4s · 3 sources"**; clicking it lists the steps with
   their offsets. Nothing is timer-based.
 * **Skeleton bubble** (three shimmering lines) until the first token; then **token fade** (`.tok`: opacity + 2px

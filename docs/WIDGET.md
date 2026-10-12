@@ -70,7 +70,8 @@ Events (all `CustomEvent`, bubble through the DOM, `detail` below):
 | `deep-assistant:booking` | `{status: 'started'\|'confirmed'\|'pending_zoom'\|'unavailable'\|'slot_taken', bookingId, joinUrl, handoffUrl, slot, schedule, email}` |
 | `deep-assistant:handover` | `{leadId, email, briefSent}` |
 | `deep-assistant:feedback` | `{messageId, rating: 1\|-1, note}` |
-| `deep-assistant:action` | `{action, label, kind}`: `suggestion` (welcome action), `followup`, `help`, `help_question`, `booking_type`, `booking_time`, `handover_requested`, `handover_form`, `unanswered` (low-confidence answer) |
+| `deep-assistant:action` | `{action, label, kind}`: `suggestion` (welcome action), `followup`, `help`, `help_question`, `booking_type`, `booking_time`, `handover_requested`, `handover_form`, `unanswered` (low-confidence answer), `ui_button` (a button on an answer card sent its label) |
+| `deep-assistant:ui` | `{state: 'rendered'\|'dropped'\|'failed', statements?, reason?}`: an answer card (docs/UI_CARDS.md) was rendered under the prose, dropped (incomplete or invalid program), or the renderer failed to load |
 | `deep-assistant:open` / `:close` / `:error` / `:view` / `:voice` / `:upload` | |
 
 The component installs no analytics of its own. To measure conversion, forward these events to whatever the host
@@ -231,3 +232,14 @@ node scripts/browser_check_widget.mjs http://127.0.0.1:8080 out_dir
 Drives the `/demo` page in headless Edge: anonymous panel answers with sources, events reach the host page,
 the signed-in launcher identifies the user, books without asking for name or email, prefills the hand-over form,
 and the session row in the console carries the user. Unit tests: `tests/test_identity.py`.
+
+Answer cards (docs/UI_CARDS.md) are checked with a deterministic fixture: the suite creates a custom answer through the
+admin API whose text carries an openui-lang block, asks that exact question (no model involved), and verifies the card
+under the prose: `.ui-card[data-ui-state="done"][data-ui-root="Card"][data-ui-statements]`, model strings rendered as
+text only (`<b>`, `<img>` stay literal, no `img`/`script` elements), the `javascript:` button not rendered, the
+`@OpenUrl` button calling `window.open(url, '_blank', 'noopener,noreferrer')`, light/dark backgrounds, the
+`deep-assistant:ui` event on the host page, the program persisted in the transcript entry's `ui` field and re-rendered
+after a reload, and the ask button sending its label as the next message (`deep-assistant:action` with
+`action: 'ui_button'`). The fixture is deleted again right after (and at suite start, in case an earlier run crashed).
+Renderer and parser unit tests: `cd tools/openui && npm test` (= `node --test`; jsdom when installed, otherwise
+`tests/fakedom.mjs`).

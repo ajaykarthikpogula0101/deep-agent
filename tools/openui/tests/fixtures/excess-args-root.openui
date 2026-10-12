@@ -1,0 +1,2 @@
+root = Card("Too many arguments", [s], "subtitle", "extra argument")
+s = Stat("Days", "1")

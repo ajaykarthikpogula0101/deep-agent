@@ -1,0 +1,62 @@
+{
+ "root": {
+  "type": "element",
+  "typeName": "Card",
+  "props": {
+   "title": "Stat with an object value",
+   "children": [
+    {
+     "type": "element",
+     "typeName": "Stat",
+     "props": {
+      "label": "Bad",
+      "value": {
+       "a": 1
+      }
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "s1"
+    },
+    {
+     "type": "element",
+     "typeName": "Stat",
+     "props": {
+      "label": "Good",
+      "value": 42,
+      "note": "fine"
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "s2"
+    },
+    {
+     "type": "element",
+     "typeName": "Badge",
+     "props": {
+      "label": "Live"
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "bd"
+    }
+   ]
+  },
+  "partial": false,
+  "hasDynamicProps": false,
+  "statementId": "root"
+ },
+ "meta": {
+  "incomplete": false,
+  "unresolved": [],
+  "orphaned": [],
+  "statementCount": 4,
+  "errors": [
+   {
+    "code": "type-mismatch",
+    "statementId": "bd",
+    "path": "/tone"
+   }
+  ]
+ }
+}

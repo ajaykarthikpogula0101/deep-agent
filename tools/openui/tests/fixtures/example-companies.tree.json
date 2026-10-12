@@ -1,0 +1,101 @@
+{
+ "root": {
+  "type": "element",
+  "typeName": "Card",
+  "props": {
+   "title": "Champions Group companies",
+   "children": [
+    {
+     "type": "element",
+     "typeName": "Table",
+     "props": {
+      "columns": [
+       "Company",
+       "Focus"
+      ],
+      "rows": [
+       [
+        "Lake B2B",
+        "B2B data"
+       ],
+       [
+        "Ampliz",
+        "Healthcare data"
+       ],
+       [
+        "Champions Accelerator",
+        "Venture studio"
+       ]
+      ]
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "t"
+    },
+    {
+     "type": "element",
+     "typeName": "Actions",
+     "props": {
+      "buttons": [
+       {
+        "type": "element",
+        "typeName": "Button",
+        "props": {
+         "label": "What does Lake B2B sell?"
+        },
+        "partial": false,
+        "hasDynamicProps": false,
+        "statementId": "b1"
+       },
+       {
+        "type": "element",
+        "typeName": "Button",
+        "props": {
+         "label": "Open the Lake B2B page",
+         "action": {
+          "k": "Comp",
+          "name": "Action",
+          "args": [
+           {
+            "k": "Arr",
+            "els": [
+             {
+              "k": "Comp",
+              "name": "OpenUrl",
+              "args": [
+               {
+                "k": "Str",
+                "v": "https://deependhq.com/company/lake-b2b"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        },
+        "partial": false,
+        "hasDynamicProps": true,
+        "statementId": "b2"
+       }
+      ]
+     },
+     "partial": false,
+     "hasDynamicProps": true,
+     "statementId": "a"
+    }
+   ],
+   "subtitle": "From the company pages"
+  },
+  "partial": false,
+  "hasDynamicProps": true,
+  "statementId": "root"
+ },
+ "meta": {
+  "incomplete": false,
+  "unresolved": [],
+  "orphaned": [],
+  "statementCount": 5,
+  "errors": []
+ }
+}

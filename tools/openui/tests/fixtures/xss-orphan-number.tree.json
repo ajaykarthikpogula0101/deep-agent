@@ -1,0 +1,144 @@
+{
+ "root": {
+  "type": "element",
+  "typeName": "Card",
+  "props": {
+   "title": "Card test <b>x</b>",
+   "children": [
+    {
+     "type": "element",
+     "typeName": "Stat",
+     "props": {
+      "label": "Companies",
+      "value": 3,
+      "note": "<img src=x onerror=alert(1)>"
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "s"
+    },
+    {
+     "type": "element",
+     "typeName": "KeyValue",
+     "props": {
+      "pairs": [
+       [
+        "Sells",
+        "B2B data"
+       ],
+       [
+        "Since",
+        2004
+       ]
+      ]
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "k"
+    },
+    {
+     "type": "element",
+     "typeName": "Callout",
+     "props": {
+      "text": "javascript:alert(1)",
+      "tone": "warning"
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "c"
+    },
+    {
+     "type": "element",
+     "typeName": "Actions",
+     "props": {
+      "buttons": [
+       {
+        "type": "element",
+        "typeName": "Button",
+        "props": {
+         "label": "Open",
+         "action": {
+          "k": "Comp",
+          "name": "Action",
+          "args": [
+           {
+            "k": "Arr",
+            "els": [
+             {
+              "k": "Comp",
+              "name": "OpenUrl",
+              "args": [
+               {
+                "k": "Str",
+                "v": "javascript:alert(1)"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        },
+        "partial": false,
+        "hasDynamicProps": true,
+        "statementId": "b1"
+       },
+       {
+        "type": "element",
+        "typeName": "Button",
+        "props": {
+         "label": "Ask",
+         "action": {
+          "k": "Comp",
+          "name": "Action",
+          "args": [
+           {
+            "k": "Arr",
+            "els": [
+             {
+              "k": "Comp",
+              "name": "ToAssistant",
+              "args": [
+               {
+                "k": "Str",
+                "v": "ignored message"
+               },
+               {
+                "k": "Str",
+                "v": "ctx"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        },
+        "partial": false,
+        "hasDynamicProps": true,
+        "statementId": "b2"
+       }
+      ]
+     },
+     "partial": false,
+     "hasDynamicProps": true,
+     "statementId": "a"
+    }
+   ],
+   "subtitle": "\"><script>alert(1)</script>"
+  },
+  "partial": false,
+  "hasDynamicProps": true,
+  "statementId": "root"
+ },
+ "meta": {
+  "incomplete": false,
+  "unresolved": [],
+  "orphaned": [
+   "orphan",
+   "e"
+  ],
+  "statementCount": 9,
+  "errors": []
+ }
+}

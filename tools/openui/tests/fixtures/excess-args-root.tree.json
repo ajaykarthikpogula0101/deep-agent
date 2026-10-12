@@ -1,0 +1,39 @@
+{
+ "root": {
+  "type": "element",
+  "typeName": "Card",
+  "props": {
+   "title": "Too many arguments",
+   "children": [
+    {
+     "type": "element",
+     "typeName": "Stat",
+     "props": {
+      "label": "Days",
+      "value": "1"
+     },
+     "partial": false,
+     "hasDynamicProps": false,
+     "statementId": "s"
+    }
+   ],
+   "subtitle": "subtitle"
+  },
+  "partial": false,
+  "hasDynamicProps": false,
+  "statementId": "root"
+ },
+ "meta": {
+  "incomplete": false,
+  "unresolved": [],
+  "orphaned": [],
+  "statementCount": 2,
+  "errors": [
+   {
+    "code": "excess-args",
+    "statementId": "root",
+    "path": ""
+   }
+  ]
+ }
+}

@@ -5,6 +5,9 @@ text and has an "email to Deep now" button (POST /admin/digest/send). Content: c
 change against the previous week, resolution rate, satisfaction, bookings / hand-overs / enquiries, median answer
 time, the most asked questions, the questions the bot could not answer (each a candidate custom answer), and the
 leads with their company (app/enrich.py) and follow-up state (app/nudge.py).
+
+With DIGEST_RICH_EMAIL the same numbers also go to the model as JSON (data_for_model) and come back as an HTML part
+rendered by app/digest_rich.py; the text here stays the text/plain part and the fallback.
 """
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app import inbox, templates
+from app import digest_rich, inbox, templates
 from app.config import settings
 
 log = logging.getLogger("digest")
@@ -123,6 +126,48 @@ def render(m: dict[str, Any], prev: dict[str, Any] | None, g: dict[str, Any], le
     return subject, "\n".join(lines).rstrip() + "\n"
 
 
+def data_for_model(m: dict[str, Any], prev: dict[str, Any] | None, g: dict[str, Any], leads: list[dict[str, Any]],
+                   period: str, tpl: dict[str, str] | None = None, subject: str | None = None) -> dict[str, Any]:
+    """The same facts as render(), as JSON for the rich digest (docs/AUTOMATIONS.md §6): every string the model may
+    use, already formatted, same caps as the text. Pure; the key set is frozen (app/digest_rich.py checks the HTML
+    against it). `subject` is the one render() produced (build() passes it so the text is rendered once)."""
+    tpl = tpl or templates.get_templates()
+    brand = tpl.get("brand_default") or templates.DEFAULTS["brand_default"]
+    host = tpl.get("host_name") or templates.DEFAULTS["host_name"]
+    site = settings.site_base_url.replace("https://", "").replace("http://", "")
+    tz = settings.host_timezone
+    p = prev or {}
+    csat = m.get("csat") or {}
+    if subject is None:
+        subject, _ = render(m, prev, g, leads, period, tpl)
+    metrics = {
+        "conversations": m.get("conversations", 0), "conversations_delta": _delta(m.get("conversations"), p.get("conversations")),
+        "questions": m.get("questions", 0), "questions_delta": _delta(m.get("questions"), p.get("questions")),
+        "resolution_rate": _pct(m.get("resolution_rate")), "resolution_delta": _delta(m.get("resolution_rate"), p.get("resolution_rate"), pct=True),
+        "satisfaction": _pct(csat.get("score")), "csat_up": csat.get("up", 0), "csat_down": csat.get("down", 0),
+        "bookings": m.get("bookings", 0), "handovers": m.get("handover_leads", 0), "enquiries": m.get("enquiries", 0),
+        "median_answer": f"{m['median_latency_ms'] / 1000:.1f} s" if m.get("median_latency_ms") is not None else "",
+        "errors": m.get("errors", 0),
+    }
+    out_leads = []
+    for lead in leads:
+        out_leads.append({
+            "when": _fmt_ts(lead.get("ts"), tz), "name": lead.get("name") or "", "email": lead.get("email") or "",
+            "company": lead.get("company") or "", "call_type": (lead.get("schedule_slug") or "").replace("-", " "),
+            "wanted": _fmt_ts(lead.get("slot_start"), tz) if lead.get("slot_start") else "", "state": _lead_state(lead),
+            "reason": str(lead.get("reason") or "")[:140],
+        })
+    return {
+        "subject": subject, "period": period, "brand": brand, "host": host, "site": site,
+        "console_url": f"{settings.site_base_url}/admin", "footer": f"Sent by the {site} assistant to {host}.",
+        "metrics": metrics,
+        "most_asked": [{"question": q["question"], "count": q["count"]} for q in (m.get("top_questions") or [])[:MAX_TOP]],
+        "unanswered": [{"question": u["question"], "count": u["count"]} for u in (g.get("unanswered") or [])[:MAX_GAPS]],
+        "thumbs_down": len(g.get("thumbs_down") or []),
+        "leads": out_leads,
+    }
+
+
 def period_label(days: int, now: datetime | None = None) -> str:
     now = now or datetime.now(timezone.utc)
     end = now.astimezone(ZoneInfo(settings.host_timezone))
@@ -133,7 +178,9 @@ def period_label(days: int, now: datetime | None = None) -> str:
 
 
 # ---------------------------------------------------------------- with the database
-def build(days: int = 7) -> dict[str, Any]:
+def build(days: int = 7, rich: bool = False) -> dict[str, Any]:
+    """Today's keys plus "data" (the JSON the model sees) and "html" (None here; rich=True composes it for the console
+    preview and adds "rich" = digest_rich.last_stats())."""
     days = max(1, min(int(days or 7), 90))
     m = inbox.metrics(days)
     both = inbox.metrics(days * 2)
@@ -143,21 +190,30 @@ def build(days: int = 7) -> dict[str, Any]:
     prev["resolution_rate"] = round(prev["resolved"] / answered, 3) if answered else None
     g = inbox.gaps(days, 20)
     leads = leads_recent(days)
-    subject, body = render(m, prev, g, leads, period_label(days))
-    return {"days": days, "subject": subject, "body": body, "to": settings.host_email, "metrics": m}
+    period = period_label(days)
+    tpl = templates.get_templates()
+    subject, body = render(m, prev, g, leads, period, tpl)
+    d = {"days": days, "subject": subject, "body": body, "to": settings.host_email, "metrics": m,
+         "data": data_for_model(m, prev, g, leads, period, tpl, subject=subject), "html": None}
+    if rich:
+        d["html"] = digest_rich.compose(d)
+        d["rich"] = digest_rich.last_stats()
+    return d
 
 
 def send(days: int = 7, to: str | None = None) -> dict[str, Any]:
-    from app.booking.email import send_plain
+    from app.booking.email import _send, send_plain
     from app.db import log_event, set_setting
 
     d = build(days)
     to = to or settings.host_email
-    ok = send_plain(to, d["subject"], d["body"])
+    html = digest_rich.compose(d)   # None unless DIGEST_RICH_EMAIL and every step succeeded -> plain text exactly as before
+    ok = _send(to, d["subject"], d["body"], html=html) if html else send_plain(to, d["subject"], d["body"])
     try:
         if ok:
             set_setting("digest:last_sent", datetime.now(timezone.utc).isoformat())
-        log_event("digest", None, {"ok": ok, "to": to, "days": days, "conversations": d["metrics"]["conversations"]})
+        log_event("digest", None, {"ok": ok, "to": to, "days": days, "conversations": d["metrics"]["conversations"],
+                                   "rich": bool(html), **digest_rich.last_stats()})
     except Exception as e:  # bookkeeping only
         log.warning("digest bookkeeping failed: %s", e)
     return {"ok": ok, "to": to, "subject": d["subject"]}

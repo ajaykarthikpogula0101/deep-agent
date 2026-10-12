@@ -14,6 +14,9 @@ Event types sent to the client (one JSON object per SSE 'data:' line):
   {"type":"handover_offer"}        shown after a refusal: offer a "talk to a person" form
   {"type":"handover","prefill":..} the visitor asked for a human: render the hand-over form (POST /handover)
   {"type":"custom","id":...}       the answer is an owner-written custom answer (no model call)
+  {"type":"ui","op":"start"}       an answer card begins (docs/UI_CARDS.md); the prose keeps coming as 'token' events
+  {"type":"ui","op":"chunk","text":...}  openui-lang source of the card, streamed as the model writes it
+  {"type":"ui","op":"end","program":...,"complete":true}  the whole card program; complete:false (+reason) = show nothing
   {"type":"meta","message_id":..}  id of the stored assistant turn, for POST /feedback
   {"type":"error","error":...}
   {"type":"done"}
@@ -28,7 +31,7 @@ from typing import AsyncIterator, Iterator
 
 from openai import OpenAI
 
-from app import inbox, lang, titles
+from app import inbox, lang, titles, ui_cards
 from app.booking.service import BookingService
 from app.booking.tools import TOOLS, run_tool, schedules_prompt
 from app.config import settings
@@ -143,6 +146,7 @@ def respond(
     logged = message + ("".join(f"\n[attached: {a['name']}]({a['url']})" for a in attachments) if attachments else "")
     inbox.log_message(session_id, "user", logged)
     text, outcome, reason, sources, finished = "", "answered", None, [], False
+    card = None
     try:
         for chunk in _respond(message, history, visitor_tz, session_id, service, client, visitor, extra_context, memory):
             try:
@@ -165,6 +169,8 @@ def respond(
                 outcome = "booking"
             elif t == "error":
                 outcome, reason = "error", str(ev.get("error"))
+            elif t == "ui" and ev.get("op") == "end":
+                card = ev   # logged below with the message id; the inbox text stays prose-only
             elif t == "done":
                 finished = True
                 mid = inbox.log_message(session_id, "assistant", text or "(no text)", question=message, outcome=outcome,
@@ -172,6 +178,13 @@ def respond(
                                         model=settings.chat_model)
                 if mid:
                     yield sse({"type": "meta", "message_id": mid, "outcome": outcome})
+                if card is not None:
+                    try:
+                        prog = card.get("program") or ""
+                        log_event("ui_card", session_id, {"message_id": mid, "complete": bool(card.get("complete")), "reason": card.get("reason"),
+                                                          "chars": len(prog), "program": prog[:2000]})
+                    except Exception as e:  # bookkeeping only: 'done' must always leave
+                        log.warning("ui_card log failed: %s", e)
                 if outcome not in ("injection", "error", "stopped"):
                     titles.maybe_generate_async(session_id)  # 3–6 word conversation title, on a worker thread
             yield chunk
@@ -245,7 +258,12 @@ def _respond(
             if custom.get("link"):
                 yield sse({"type": "sources", "items": [{"n": 1, "url": custom["link"], "title": "Read more"}]})
             yield sse({"type": "custom", "id": custom["id"]})
-            yield sse({"type": "token", "text": custom["answer"] + (" [1]" if custom.get("link") else "")})
+            answer = ui_cards.with_marker(custom["answer"], " [1]") if custom.get("link") else custom["answer"]
+            if settings.ui_cards_enabled and ui_cards.has_block(answer):
+                for ev in ui_cards.split_text(answer):
+                    yield sse(ev)
+            else:
+                yield sse({"type": "token", "text": answer})   # no block: the one token event, byte-identical to before
             yield sse({"type": "done"})
             return
 
@@ -284,13 +302,16 @@ def _respond(
         choices = call_type_choices(service, query, history)
         if choices:
             system += "\n" + prompts.PICKER_NOTE
+    ui_on = ui_cards.wanted(cited=confident(hits), booking=booking)
+    if ui_on:
+        system += ui_cards.prompt_section()   # appended LAST: rules 1-11, owner guidance, language, memory, signed-in notes all precede it and win
     messages = [{"role": "system", "content": system},
                 context_msg, *_history(history), {"role": "user", "content": message}]
     tools = TOOLS if booking else None
 
     # 6. stream, executing tools between rounds
     cited: list[Hit] = hits if confident(hits) else []
-    state = {"tools_called": False}
+    state = {"tools_called": False, "ui_cards": ui_on, "max_tokens": settings.ui_cards_max_tokens if ui_on else 500}
     # Sources go out BEFORE the answer so the page can turn [n] markers into links while tokens stream.
     # Booking turns are conversational and show none. The numbering matches the <source id> the model sees.
     if cited and not booking:
@@ -312,60 +333,72 @@ def _respond(
 
 def _agent_loop(client: OpenAI, service: BookingService, messages: list[dict], tools, visitor_tz: str,
                 session_id: str | None, state: dict) -> Iterator[str]:
-    for _round in range(MAX_TOOL_ROUNDS):
-        stream = _create_stream(client, messages, tools)
-        text, tool_calls, usage = "", {}, None
-        for chunk in stream:
-            if chunk.usage:
-                usage = chunk.usage
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
-            if delta.content:
-                text += delta.content
-                yield sse({"type": "token", "text": delta.content})
-            for tc in delta.tool_calls or []:
-                slot = tool_calls.setdefault(tc.index, {"id": tc.id, "name": "", "args": ""})
-                if tc.id:
-                    slot["id"] = tc.id
-                if tc.function and tc.function.name:
-                    slot["name"] += tc.function.name
-                if tc.function and tc.function.arguments:
-                    slot["args"] += tc.function.arguments
-        if usage:
-            record_spend(settings.chat_model, usage.prompt_tokens, usage.completion_tokens)
-        if not tool_calls:
-            break
-        state["tools_called"] = True
-        # execute tools
-        messages.append({"role": "assistant", "content": text or None,
-                         "tool_calls": [{"id": t["id"], "type": "function",
-                                         "function": {"name": t["name"], "arguments": t["args"]}} for t in tool_calls.values()]})
-        for t in tool_calls.values():
-            try:
-                args = json.loads(t["args"] or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            if t["name"] == "book_slot" and args.get("email") and not visitor_typed(str(args.get("email", "")), messages, state.get("known_email")):
-                # The model may only prefill an email the visitor actually wrote; otherwise the form asks for it.
-                log_event("booking_blocked", session_id, {"reason": "email_not_from_visitor", "email": str(args.get("email", ""))[:120]})
-                args = dict(args, name="", email="")
-            if t["name"] == "get_available_slots":
-                yield status("calendar", "Checking Deep's calendar…")
-            elif t["name"] == "book_slot":
-                yield status("checking_slot", "Checking that time with Zoom…")
-            result_json, ui = run_tool(service, t["name"], args, visitor_tz)
-            for ev in (ui if isinstance(ui, list) else [ui]):
-                if ev.get("type") == "booking_review":
-                    log_event("booking_review", session_id, {"status": ev.get("status"), "slot": (ev.get("slot") or {}).get("start_iso")})
+    # The splitter routes one openui-lang block into 'ui' events (docs/UI_CARDS.md); disabled, it is a token passthrough.
+    splitter = ui_cards.FenceSplitter(enabled=bool(state.get("ui_cards")), max_chars=settings.ui_cards_max_chars)
+    closed = False
+    try:
+        for _round in range(MAX_TOOL_ROUNDS):
+            stream = _create_stream(client, messages, tools, max_tokens=state.get("max_tokens", 500))
+            text, tool_calls, usage = "", {}, None
+            for chunk in stream:
+                if chunk.usage:
+                    usage = chunk.usage
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    text += delta.content
+                    for ev in splitter.feed(delta.content):
+                        yield sse(ev)
+                for tc in delta.tool_calls or []:
+                    slot = tool_calls.setdefault(tc.index, {"id": tc.id, "name": "", "args": ""})
+                    if tc.id:
+                        slot["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        slot["name"] += tc.function.name
+                    if tc.function and tc.function.arguments:
+                        slot["args"] += tc.function.arguments
+            if usage:
+                record_spend(settings.chat_model, usage.prompt_tokens, usage.completion_tokens)
+            if not tool_calls:
+                break
+            state["tools_called"] = True
+            # execute tools
+            messages.append({"role": "assistant", "content": text or None,
+                             "tool_calls": [{"id": t["id"], "type": "function",
+                                             "function": {"name": t["name"], "arguments": t["args"]}} for t in tool_calls.values()]})
+            for t in tool_calls.values():
+                try:
+                    args = json.loads(t["args"] or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                if t["name"] == "book_slot" and args.get("email") and not visitor_typed(str(args.get("email", "")), messages, state.get("known_email")):
+                    # The model may only prefill an email the visitor actually wrote; otherwise the form asks for it.
+                    log_event("booking_blocked", session_id, {"reason": "email_not_from_visitor", "email": str(args.get("email", ""))[:120]})
+                    args = dict(args, name="", email="")
+                if t["name"] == "get_available_slots":
+                    yield status("calendar", "Checking Deep's calendar…")
+                elif t["name"] == "book_slot":
+                    yield status("checking_slot", "Checking that time with Zoom…")
+                result_json, ui = run_tool(service, t["name"], args, visitor_tz)
+                for ev in (ui if isinstance(ui, list) else [ui]):
+                    if ev.get("type") == "booking_review":
+                        log_event("booking_review", session_id, {"status": ev.get("status"), "slot": (ev.get("slot") or {}).get("start_iso")})
+                    yield sse(ev)
+                messages.append({"role": "tool", "tool_call_id": t["id"], "content": result_json})
+            yield status("writing", "Writing…")
+    except GeneratorExit:
+        closed = True   # stop / disconnect (close() on the generator): nothing can be sent any more, and a yield here would raise RuntimeError
+        raise
+    finally:
+        if not closed:
+            for ev in splitter.finish():  # covers break, round exhaustion and exceptions: held prose is flushed, an open fence ends complete:false
                 yield sse(ev)
-            messages.append({"role": "tool", "tool_call_id": t["id"], "content": result_json})
-        yield status("writing", "Writing…")
 
 
-def _create_stream(client: OpenAI, messages: list[dict], tools):
+def _create_stream(client: OpenAI, messages: list[dict], tools, max_tokens: int = 500):
     """Streamed completion with usage reporting; providers that reject stream_options get a plain stream."""
-    kwargs = dict(model=settings.chat_model, messages=messages, stream=True, temperature=0.2, max_tokens=500)
+    kwargs = dict(model=settings.chat_model, messages=messages, stream=True, temperature=0.2, max_tokens=max_tokens)
     if tools:
         kwargs["tools"] = tools
     try:

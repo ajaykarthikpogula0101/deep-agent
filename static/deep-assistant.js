@@ -20,11 +20,11 @@
  * Methods      ask(text), book(callType?), open(), close(), toggle(), newChat() / reset(), openConversation(id),
  *              showView('chat'|'history'|'help'), setToken(token), download(), startVoice(), stopVoice()
  * Events       deep-assistant:ready | :open | :close | :question | :answer | :sources | :booking | :handover
- *              | :feedback | :error | :view | :upload | :voice | :action   (CustomEvent, bubbles + composed)
+ *              | :feedback | :error | :view | :upload | :voice | :action | :ui   (CustomEvent, bubbles + composed)
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.12.2';
+const VERSION = '2026.10.13.1';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -453,12 +453,14 @@ class DeepAssistant extends HTMLElement {
       try { const r = await fetch(this._url('/conversations/' + encodeURIComponent(sid)), { headers: this._headers(false) }); if (r.ok) h = await r.json(); } catch {}
       if (!h) { this._toast("Couldn't open that conversation"); return; }
       this._sid = sid; store.set(this._key('sid'), sid); this._nudged = false;
+      // cards exist only on the device that received them: carry the local copy over by message id
+      let old = []; try { old = JSON.parse(store.get(this._key('tx:' + sid)) || '[]'); } catch {} const uiByMid = new Map(old.filter((m) => m.mid && m.ui).map((m) => [m.mid, m.ui]));
       this.$log.innerHTML = ''; this._transcript = []; this._history = [];
       (h.messages || []).forEach((m) => {
         const el = this._add(m.role === 'user' ? 'user' : 'bot', '', m.ts);
         if (m.role === 'user') { this._setText(el, m.text); this._transcript.push({ role: 'user', text: m.text, ts: new Date(m.ts).getTime() }); }
         else { const srcs = usedSources(m.text, m.sources || []); this._setText(el, m.text, m.sources || []); this._addSources(el, srcs); this._addTools(el, () => plain(m.text), null, m.id, m.feedback);
-          this._transcript.push({ role: 'bot', text: m.text, sources: srcs, ts: new Date(m.ts).getTime(), mid: m.id, fb: m.feedback }); }
+          const ui = uiByMid.get(m.id); this._transcript.push({ role: 'bot', text: m.text, sources: srcs, ts: new Date(m.ts).getTime(), mid: m.id, fb: m.feedback, ui }); if (ui) this._mountUi(el, ui, this._transcript[this._transcript.length - 1]); }
       });
       if (!this._transcript.length) this._renderWelcome();
       this._history = this._transcript.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })).slice(-12);
@@ -890,7 +892,7 @@ class DeepAssistant extends HTMLElement {
     try { this._transcript = JSON.parse(store.get(this._key('tx:' + this._sid)) || '[]'); } catch { this._transcript = []; }
     this.$log.innerHTML = '';
     if (!this._transcript.length) { this._history = []; this._renderWelcome(); this.$log.scrollTop = 0; return; }
-    this._transcript.forEach((m) => { const el = this._add(m.role === 'user' ? 'user' : 'bot', '', m.ts); this._setText(el, m.text, m.sources); if (m.role === 'bot') { if (m.err) el.classList.add('err'); this._addSources(el, m.sources); this._addTools(el, () => plain(m.text), null, m.mid, m.fb); } });
+    this._transcript.forEach((m) => { const el = this._add(m.role === 'user' ? 'user' : 'bot', '', m.ts); this._setText(el, m.text, m.sources); if (m.role === 'bot') { if (m.err) el.classList.add('err'); this._addSources(el, m.sources); this._addTools(el, () => plain(m.text), null, m.mid, m.fb); if (m.ui) this._mountUi(el, m.ui, m); } });
     this._history = this._transcript.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })).slice(-12);
     this._markLast(); this._scroll(true);
   }
@@ -1201,6 +1203,38 @@ class DeepAssistant extends HTMLElement {
     el.appendChild(f); this._emit('action', { action: 'handover_form' });
     requestAnimationFrame(() => { this._stick = true; this._scroll(); if (!this._coarse) (known ? field('message') : field('name')).focus({ preventScroll: true }); });
   }
+  // ---------------------------------------------------------------- answer cards (docs/UI_CARDS.md)
+  _uiModule() {  // lazy: renderer + parser bundle load on the first card; one failure disables cards for this page load
+    if (this._uiDead) return Promise.resolve(null);
+    if (!this._uiP) this._uiP = import(new URL('./deep-ui.js?v=' + VERSION, import.meta.url).href)
+      .then((m) => { const st = document.createElement('style'); st.dataset.deepUi = '1'; st.textContent = m.CSS; this.shadowRoot.appendChild(st); return m; })
+      .catch((e) => { this._uiDead = true; this._emit('ui', { state: 'failed', reason: String(e) }); return null; });
+    return this._uiP;
+  }
+  _uiHooks() { return { send: (t) => this._uiAsk(t), open: (u) => { try { window.open(u, '_blank', 'noopener,noreferrer'); } catch {} }, onEvent: (d) => this._emit('ui', d), announce: (t) => this._announce(t) }; }
+  _uiAsk(t) { t = String(t || '').replace(/\s+/g, ' ').trim().slice(0, 300); if (!t || this._busy || /[^\s@]+@[^\s@]+\.[^\s@]+/.test(t) || t.includes('://')) return; this._emit('action', { action: 'ui_button', label: t }); this._send(t); }
+  _uiForget(card) { card.program = ''; if (card.entry && card.entry.ui) { delete card.entry.ui; this._persist(); } }
+  _uiDrop(card) { if (!card || card.closed) return; card.closed = true; this._uiForget(card); if (card.ctl) card.ctl.destroy(); }
+  _onUi(bot, ev, card, answer, all) {
+    if (this._uiDead) return card;
+    if (ev.op === 'start') { if (card) return card;
+      if (!answer) this._setText(bot, '…', all);   // same placeholder + dataset.raw as today's empty-answer path; removes skel and the .ln lines
+      bot.classList.remove('streaming');            // the caret would otherwise sit under the card
+      card = { program: '', ctl: null, done: false, closed: false, entry: null };
+      this._uiModule().then((m) => { if (!m || card.closed) return; bot.classList.add('hascard'); bot.closest('.row').classList.add('wide');
+        card.ctl = m.createCard(bot, this._uiHooks()); card.ctl.update(card.program);
+        if (card.done && !card.ctl.finish(card.program)) this._uiForget(card); this._scroll(); });
+      return card; }
+    if (!card || card.closed) return card;
+    if (ev.op === 'chunk') { card.program += ev.text || ''; if (card.ctl) card.ctl.update(card.program); return card; }
+    if (ev.op === 'end') { if (!ev.complete) { this._uiDrop(card); return card; }
+      card.program = ev.program || card.program; card.done = true; if (card.ctl && !card.ctl.finish(card.program)) this._uiForget(card); return card; }
+    return card;
+  }
+  _mountUi(bot, program, entry) {  // restore from the transcript: final render, no streaming; a failed render forgets the stored program
+    this._uiModule().then((m) => { if (!m) return; bot.classList.add('hascard'); bot.closest('.row').classList.add('wide');
+      if (!m.createCard(bot, this._uiHooks()).finish(program) && entry && entry.ui) { delete entry.ui; this._persist(); } });
+  }
   // ---------------------------------------------------------------- attachments
   _renderAttachments() {
     const box = this.shadowRoot.querySelector('.attach'); box.hidden = !this._attachments.length; box.innerHTML = '';
@@ -1394,7 +1428,7 @@ class DeepAssistant extends HTMLElement {
     const user = this._add('user', '', Date.now()); this._setText(user, shown); this._transcript.push({ role: 'user', text: shown, ts: Date.now() }); this._persist(); this._emit('question', { text, attachments: files.map((a) => a.id) });
     this._attachments = []; this._renderAttachments();
     const bot = this._add('bot', ''); const act = this._activity(bot); this._markLast();
-    let answer = '', sources = [], all = [], failed = false, mid = null, offer = false, booking = false; const sid = this._sid;
+    let answer = '', sources = [], all = [], failed = false, mid = null, offer = false, booking = false, card = null; const sid = this._sid;
     this._controller = new AbortController(); const me = this._me || {};
     const fail = (msg) => { failed = true; this._setText(bot, msg); bot.classList.add('err'); };
     try {
@@ -1417,19 +1451,21 @@ class DeepAssistant extends HTMLElement {
           else if (ev.type === 'schedules') { booking = true; bot.classList.remove('skel'); if (!answer) bot.innerHTML = ''; this._onSchedules(bot, ev.items || []); }
           else if (ev.type === 'slots') { booking = true; bot.classList.remove('skel'); this._onSlots(bot, ev); }
           else if (ev.type === 'booking') { booking = true; this._renderBooking(bot, ev); }
+          else if (ev.type === 'ui') { card = this._onUi(bot, ev, card, answer, all); }
           else if (ev.type === 'sources') { all = ev.items || []; this._emit('sources', { items: all }); }
           else if (ev.type === 'meta') { mid = ev.message_id || null; }
           else if (ev.type === 'lang') { this._lastLang = ev.code || null; }
           else if (ev.type === 'handover') { bot.classList.remove('skel'); this._renderHandover(bot, ev.prefill || ''); this._emit('action', { action: 'handover_requested' }); }
           else if (ev.type === 'handover_offer') { offer = true; this._emit('action', { action: 'unanswered', label: text }); }
-          else if (ev.type === 'error') { fail('Something went wrong on our side. ' + (answer ? '' : 'Please try again.')); this._emit('error', { error: ev.error }); }
+          else if (ev.type === 'error') { fail('Something went wrong on our side. ' + (answer ? '' : 'Please try again.')); this._uiDrop(card); this._emit('error', { error: ev.error }); }
           this._scroll();
         }
       }
     } catch (e) {
-      if (e.name === 'AbortError') { this._setText(bot, answer || 'Stopped.'); if (answer) bot.insertAdjacentHTML('beforeend', '<div class="note">Stopped.</div>'); }
-      else { fail("Couldn't reach Deep. Check your connection, then try again."); this._online = false; this._health(); this._emit('error', { error: String(e) }); }
+      if (e.name === 'AbortError') { this._uiDrop(card); this._setText(bot, answer || 'Stopped.'); if (answer) bot.insertAdjacentHTML('beforeend', '<div class="note">Stopped.</div>'); }
+      else { this._uiDrop(card); fail("Couldn't reach Deep. Check your connection, then try again."); this._online = false; this._health(); this._emit('error', { error: String(e) }); }
     } finally {
+      if (card && !card.done) this._uiDrop(card);   // stream ended without 'ui end' (abort, provider error): no half card
       // _stick still holds "was the reader at the bottom before the last change", so the tail below follows the same rule
       bot.classList.remove('streaming'); if (bot.classList.contains('skel')) this._setText(bot, answer || '…', all);
       if (answer && all.length && !failed) { sources = usedSources(answer, all); this._addSources(bot, sources); }
@@ -1439,7 +1475,7 @@ class DeepAssistant extends HTMLElement {
       else if (offer) this._followups(bot, [{ icon: 'mail', label: 'Ask the team directly', kind: 'handover', fn: () => this._renderHandover(bot, text) }, { icon: 'cal', label: 'Book a meeting', kind: 'booking', fn: () => this.startBooking() }]);
       else if (!booking) this._followups(bot, this._answerFollowups(bot, text, answer, sources.length));
       this._history.push({ role: 'user', content: shown }, { role: 'assistant', content: answer }); this._history = this._history.slice(-12);
-      this._transcript.push({ role: 'bot', text: failed ? bot.dataset.raw : answer, sources, ts: Date.now(), mid, err: failed || undefined }); this._persist();
+      const entry = { role: 'bot', text: failed ? bot.dataset.raw : answer, sources, ts: Date.now(), mid, err: failed || undefined, ui: (card && card.done && card.program) || undefined }; this._transcript.push(entry); if (card) card.entry = entry; this._persist();
       this._controller = null; this._setBusy(false); if (!this._voice) this._focusInput(); this._scroll();
       this._emit('answer', { question: text, answer: raw, sources, messageId: mid, failed });
       if (this._view === 'chat' && this._sid === sid) await this._markRead(sid);

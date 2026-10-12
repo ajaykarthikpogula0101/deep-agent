@@ -44,6 +44,8 @@ Templates are stored in the `settings` table under `tpl:*` keys; the defaults li
   `LakeB2B (lakeb2b.com) · B2B data and intent signals`. The default host brief has a `Company:` line that
   disappears when the address is personal (gmail, outlook, …) or the lookup found nothing.
 * `send_plain(to, subject, body)` in `app/booking/email.py` sends any other text email; the weekly digest uses it.
+  Since 2026-10-13 the digest may add an HTML alternative (`DIGEST_RICH_EMAIL`, docs/AUTOMATIONS.md §6): the text stays
+  the `text/plain` part and the fallback; `send_plain`'s signature is unchanged.
 
 ## Added 2026-10-07: booking emails from the in-chat picker (docs/BOOKING.md)
 

@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.12.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.13.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -765,9 +765,9 @@ def admin_custom_delete(answer_id: int, x_admin_token: str | None = Header(defau
 
 # ---- automations: weekly digest, follow-up nudges, smart suggestions (docs/AUTOMATIONS.md)
 @app.get("/admin/digest")
-def admin_digest_preview(days: int = 7, x_admin_token: str | None = Header(default=None)):
+def admin_digest_preview(days: int = 7, rich: int = 0, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
-    return digest.build(days)
+    return digest.build(days, rich=bool(rich))   # rich=1: also compose the HTML part (model + Node) for the console preview
 
 
 @app.post("/admin/digest/send")

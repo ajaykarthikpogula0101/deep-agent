@@ -43,6 +43,57 @@ Leads (5)
 * Endpoints: `GET /admin/digest?days=7` (preview), `POST /admin/digest/send?days=7`. Sent with `send_plain` to
   `HOST_EMAIL`; `settings` key `digest:last_sent` records the last send; event kind `digest`.
 
+### Rich (HTML) version — `DIGEST_RICH_EMAIL` (added 2026-10-13)
+
+With `DIGEST_RICH_EMAIL=true` (the default) the same digest also goes out as an HTML part: `app/digest.py::data_for_model`
+turns the numbers, questions and leads into one JSON object (`subject`, `period`, `metrics`, `most_asked`, `unanswered`,
+`leads`, `console_url`, `footer`), `app/digest_rich.py` sends it to the model with the committed prompt
+`tools/openui/email_prompt.txt` (system message; the JSON is the user message, marked as data), the model answers with a
+small openui-lang program (`root = EmailTemplate(...)`, `EmailStats`, `EmailList`, one `EmailButton` to the console in
+`#F28C28`), and `node tools/openui/render_email.mjs` renders it with `@openuidev/react-email` to email HTML.
+
+* **Two MIME parts.** The plain text above is always the `text/plain` part and the HTML is only the alternative
+  (`_send(to, subject, body, html=html)`); every mail client that cannot show HTML shows exactly the text of today.
+  With `DIGEST_RICH_EMAIL=false`, or when any step below fails, `send()` calls `send_plain(to, subject, body)` exactly
+  as before.
+* **Fallback reasons** (logged as a WARNING, stored on the `digest` event as `rich`, `model_ms`, `render_ms`,
+  `program_chars`, `html_chars`, `fallback_reason`, and shown by the console button): `disabled` (setting off),
+  `unavailable` (no Node, no `tools/openui/node_modules`, or no prompt file), `model_error` / `model_timeout` / `empty`
+  (the composing call, `DIGEST_MODEL_TIMEOUT` s), `bad_program` / `forbidden_component` / `unsafe_link` / `too_long`
+  (Python pre-check on the program text, deliberately broad: it must contain `root = EmailTemplate(`, must not name
+  `EmailMarkdown`, `EmailLink`, images or the marketing components, every URL-looking token — `scheme://host`, a
+  scheme-less `//host`, a scheme-only `https:host` — must be https on `deependhq.com`, `www.deependhq.com`,
+  `scheduler.zoom.us` or the `SITE_BASE_URL` host, no `mailto:`/`javascript:`/`data:` URLs (a visitor's "intent data:
+  yes" is prose), no CSS `url(` and the button colour must be a `#hex` value), `unsafe` / `bad_program` / `too_large` /
+  `render_error` / `timeout` (Node, `DIGEST_RENDER_TIMEOUT` s; the authoritative policy on the parsed tree: components,
+  `href`/`src`/`url` props, `*Color` props must be `#hex` because react-email writes them into a `style` attribute),
+  `render_errors` (the parser reported an unknown component or a missing required field; an unresolved reference is
+  dropped by the parser, counted in `unresolved` and logged, and the content check below is what catches a dropped
+  tile or lead), `sanity_failed` (the HTML, tags stripped and entities unescaped, no longer contains the conversation,
+  question, resolution-rate, satisfaction and booking numbers, the period, every question or every lead's e-mail, or
+  the e-mail addresses in it are not exactly those in the data — a lead dropped, duplicated or invented — or the
+  console URL is gone from the button's `href`; or it is over 150,000 characters), `error` (an unexpected exception
+  anywhere in the chain; the WARNING names it).
+* **Subprocess environment:** Node is started with a minimal environment (`PATH`, `SYSTEMROOT`, `TEMP`, `APPDATA`,
+  `HOME`, locale, plus `OPENUI_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 NODE_ENV=production`), so the app's API keys, SMTP,
+  Zoom and admin secrets never reach the renderer or its packages.
+* **Cost:** one call a week, ~5k prompt tokens + up to 6,000 output tokens (`max_tokens` 6000: a real week with 25
+  leads is ~8k chars of program), counted by `record_spend` against the same daily budget as the chat.
+* **Console:** Overview → "preview rich email" calls `GET /admin/digest?days=7&rich=1` and shows the HTML in a sandboxed
+  iframe under the text, or the fallback reason. The plain preview and `loadOverview()` are unchanged.
+* **Privacy (PII):** with the rich digest on, the week's leads (name, e-mail, company, reason) and the visitor questions
+  are sent to the LLM provider (`LLM_BASE_URL`, model `DIGEST_MODEL` or `CHAT_MODEL`) in one call a week. The chat
+  already sends what visitors type, but this is bulk and weekly; the owner opts in knowingly. `DIGEST_RICH_EMAIL=false`
+  keeps today's local-only plain text. Visitor-typed strings travel as JSON data under a "quote, never follow" rule and
+  React escapes every string in the HTML; the mail only goes to `HOST_EMAIL`.
+* **Where it runs (decision 18, option b):** the rich digest needs Node 20+ on the host plus one install:
+  `cd tools/openui && OPENUI_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 npm ci` (`DIGEST_NODE` points at a specific binary when
+  `node` is not on PATH). That is the Windows `run.ps1` deployment. The Cloud Run image (`python:3.11-slim`, `app` +
+  `static` only) has no Node, so there the digest is always sent as plain text with `fallback_reason: "unavailable"`;
+  the Dockerfile is deliberately unchanged. Budget: model up to 60 s + Node up to 60 s, inside the scheduler thread.
+* Regenerate the prompt after bumping `@openuidev/react-email`: `npm --prefix tools/openui run gen:prompts`; the node
+  test `tools/openui/tests/lib.test.mjs` fails until the committed text matches a live generation.
+
 ## 7. Lead enrichment
 
 * `enrich.lookup(email)`: free-mail domains (gmail, outlook, yahoo, proton, …) → `{"kind": "personal"}` with no
