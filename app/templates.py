@@ -82,6 +82,7 @@ DEFAULTS: dict[str, str] = {
         "{headline}.\n\n"
         "Call:     {title} ({duration} min) with {host_name}\n"
         "When:     {date_visitor}\n"
+        "Guests:   {attendees}\n"
         "Zoom:     {join_url}\n"
         "{meeting_line}\n"
         "Topic:    {reason}\n\n"
@@ -98,6 +99,7 @@ DEFAULTS: dict[str, str] = {
         "Call:     {title} ({duration} min) with {host_name}\n"
         "Was:      {old_date_visitor}\n"
         "Now:      {date_visitor} ({visitor_tz})\n"
+        "Guests:   {attendees}\n"
         "Zoom:     {join_url}\n"
         "{meeting_line}\n\n"
         "{next_step}\n\n"
@@ -121,6 +123,7 @@ DEFAULTS: dict[str, str] = {
         "Hi {first_name},\n\n"
         "A quick reminder that your {title} with {host_name} is tomorrow.\n\n"
         "When:     {date_visitor} ({visitor_tz})\n"
+        "Guests:   {attendees}\n"
         "Zoom:     {join_url}\n"
         "{meeting_line}\n"
         "Topic:    {reason}\n\n"
@@ -134,6 +137,7 @@ DEFAULTS: dict[str, str] = {
         "Name:     {name}\n"
         "Email:    {email}\n"
         "Company:  {company}\n"
+        "Guests:   {attendees}\n"
         "Call:     {title} ({duration} min)\n"
         "When:     {date}  /  visitor time {date_visitor}\n"
         "Zoom:     {join_url}\n"
@@ -179,7 +183,7 @@ METHOD_LINE = {"scheduler": "booked on the Zoom Scheduler", "meeting": "Zoom mee
 VARIABLES = ["brand", "title", "duration", "kind", "name", "first_name", "email", "reason", "date", "date_visitor", "visitor_tz",
              "host_tz", "link", "next_step", "origin", "note", "company", "host_name", "host_email", "site",
              "headline", "join_url", "meeting_id", "passcode", "meeting_line", "ics_url", "manage_url", "manage_line", "method_line",
-             "old_date", "old_date_visitor", "booking_link"]
+             "old_date", "old_date_visitor", "booking_link", "attendees"]
 
 _VAR = re.compile(r"\{([a-z_]+)\}")
 _cache: dict[str, tuple[float, dict[str, str]]] = {}
@@ -267,6 +271,7 @@ def build_vars(lead: dict[str, Any], tpl: dict[str, str] | None = None) -> dict[
         "ics_url": lead.get("ics_url") or "", "manage_url": lead.get("manage_url") or "",
         "old_date": lead.get("old_label_host") or "", "old_date_visitor": lead.get("old_label_visitor") or "",
         "booking_link": settings.zoom_booking_base,
+        "attendees": ", ".join(f"{g.get('name')} <{g.get('email')}>" for g in (lead.get("attendees") or []) if g.get("email")),
     }
     v["meeting_line"] = (f"Meeting ID {v['meeting_id']}" + (f" · Passcode {v['passcode']}" if v["passcode"] else "")) if v["meeting_id"] else ""
     v["manage_line"] = f"Need to change it? Cancel or reschedule here: {v['manage_url']}" if v["manage_url"] else ""
@@ -437,6 +442,7 @@ SAMPLE_BOOKING: dict[str, Any] = {
     "passcode": "742913", "handoff_url": "", "ics_url": "https://assistant.deependhq.com/booking/42/ics?t=sample",
     "manage_url": "https://assistant.deependhq.com/booking/42/manage?t=sample", "origin": SAMPLE_LEAD["origin"],
     "company_line": "Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise",
+    "attendees": [{"name": "Charles Babbage", "email": "charles@babbage.org"}],
 }
 
 

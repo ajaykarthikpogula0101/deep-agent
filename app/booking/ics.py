@@ -59,6 +59,7 @@ def build(b: dict[str, Any], host_name: str = "Deep") -> str:
     lines += [
         f"ORGANIZER;CN={_esc(host_name)}:mailto:{settings.host_email}",
         f"ATTENDEE;CN={_esc(b.get('name') or '')};ROLE=REQ-PARTICIPANT:mailto:{b.get('email') or ''}",
+        *[f"ATTENDEE;CN={_esc(g.get('name') or '')};ROLE=REQ-PARTICIPANT:mailto:{g.get('email')}" for g in (b.get("attendees") or []) if g.get("email")],
         "STATUS:CONFIRMED" if b.get("status", "confirmed") != "cancelled" else "STATUS:CANCELLED",
         "BEGIN:VALARM", "TRIGGER:-PT15M", "ACTION:DISPLAY", f"DESCRIPTION:{_esc(summary)}", "END:VALARM",
         "END:VEVENT", "END:VCALENDAR",

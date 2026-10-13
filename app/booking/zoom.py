@@ -247,14 +247,14 @@ class ZoomOfficialClient:
         return r.json()
 
     def create_meeting(self, host_user_id: str, topic: str, start_utc: datetime, duration_min: int, agenda: str,
-                       invitee_email: str) -> dict:
+                       invitee_email: str, guests: list[str] | None = None) -> dict:
         """POST /users/{userId}/meetings (scope meeting:write:meeting:admin): the fallback when the Scheduler API cannot
         book. Returns Zoom's meeting object (id, join_url, password, start_url)."""
         body = {
             "topic": topic[:200], "type": 2, "start_time": start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"), "timezone": "UTC",
             "duration": duration_min, "agenda": (agenda or "")[:2000],
             "settings": {"join_before_host": False, "waiting_room": True, "approval_type": 2, "email_notification": True,
-                         "meeting_invitees": [{"email": invitee_email}]},
+                         "meeting_invitees": [{"email": invitee_email}] + [{"email": g} for g in (guests or []) if g]},
         }
         try:
             r = self.http.post(f"{ZOOM_API}/users/{host_user_id}/meetings", json=body,

@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.13.5"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.13.6"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -200,7 +200,13 @@ class TestMailIn(BaseModel):
     kind: str = Field(pattern=r"^(host|visitor_booking|visitor_handover|visitor_nudge|visitor_confirmed|host_booking)$")
 
 
+class AttendeeIn(BaseModel):
+    name: str = Field(default="", max_length=120)
+    email: str = Field(default="", max_length=200)
+
+
 class ConfirmIn(BaseModel):
+    attendees: list[AttendeeIn] = Field(default_factory=list, max_length=10)  # extra guests; flow.clean_attendees caps at 5
     schedule_slug: str = Field(min_length=1, max_length=120)
     start: str = Field(min_length=10, max_length=40)
     name: str = Field(min_length=1, max_length=120)
@@ -586,7 +592,8 @@ def booking_confirm(body: ConfirmIn, request: Request, x_session_id: str | None 
         if sid:
             tracking.attach_user(sid, v)
     req = flow.ConfirmRequest(schedule_slug=body.schedule_slug, start=body.start, name=name, email=email, visitor_tz=body.timezone,
-                              company=body.company, notes=body.notes, session_id=sid, extra={"base_url": _base_url(request)})
+                              company=body.company, notes=body.notes, session_id=sid, extra={"base_url": _base_url(request)},
+                              attendees=[a.model_dump() for a in body.attendees])
     _booking_service.session_id = sid
     try:
         res = flow.confirm(_booking_service, req)

@@ -134,3 +134,21 @@ signed-in user): upcoming, done and cancelled, each with a state chip and the ti
 row opens a booking card in the chat with the facts and every action that still applies: Join Zoom or Confirm on Zoom,
 Add to calendar, Reschedule, Cancel, or Book again for past and cancelled ones. The list refreshes after a booking, a
 move or a cancel. The search box filters bookings too.
+
+## Extra attendees (added 2026-10-13)
+
+The details step has "+ Add attendee": up to five guests, a name and an email each (the visitor's own address and
+duplicates are refused, in the form and again on the server by `flow.clean_attendees`). The review card lists them, and
+the booking stores them in `bookings.attendees`.
+
+Where the guests go:
+
+* **Zoom.** Browser bookings press "Add Attendees" on the scheduler form and enter each email as a chip (Zoom keeps
+  emails only, no names); the result reports `attendees_on_zoom`. The Meetings API path adds them to
+  `meeting_invitees`. A guest Zoom does not take never blocks the booking. The Scheduler API path does not send guests
+  (no documented field); our own emails still reach them.
+* **Calendar invite.** Every guest is an `ATTENDEE` with their name.
+* **Emails.** The visitor confirmation and the host's "New booking" list them (`{attendees}`, a "Guests:" line). Each
+  guest gets their own note written to them ("Ada invited you: …", with the invite attached), and also hears about a
+  move, a cancel and the day-before reminder.
+* **History.** The booking card shows the attendees.

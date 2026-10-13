@@ -1,5 +1,20 @@
 # Test log
 
+## 2026-10-13 — extra attendees on a booking (version 2026.10.13.6)
+
+"+ Add attendee" in the booking form (name + email, up to 5), validated in the widget and in `flow.clean_attendees`;
+stored in `bookings.attendees`; passed to Zoom (browser worker: "Add Attendees" + one chip per email with Enter, probed
+read-only on Deep's page; Meetings API: `meeting_invitees`); ATTENDEE lines in the .ics; "Guests:" in the visitor and
+host emails; one note per guest for invited / moved / cancelled / reminder; attendees on the History booking card.
+
+```
+pytest: 226 passed, 1 skipped (tests/test_attendees.py: 7)
+worker dry run on Deep's page with two guests: "add attendees" -> "attendees on the form: 2/2" -> jev filled the
+  visitor's fields and left the guests alone; nothing submitted (76 s)
+widget suite (8089, BROWSER_BOOKING_ENABLED=false): 133 checks pass (+4: add row, bad email stopped, review lists the
+  guest, stored booking carries it)
+```
+
 ## 2026-10-13 — memory covers the current conversation (version 2026.10.13.5)
 
 `memory.profile()` is now one path: conversation history (returning, topics, questions) from earlier sessions only;

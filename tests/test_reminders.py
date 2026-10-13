@@ -52,7 +52,7 @@ def test_reschedule_cancel_and_reminder_emails_use_the_templates():
     m = M()
     b = _booking(old_label_visitor="Tue 06 Oct, 10:00 (America/New_York)", manage_url="https://a/manage?t=tok")
     send_reschedule_emails(b, mailer=m)
-    assert len(m.items) == 2
+    assert len(m.items) == 3 and m.items[2][0] == "charles@babbage.org"  # visitor, host, and the sample booking's guest
     to, subject, body, kw = m.items[0]
     assert to == "ada@lovelace.org" and subject.startswith("Your call with Deep has moved:") and "Tue 06 Oct, 10:00" in body and "Hi Ada," in body
     assert kw["attachments"][0][0] == "invite.ics" and kw["kind"] == "reschedule_visitor"

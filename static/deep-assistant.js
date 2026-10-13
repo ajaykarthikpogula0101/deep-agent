@@ -24,7 +24,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.13.5';
+const VERSION = '2026.10.13.6';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -222,6 +222,10 @@ textarea.inp { height:auto; min-height:68px; padding:9px 12px; resize:vertical; 
 .pickd { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; background:var(--da-lavender); font-size:13px } .pickd svg { width:16px; height:16px; color:var(--da-ink); flex:none } .pickd span { flex:1; min-width:0 } .pickd b { font-weight:650 }
 .linkbtn { padding:0; border:0; background:none; color:var(--da-ink); font-size:12.5px; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:2px }
 .bform, .hform { display:flex; flex-direction:column; gap:10px }
+.guests { display:flex; flex-direction:column; gap:6px } .glabel { font-size:12px; font-weight:600; color:var(--da-text) } .glabel span { font-weight:400; color:var(--da-muted) }
+.glist { display:flex; flex-direction:column; gap:6px } .grow { display:grid; grid-template-columns:1fr 1.25fr 30px; gap:6px; align-items:center } .grow .gerr { grid-column:1 / -1 }
+.gx { width:30px; height:30px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--da-muted); cursor:pointer; display:grid; place-items:center } .gx:hover, .gx:focus-visible { background:var(--da-surface); color:var(--da-text) } .gx svg { width:14px; height:14px }
+.addg { align-self:flex-start }
 .booked { display:flex; flex-direction:column; gap:6px } .bk-ok { display:flex; align-items:center; gap:10px; font-size:16px; font-weight:700; letter-spacing:-.01em }
 .chk { width:30px; height:30px; flex:none } .chk circle { fill:rgba(25,184,135,.12); stroke:var(--da-success); stroke-width:2; stroke-dasharray:80; stroke-dashoffset:80; animation:da-draw .5s ease-out forwards } .chk path { fill:none; stroke:var(--da-success); stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:30; stroke-dashoffset:30; animation:da-draw .35s .35s ease-out forwards } @keyframes da-draw { to { stroke-dashoffset:0 } }
 .pend { width:30px; height:30px; flex:none; border-radius:50%; display:grid; place-items:center; background:var(--da-lavender); color:var(--da-ink) } .pend svg { width:17px; height:17px }
@@ -779,7 +783,7 @@ class DeepAssistant extends HTMLElement {
     this._history.push({ role: 'user', content: text }, { role: 'assistant', content: intro }); this._history = this._history.slice(-12); this._persist(); this._markLast();
     const f = this._bkFlow(bot); f.mode = 'detail'; f.booking = b;
     const pending = b.state === 'upcoming' && b.status !== 'confirmed';
-    const rows = [['Meeting', b.schedule_name], ['When', b.label_visitor], ['Was', b.old_label_visitor], ['Duration', b.duration_min ? `${b.duration_min} min · Zoom` : ''], ['Status', b.state === 'cancelled' ? 'Cancelled' : b.state === 'past' ? 'Done' : b.status === 'confirmed' ? 'Confirmed' : 'Held, confirm on Zoom']].filter((r) => r[1]);
+    const rows = [['Meeting', b.schedule_name], ['When', b.label_visitor], ['Was', b.old_label_visitor], ['Duration', b.duration_min ? `${b.duration_min} min · Zoom` : ''], ['Attendees', (b.attendees || []).map((g) => g.name).join(', ')], ['Status', b.state === 'cancelled' ? 'Cancelled' : b.state === 'past' ? 'Done' : b.status === 'confirmed' ? 'Confirmed' : 'Held, confirm on Zoom']].filter((r) => r[1]);
     f.card.innerHTML = `<div class="bk bdetail"><div class="sumbox">${rows.map(([k, v]) => `<div class="sumrow"><span>${k}</span><b>${esc(v)}</b></div>`).join('')}</div>
       <div class="hrow" style="margin-top:8px">${b.state === 'upcoming' && pending && b.handoff_url ? `<a class="btn primary" href="${esc(b.handoff_url)}" target="_blank" rel="noopener">Confirm on Zoom ${SVG.ext}</a>` : ''}${b.state === 'upcoming' && b.join_url ? `<a class="btn primary" href="${esc(b.join_url)}" target="_blank" rel="noopener">${SVG.video}Join Zoom</a>` : ''}${b.state === 'upcoming' && b.ics_url ? `<a class="btn" href="${esc(b.ics_url)}" download>${SVG.cal}Add to calendar</a>` : ''}
         ${b.can_reschedule ? `<button type="button" class="btn bd-move">${SVG.clock}Reschedule</button>` : ''}${b.can_cancel ? `<button type="button" class="btn bd-cancel">${SVG.close}Cancel</button>` : ''}${b.state !== 'upcoming' ? `<button type="button" class="btn primary bd-again">${SVG.cal}Book again</button>` : ''}</div></div>`;
@@ -1058,23 +1062,39 @@ class DeepAssistant extends HTMLElement {
         <div class="field"><label for="bk-email">Work email</label><input class="inp" id="bk-email" name="email" type="email" maxlength="200" required autocomplete="email" inputmode="email"><span class="ferr" hidden></span></div>`}
         <div class="field"><label for="bk-company">Company <span>(optional)</span></label><input class="inp" id="bk-company" name="company" maxlength="120" autocomplete="organization"></div>
         <div class="field"><label for="bk-notes">What would you like to discuss? <span>(optional)</span></label><textarea class="inp" id="bk-notes" name="notes" rows="2" maxlength="1000"></textarea></div>
+        <div class="guests"><div class="glabel">Attendees <span>(optional · they get the invite too)</span></div><div class="glist" role="list" aria-label="Attendees"></div><button type="button" class="linkbtn addg">+ Add attendee</button></div>
         <button class="btn primary block" type="submit">Continue ${SVG.chev}</button>
       </form>`;
     const form = body.querySelector('form'), field = (n) => form.elements[n];
     if (!known) { field('name').value = w.name ?? p.name ?? me.name ?? ''; field('email').value = w.email ?? p.email ?? me.email ?? ''; }
     field('company').value = w.company ?? p.company ?? ''; field('notes').value = w.notes ?? p.reason ?? p.notes ?? '';
-    const read = () => ({ name: known ? (me.name || '') : field('name').value.trim(), email: known ? me.email : field('email').value.trim(), company: field('company').value.trim(), notes: field('notes').value.trim() });
+    const glist = body.querySelector('.glist'), addg = body.querySelector('.addg'), MAXG = 5;
+    const addRow = (g = {}) => { if (glist.children.length >= MAXG) return; const r = document.createElement('div'); r.className = 'grow'; r.setAttribute('role', 'listitem'); const k = glist.children.length + 1;
+      r.innerHTML = `<input class="inp gname" maxlength="120" placeholder="Name" aria-label="Attendee ${k} name" autocomplete="off"><input class="inp gemail" type="email" maxlength="200" placeholder="Email" aria-label="Attendee ${k} email" inputmode="email" autocomplete="off"><button type="button" class="gx" aria-label="Remove attendee ${k}" title="Remove">${SVG.close}</button><span class="ferr gerr" hidden></span>`;
+      r.querySelector('.gname').value = g.name || ''; r.querySelector('.gemail').value = g.email || '';
+      r.querySelector('.gx').onclick = () => { r.remove(); addg.hidden = glist.children.length >= MAXG; f.who = read(); addg.focus(); };
+      glist.appendChild(r); addg.hidden = glist.children.length >= MAXG; };
+    (w.attendees || []).forEach((g) => addRow(g));
+    addg.onclick = () => { addRow(); const last = glist.lastElementChild; if (last) last.querySelector('.gname').focus(); };
+    const guests = () => [...glist.children].map((r) => ({ name: r.querySelector('.gname').value.trim(), email: r.querySelector('.gemail').value.trim() })).filter((g) => g.name || g.email);
+    const read = () => ({ name: known ? (me.name || '') : field('name').value.trim(), email: known ? me.email : field('email').value.trim(), company: field('company').value.trim(), notes: field('notes').value.trim(), attendees: guests() });
     form.addEventListener('input', () => { f.who = read(); });
     body.querySelector('.chg').onclick = () => { f.who = read(); this._bkGo(f, 'time'); if (!f.avail) this._bkLoadAvail(f); };
     form.onsubmit = (e) => { e.preventDefault(); const who = read(); f.who = who; let bad = null;
       const err = (n, msg) => { const el = field(n); if (!el) return; const fe = el.parentElement.querySelector('.ferr'); el.setAttribute('aria-invalid', String(!!msg)); fe.hidden = !msg; fe.textContent = msg || ''; if (msg) { fe.id = 'e-' + n; el.setAttribute('aria-describedby', fe.id); if (!bad) bad = el; } else el.removeAttribute('aria-describedby'); };
       if (!known) { err('name', who.name.length < 2 ? 'Please enter your name.' : null); err('email', !EMAIL_RE.test(who.email) ? 'Please enter a valid email address.' : null); }
+      const seen = new Set([(who.email || '').toLowerCase()]);
+      [...glist.children].forEach((r) => { const n = r.querySelector('.gname'), m = r.querySelector('.gemail'), fe = r.querySelector('.gerr'); const nv = n.value.trim(), mv = m.value.trim().toLowerCase();
+        if (!nv && !mv) { r.remove(); return; }
+        const msg = nv.length < 2 ? "Add this attendee's name." : !EMAIL_RE.test(mv) ? 'Enter a valid email for this attendee.' : seen.has(mv) ? (mv === (who.email || '').toLowerCase() ? "That's your own email; add only the other people." : 'This email is already added.') : null;
+        seen.add(mv); fe.hidden = !msg; fe.textContent = msg || ''; (nv.length < 2 ? n : m).setAttribute('aria-invalid', String(!!msg)); if (msg && !bad) bad = nv.length < 2 ? n : m; });
+      addg.hidden = glist.children.length >= MAXG; f.who = read();
       if (bad) { bad.focus(); return; }
       this._bkGo(f, 'review'); };
   }
   _bkReview(f, body) {
     const s = f.schedule || {}, w = f.who || {};
-    const rows = [['Meeting', s.name], ['When', f.slot.label_visitor], ['Duration', s.duration_min ? `${s.duration_min} min · Zoom` : 'Zoom'], ['Name', w.name], ['Email', w.email], ['Company', w.company], ['Topic', w.notes && trunc(w.notes, 120)]].filter((r) => r[1]);
+    const rows = [['Meeting', s.name], ['When', f.slot.label_visitor], ['Duration', s.duration_min ? `${s.duration_min} min · Zoom` : 'Zoom'], ['Name', w.name], ['Email', w.email], ['Company', w.company], ['Attendees', (w.attendees || []).map((g) => `${g.name} (${g.email})`).join(', ')], ['Topic', w.notes && trunc(w.notes, 120)]].filter((r) => r[1]);
     body.innerHTML = `<div class="sumbox">${rows.map(([k, v]) => `<div class="sumrow"><span>${k}</span><b>${esc(v)}</b></div>`).join('')}</div>
       <button class="btn primary block confirm" type="button">Confirm booking</button><p class="note sstat" role="status">Nothing is booked until you confirm.</p>`;
     const btn = body.querySelector('.confirm'); btn.onclick = () => this._bkConfirm(f, btn, body.querySelector('.sstat'));
@@ -1083,7 +1103,7 @@ class DeepAssistant extends HTMLElement {
     const back = f.card.querySelector('.bk-back'); const lock = (on) => { btn.disabled = on; btn.classList.toggle('loading', on); btn.textContent = on ? 'Booking…' : 'Confirm booking'; if (back) back.disabled = on; };
     lock(true); stat.className = 'note sstat'; stat.textContent = this._cfg.booking_mode === 'browser' ? 'Booking it on Zoom for you. This can take a minute or two; please keep this open…' : 'Checking the time with Zoom and booking…';
     const s = f.schedule, w = f.who || {}; let res = null, status = 0;
-    try { const r = await fetch(this._url('/booking/confirm'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ schedule_slug: s.slug, start: f.slot.start_iso, name: w.name, email: w.email, company: w.company, notes: w.notes, timezone: this.tz }) }); status = r.status; res = r.ok ? await r.json() : null; } catch {}
+    try { const r = await fetch(this._url('/booking/confirm'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ schedule_slug: s.slug, start: f.slot.start_iso, name: w.name, email: w.email, company: w.company, notes: w.notes, timezone: this.tz, attendees: w.attendees || [] }) }); status = r.status; res = r.ok ? await r.json() : null; } catch {}
     const fail = (msg) => { lock(false); stat.className = 'note sstat warn'; stat.textContent = msg; };
     if (status === 429) return fail('Too many booking attempts. Please wait a minute and try again. Nothing was booked.');
     if (!res) return fail("Couldn't reach the server. Nothing was booked. Please try again.");
@@ -1142,7 +1162,7 @@ class DeepAssistant extends HTMLElement {
       ${pending ? `<p class="note">Your ${moved ? 'new ' : ''}time is held. Confirm it on the Zoom scheduler (your details are prefilled) to make it final.</p>` : ''}${moved && res.old_label_visitor ? `<p class="note">Was ${esc(res.old_label_visitor)}.</p>` : ''}
       <div class="hrow" style="margin-top:6px">${pending && b.handoff_url ? `<a class="btn primary" href="${esc(b.handoff_url)}" target="_blank" rel="noopener">Confirm on Zoom ${SVG.ext}</a>` : ''}${b.join_url ? `<a class="btn primary" href="${esc(b.join_url)}" target="_blank" rel="noopener">${SVG.video}Join Zoom</a>` : ''}${b.ics_url ? `<a class="btn" href="${esc(b.ics_url)}" download>${SVG.cal}Add to calendar</a>` : ''}</div>
       <ul class="nexts">
-        ${res.emails_queued ? `<li>${SVG.checkc}<span>${moved ? 'An updated invite' : 'A confirmation'}${b.join_url ? ' with the Zoom link' : ''} is on its way to <b>${esc(b.email)}</b></span></li>` : ''}
+        ${res.emails_queued ? `<li>${SVG.checkc}<span>${moved ? 'An updated invite' : 'A confirmation'}${b.join_url ? ' with the Zoom link' : ''} is on its way to <b>${esc(b.email)}</b>${(b.attendees || []).length ? ` and ${(b.attendees || []).length === 1 ? esc(b.attendees[0].name) : `your ${b.attendees.length} attendees`}` : ''}</span></li>` : ''}
         ${b.ics_url ? `<li>${SVG.checkc}<span>Add it to your calendar so it doesn't slip</span></li>` : ''}
         ${this._cfg.reminders ? `<li>${SVG.checkc}<span>We'll email you a reminder the day before</span></li>` : ''}
         <li>${SVG.spark.replace('aria-hidden', 'class="nx" aria-hidden')}<span>Want to prepare? <button type="button" class="linkbtn bk-prep">Ask me what the call covers and what to have ready</button></span></li>

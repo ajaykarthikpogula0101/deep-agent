@@ -219,11 +219,13 @@ def _shot_path(tag: str) -> str:
     return str(d / "zoom-runs" / f"{tag}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.png")
 
 
-def book(url: str, start_utc: datetime, name: str, email: str, notes: str, dry_run: bool | None = None) -> dict[str, Any]:
+def book(url: str, start_utc: datetime, name: str, email: str, notes: str, dry_run: bool | None = None,
+         attendees: list[str] | None = None) -> dict[str, Any]:
     first, _, last = (name or "").strip().partition(" ")
     payload = {"url": url, "start_iso": start_utc.isoformat(), "timezone": settings.host_timezone, "first_name": first or name,
                "last_name": last.strip() or "-", "email": email, "notes": (notes or "")[:500],
-               "dry_run": settings.browser_booking_dry_run if dry_run is None else dry_run, "screenshot": _shot_path("book")}
+               "dry_run": settings.browser_booking_dry_run if dry_run is None else dry_run, "screenshot": _shot_path("book"),
+               "attendees": [a for a in (attendees or []) if a][:10]}
     return run("book", payload)
 
 

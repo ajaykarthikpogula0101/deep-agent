@@ -267,8 +267,16 @@ try {
   check(/^Times shown in \S+/.test(grid.tz), "booking: timezone note under the grid");
   await evaluate(P("launcher", "(sh.querySelector('.avail .time:not(.off)').click(), true)")); await sleep(300);
   check(await evaluate(P("launcher", "!sh.querySelector('.bform input[name=email]') && sh.querySelector('.bform').textContent.includes(" + JSON.stringify(DEMO_EMAIL) + ")")), "booking: verified identity, no name/email fields, 'Booking as …' line");
+  // extra attendees: '+ Add attendee' adds a name + email row; a bad email is caught in the form; the guest shows in the review and on the stored booking
+  const GUEST_EMAIL = DEMO_EMAIL.includes('+') ? DEMO_EMAIL.replace('@', '-guest@') : 'guest@example.com';
+  await evaluate(P("launcher", "(sh.querySelector('.bform .addg').click(), true)")); await sleep(150);
+  check(await evaluate(P("launcher", "sh.querySelectorAll('.bform .grow').length === 1 && !!sh.querySelector('.bform .grow .gname') && !!sh.querySelector('.bform .grow .gemail')")), "booking: '+ Add attendee' adds a name + email row");
+  await evaluate(P("launcher", "(() => { const r = sh.querySelector('.bform .grow'); r.querySelector('.gname').value = 'Grace Hopper'; r.querySelector('.gemail').value = 'not-an-email'; sh.querySelector('.bform button[type=submit]').click(); return true; })()")); await sleep(200);
+  check(await evaluate(P("launcher", "!!sh.querySelector('.bform') && !sh.querySelector('.bform .grow .gerr').hidden && /valid email/.test(sh.querySelector('.bform .grow .gerr').textContent)")), "booking: an attendee with a bad email is stopped in the form");
+  await evaluate(P("launcher", `(sh.querySelector('.bform .grow .gemail').value = ${JSON.stringify(GUEST_EMAIL)}, true)`));
   await evaluate(P("launcher", "(sh.querySelector('.bform textarea').value = 'browser test booking', sh.querySelector('.bform input[name=company]').value = 'Lovelace Analytical Engines', sh.querySelector('.bform button[type=submit]').click(), true)")); await sleep(300);
   check(await evaluate(P("launcher", "!!sh.querySelector('.sumbox') && /Confirm booking/.test(sh.querySelector('.avail').textContent) && /Nothing is booked until you confirm/.test(sh.querySelector('.avail').textContent)")), "booking: summary card with call, time, duration and 'Confirm booking'");
+  check(await evaluate(P("launcher", "/Attendees/.test(sh.querySelector('.sumbox').textContent) && /Grace Hopper/.test(sh.querySelector('.sumbox').textContent)")), "booking: the review lists the attendee");
   await shot("widget_booking_summary.png");
   await evaluate(P("launcher", "(sh.querySelector('.avail .confirm').click(), true)")); await waitFor(P("launcher", "!!sh.querySelector('.booked')"), 60000, "booking result"); await sleep(300);
   const booked = await evaluate(P("launcher", "(() => { const b = sh.querySelector('.booked'); return { text: b.textContent, ics: !!b.querySelector('a[download]'), zoom: !!b.querySelector('a.primary') }; })()"));
@@ -279,6 +287,7 @@ try {
   const bk = await fetch(`${BASE}/admin/bookings?days=1`, { headers: { "X-Admin-Token": TOKEN } });
   if (bk.ok) { const d = await bk.json(); const mine = d.items.find((x) => x.notes === "browser test booking"); check(!!mine && ["confirmed", "pending_zoom"].includes(mine.status) && !!mine.start_utc, `booking: stored in the bookings table (${mine && mine.method})`); }
   else check(false, "admin bookings reachable");
+  try { const bl2 = await (await fetch(`${BASE}/admin/bookings?days=1`, { headers: { "X-Admin-Token": TOKEN } })).json(); const mineG = bl2.items.find((x) => x.notes === "browser test booking" && x.status !== "cancelled"); check(!!mineG && Array.isArray(mineG.attendees) && mineG.attendees.length === 1 && mineG.attendees[0].name === "Grace Hopper" && mineG.attendees[0].email === GUEST_EMAIL, "booking: the stored booking carries the attendee"); } catch { check(false, "booking: attendee stored"); }
   // History page lists the visitor's bookings; a row opens a booking card with Reschedule / Cancel
   await evaluate(P("launcher", "(el.showView('history'), true)")); await waitFor(P("launcher", "!!sh.querySelector('.brows .brow')"), 15000, "booking row on the History page"); await sleep(200);
   check(await evaluate(P("launcher", "(() => { const r = sh.querySelector('.brows .brow'); return /LakeB2B|Discovery|Walkthrough|GTM/i.test(r.textContent) && !!r.querySelector('.bstate') && !sh.querySelector('.bookings').hidden; })()")), "history: 'Your bookings' lists the booking with its state chip");

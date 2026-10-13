@@ -68,6 +68,7 @@ def _booking_view(b: dict[str, Any]) -> dict[str, Any]:
         "name": b["name"], "email": b["email"], "company": b.get("company") or "", "notes": b.get("notes") or "",
         "join_url": b.get("join_url"), "meeting_id": b.get("meeting_id"), "passcode": b.get("passcode"),
         "handoff_url": b.get("handoff_url"), "ics_url": b.get("ics_url"), "manage_url": b.get("manage_url"),
+        "attendees": b.get("attendees") or [],
     }
 
 
@@ -124,6 +125,38 @@ class ConfirmRequest:
     session_id: str | None = None
     origin: str = ""
     extra: dict = field(default_factory=dict)
+    attendees: list = field(default_factory=list)   # extra guests [{"name", "email"}], cleaned by clean_attendees()
+
+
+MAX_ATTENDEES = 5
+
+
+def clean_attendees(raw: list | None, booker_email: str) -> tuple[list[dict[str, str]], str | None]:
+    """Extra guests the visitor added: name + valid email each, no duplicates, not the visitor's own address, at most
+    MAX_ATTENDEES. Rows with neither name nor email are ignored. Returns (guests, error message or None)."""
+    out: list[dict[str, str]] = []
+    seen = {(booker_email or "").strip().lower()}
+    for g in raw or []:
+        if not isinstance(g, dict):
+            continue
+        name, email = (g.get("name") or "").strip()[:120], (g.get("email") or "").strip()[:200]
+        if not name and not email:
+            continue
+        if len(name) < 2:
+            return [], "Please add a name for every attendee."
+        if not _EMAIL_RE.match(email):
+            return [], f"{name}'s email address doesn't look right."
+        if looks_like_placeholder(name, email):
+            return [], "Please use real names and email addresses for attendees."
+        key = email.lower()
+        if key in seen:
+            return [], ("That's your own email; add only the other people." if key == (booker_email or "").strip().lower()
+                        else f"{email} is added twice.")
+        seen.add(key)
+        out.append({"name": name, "email": email})
+    if len(out) > MAX_ATTENDEES:
+        return [], f"You can add up to {MAX_ATTENDEES} attendees."
+    return out, None
 
 
 def _book_on_zoom(service: BookingService, schedule: Schedule, start_utc: datetime, req: ConfirmRequest, tz: str) -> dict[str, Any]:
@@ -149,7 +182,8 @@ def _book_on_zoom(service: BookingService, schedule: Schedule, start_utc: dateti
             topic = f"{schedule.name} — {req.name} × {settings.host_name_short}"
             agenda = "\n".join(x for x in (req.notes, f"Company: {req.company}" if req.company else "",
                                            f"Booked via the {settings.site_base_url} assistant") if x)
-            r = official.create_meeting(settings.zoom_host_user_id, topic, start_utc, schedule.duration_min, agenda, req.email)
+            r = official.create_meeting(settings.zoom_host_user_id, topic, start_utc, schedule.duration_min, agenda, req.email,
+                                        guests=[a["email"] for a in req.attendees])
             out.update(method="meeting", meeting_id=str(r.get("id") or ""), join_url=r.get("join_url"),
                        passcode=r.get("password") or r.get("passcode"))  # a scheduler error stays recorded for the console
             return out
@@ -157,8 +191,9 @@ def _book_on_zoom(service: BookingService, schedule: Schedule, start_utc: dateti
             log.error("meetings api booking failed: %s", e)
             out["error"] = str(e)[:200]
     if browser_booking.available():
+        guests = [a["email"] for a in req.attendees]
         res = browser_booking.book(schedule.booking_link or f"{settings.zoom_booking_base}/{schedule.slug}", start_utc, req.name, req.email,
-                                   req.notes or req.company or "")
+                                   req.notes or req.company or "", **({"attendees": guests} if guests else {}))
         out["run"] = browser_booking.summary(res)
         if res.get("ok") and res.get("status") == "booked":
             links = res.get("links") or {}
@@ -184,6 +219,10 @@ def confirm(service: BookingService, req: ConfirmRequest, deps: Deps | None = No
         return {"status": "invalid", "message": "Please give your full name and a valid email address."}
     if looks_like_placeholder(name, email):
         return {"status": "invalid", "message": "Please use your real name and email address."}
+    attendees, aerr = clean_attendees(req.attendees, email)
+    if aerr:
+        return {"status": "invalid", "message": aerr}
+    req.attendees = attendees
     try:
         tz = parse_tz(req.visitor_tz)
         start_utc = parse_start(req.start)
@@ -265,7 +304,7 @@ def confirm(service: BookingService, req: ConfirmRequest, deps: Deps | None = No
                "zoom_event_id": zoom.get("zoom_event_id"), "handoff_url": zoom.get("handoff_url"), "manage_token": token,
                "origin": origin, "company_line": lead["company"], "zoom_error": zoom.get("error"),
                "zoom_reschedule_url": zoom.get("reschedule_url"), "zoom_cancel_url": zoom.get("cancel_url"), "zoom_run": zoom.get("run"),
-               "schedule_description": avail.describe(schedule)}
+               "schedule_description": avail.describe(schedule), "attendees": attendees}
     try:
         booking["id"] = deps.store_booking(booking)
     except Exception as e:  # the Zoom side is done; never lose it silently
@@ -408,8 +447,10 @@ def reschedule(service: BookingService, booking: dict[str, Any], start: str, vis
     else:
         links = {}
         if browser_booking.available():  # nothing exists on Zoom for a hand-off hold: book the new time for real
+            guests = [a["email"] for a in (booking.get("attendees") or []) if a.get("email")]
             res = browser_booking.book(schedule.booking_link or f"{settings.zoom_booking_base}/{schedule.slug}", start_utc, booking["name"],
-                                       booking["email"], booking.get("notes") or booking.get("company") or "")
+                                       booking["email"], booking.get("notes") or booking.get("company") or "",
+                                       **({"attendees": guests} if guests else {}))
             run = browser_booking.summary(res)
             if res.get("status") == "slot_unavailable":
                 avail.invalidate(schedule.slug)

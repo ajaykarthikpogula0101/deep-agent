@@ -72,3 +72,9 @@ New variables: `{old_date}` / `{old_date_visitor}` (the time a moved call had be
 scheduler page). `{next_step}` follows the booking's real state: a confirmed call says "join with the Zoom link", a hold
 that still needs confirming on Zoom repeats the prefilled link. The host keeps receiving the short "Moved" / "Cancelled"
 notes as before.
+
+### Guests (added 2026-10-13)
+
+`{attendees}` lists the extra guests as "Name <email>, …" (empty when there are none; the "Guests:" line then
+disappears). Each guest receives a short built-in note per event: invited, moved, cancelled, day-before reminder
+(`app/booking/email.py: attendee_notice`), sent with the same layout and replies going to the host.

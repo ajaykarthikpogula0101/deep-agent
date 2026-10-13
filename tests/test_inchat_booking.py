@@ -257,7 +257,7 @@ def test_booking_emails_render_for_both_sides_and_queue_with_the_invite():
     m = mailer_mod.Mailer(sender=lambda *a, **k: True, sync=True)
     send_booking_emails(templates.SAMPLE_BOOKING, mailer=m)
     kinds = [r["kind"] for r in m.results]
-    assert sorted(kinds) == ["booking_host", "booking_visitor"] and all(r["ok"] for r in m.results)
+    assert sorted(kinds) == ["attendee_booked", "booking_host", "booking_visitor"] and all(r["ok"] for r in m.results)  # the sample has one guest
 
 
 def test_mailer_retries_with_backoff_then_gives_up():

@@ -142,7 +142,8 @@ def build_goal(task: str, p: dict[str, Any], start: datetime | None, dry_run: bo
     when = f"{start.strftime('%A, %B')} {start.day}, {start.year} at {start.hour % 12 or 12}:{start.minute:02d} {start.strftime('%p')}" if start else ""
     if task == "book":
         fields = (f"first name '{p.get('first_name', '')}', last name '{p.get('last_name', '')}', email address '{p.get('email', '')}'"
-                  + (f", and in the notes field: '{p.get('notes')}'" if p.get("notes") else ""))
+                  + (f", and in the notes field: '{p.get('notes')}'" if p.get("notes") else "")
+                  + (". The additional attendee emails are already added; leave them as they are" if p.get("attendees") else ""))
         if dry_run:
             return (f"Fill the booking form for the meeting on {when}: {fields}. Do NOT click Book, Back, Add Attendees or any link. "
                     "Stop (DONE) as soon as the first name, last name and email fields contain those values.")
@@ -365,6 +366,41 @@ def screenshot(b, path: str | None) -> str | None:
     return None
 
 
+def press_enter(b) -> None:
+    for t in ("keyDown", "keyUp"):
+        b.call("Input.dispatchKeyEvent", type=t, key="Enter", code="Enter", windowsVirtualKeyCode=13, nativeVirtualKeyCode=13)
+
+
+def add_attendees(b, page, emails: list[str], log: list[str]):
+    """Zoom's booking form: "Add Attendees" reveals one "Additional Attendee Emails" field that turns each email into a
+    chip on Enter (probed 2026-10-13). Returns (page, emails Zoom shows). A guest Zoom does not take never blocks the
+    booking: our own emails and the calendar invite still reach every guest."""
+    emails = [e for e in emails if e][:10]
+    if not emails:
+        return page, []
+    page, btn = act_retry(b, page, lambda pg: next((a for a in clicks(pg) if re.search(r"add attendee", a["label"], re.I)), None))
+    if btn:
+        log.append("add attendees")
+        time.sleep(0.8)
+        page = safe_observe(b)
+
+    def field(pg):
+        return next((a for a in fills(pg) if re.search(r"additional attendee", a["label"], re.I)), None)
+
+    for e in emails:
+        page, a = act_retry(b, page, field, text=e)
+        if not a:
+            log.append("attendee field not found")
+            break
+        press_enter(b)
+        time.sleep(0.4)
+        page = safe_observe(b)
+    text = page_text(b)
+    shown = [e for e in emails if e.lower() in text.lower()]
+    log.append(f"attendees on the form: {len(shown)}/{len(emails)}")
+    return page, shown
+
+
 def select_slot(b, start: datetime, log: list[str]) -> tuple[Any, str | None]:
     """Click the wanted slot. Uses the month calendar (and next month) to reach other weeks. Returns (page, error)."""
     page = observe(b, lambda pg: has_slots(pg) or any(a["label"].lower().startswith("choose") for a in clicks(pg)), timeout=PAGE_PATIENCE)
@@ -516,7 +552,7 @@ def drive_script(b, task: str, p: dict[str, Any], dry_run: bool, log: list[str])
     page = observe(b, lambda pg: bool(fills(pg)) or bool(clicks(pg)), timeout=30)
     if task == "book":
         for pat, val in (("first\\s*name", p.get("first_name", "")), ("last\\s*name", p.get("last_name", "") or "-"),
-                         ("e-?mail", p.get("email", "")), ("share anything|notes|message|prepare", p.get("notes", ""))):
+                         ("^e-?mail", p.get("email", "")), ("share anything|notes|message|prepare", p.get("notes", ""))):
             if val:
                 page, ok = _fill_by_label(b, page, pat, val, log)
                 if not ok and pat.startswith(("first", "last", "e-")):
@@ -606,6 +642,8 @@ def run(task: str, p: dict[str, Any]) -> dict[str, Any]:
                         out.update(status="slot_unavailable", message=f"{expected_phrases(start)[0]} {expected_phrases(start)[2]} is not offered on the page",
                                    page_url=page["url"], screenshot=screenshot(b, p.get("screenshot")))
                         return out
+                if task == "book" and p.get("attendees"):
+                    page, out["attendees_on_zoom"] = add_attendees(b, page, p["attendees"], log)
                 log.append(f"driving the form ({driver})")
                 status = drive_jev(b, task, p, start, dry_run, log) if driver == "jev" else drive_script(b, task, p, dry_run, log)
                 # settle, then verify independently

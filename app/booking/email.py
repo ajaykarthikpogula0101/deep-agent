@@ -73,6 +73,57 @@ def send_visitor_confirmation(lead: dict) -> bool:
     return _send(lead["email"], subject, body, reply_to=settings.host_email)
 
 
+def attendee_notice(booking: dict[str, Any], guest: dict[str, str], kind: str, tpl: dict[str, str] | None = None) -> tuple[str, str, tuple[str, str] | None]:
+    """(subject, body, call-to-action) for one extra guest: "booked" (invited), "moved", "cancelled" or "reminder".
+    Written to the guest, never as if they had booked themselves."""
+    tpl = tpl or templates.get_templates()
+    v = templates.build_vars(templates.booking_to_lead(booking), tpl)
+    first = (guest.get("name") or "").strip().split(" ")[0] or "there"
+    booker = v["name"] or "A colleague"
+    pending = booking.get("status") == "pending_zoom" or booking.get("method") == "handoff"
+    others = [g for g in (booking.get("attendees") or []) if g.get("email") and g.get("email") != guest.get("email")]
+    with_line = ", ".join([booker] + [g.get("name") or g.get("email") for g in others])
+    facts = (f"Call:     {v['title']} ({v['duration']} min) with {v['host_name']}\n" if v["duration"] else f"Call:     {v['title']} with {v['host_name']}\n")
+    zoom = (f"Zoom:     {v['join_url']}\n" + (f"{v['meeting_line']}\n" if v["meeting_line"] else "")) if v["join_url"] else ""
+    if kind == "booked":
+        subject = f"{booker} invited you: {v['title']} with {v['host_name']} on {v['date_visitor']}"
+        body = (f"Hi {first},\n\n{booker} added you to a call with {v['host_name']}.\n\n{facts}When:     {v['date_visitor']}\n"
+                f"With:     {with_line}\n{zoom}" + (f"Topic:    {v['reason']}\n" if v["reason"] else "") + "\n"
+                + ("The time is held while it is confirmed on Zoom; Zoom sends the meeting link once it is final.\n\n" if pending else "")
+                + f"The calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\n{v['host_name']}\n{v['site']}\n")
+    elif kind == "moved":
+        subject = f"Moved: {v['title']} with {v['host_name']} now on {v['date_visitor']}"
+        body = (f"Hi {first},\n\nThe call {booker} added you to has a new time.\n\n{facts}"
+                + (f"Was:      {v['old_date_visitor']}\n" if v["old_date_visitor"] else "")
+                + f"Now:      {v['date_visitor']}\n{zoom}\nThe updated calendar invite is attached.\n\nSee you then,\n{v['host_name']}\n{v['site']}\n")
+    elif kind == "cancelled":
+        subject = f"Cancelled: {v['title']} with {v['host_name']} on {v['date_visitor']}"
+        body = (f"Hi {first},\n\nThe call {booker} added you to has been cancelled, so there is nothing in your diary for it any more.\n\n"
+                f"{facts}Was:      {v['date_visitor']}\n\nAll the best,\n{v['host_name']}\n{v['site']}\n")
+    else:
+        subject = f"Reminder: {v['title']} with {v['host_name']} tomorrow, {v['date_visitor']}"
+        body = (f"Hi {first},\n\nA quick reminder that the call {booker} added you to is tomorrow.\n\n{facts}When:     {v['date_visitor']}\n"
+                f"With:     {with_line}\n{zoom}\nLooking forward to it,\n{v['host_name']}\n{v['site']}\n")
+    cta = ("Join Zoom", booking["join_url"]) if booking.get("join_url") and kind != "cancelled" else None
+    return subject, body, cta
+
+
+def send_attendee_emails(booking: dict[str, Any], kind: str, mailer=None, attachments: list | None = None) -> int:
+    """Queue the notice for every extra guest on the booking. Returns how many were queued."""
+    from app import mailer as m
+
+    guests = [g for g in (booking.get("attendees") or []) if g.get("email")]
+    if not guests:
+        return 0
+    mailer = mailer or m.default
+    tpl = templates.get_templates()
+    for g in guests:
+        subject, body, cta = attendee_notice(booking, g, kind, tpl)
+        mailer.enqueue(g["email"], subject, body, html=templates.html_wrap(subject, body, cta), attachments=attachments,
+                       reply_to=settings.host_email, kind=f"attendee_{kind}", ref=booking.get("id"))
+    return len(guests)
+
+
 def send_booking_emails(booking: dict[str, Any], mailer=None) -> None:
     """Visitor confirmation + host 'New booking', both with the .ics invite, queued on the background mailer."""
     from app import mailer as m
@@ -91,6 +142,7 @@ def send_booking_emails(booking: dict[str, Any], mailer=None) -> None:
     cta_h = ("Join Zoom", booking["join_url"]) if booking.get("join_url") else None
     mailer.enqueue(settings.host_email, s, b, html=templates.html_wrap(s, b, cta_h, audience="host"), attachments=att, reply_to=booking.get("email"),
                    kind="booking_host", ref=booking.get("id"))
+    send_attendee_emails(booking, "booked", mailer, att)
 
 
 def send_reschedule_emails(booking: dict[str, Any], mailer=None) -> None:
@@ -117,6 +169,7 @@ def send_reschedule_emails(booking: dict[str, Any], mailer=None) -> None:
     mailer.enqueue(settings.host_email, f"[{v['brand']}] Moved: {v['name']} · {v['title']} · {v['date']}", body_h,
                    html=templates.html_wrap(subject, body_h, cta if not pending else None, audience="host"), attachments=att, reply_to=booking.get("email"),
                    kind="reschedule_host", ref=booking.get("id"))
+    send_attendee_emails(dict(booking, old_label_visitor=was), "moved", mailer, att)
 
 
 def send_cancel_emails(booking: dict[str, Any], mailer=None) -> None:
@@ -134,6 +187,7 @@ def send_cancel_emails(booking: dict[str, Any], mailer=None) -> None:
                        reply_to=settings.host_email, kind="cancel_visitor", ref=booking.get("id"))
     mailer.enqueue(settings.host_email, f"[{v['brand']}] {subject} · {v['name']}", body_h, html=templates.html_wrap(subject, body_h, None, audience="host"),
                    reply_to=booking.get("email"), kind="cancel_host", ref=booking.get("id"))
+    send_attendee_emails(booking, "cancelled", mailer)
 
 
 def send_reminder_email(booking: dict[str, Any], mailer=None) -> bool:
@@ -150,6 +204,7 @@ def send_reminder_email(booking: dict[str, Any], mailer=None) -> bool:
     cta = ("Confirm on Zoom", booking["handoff_url"]) if pending and booking.get("handoff_url") else (("Join Zoom", booking["join_url"]) if booking.get("join_url") else None)
     mailer.enqueue(booking["email"], r[0], r[1], html=templates.html_wrap(r[0], r[1], cta), reply_to=settings.host_email,
                    kind="reminder_visitor", ref=booking.get("id"))
+    send_attendee_emails(booking, "reminder", mailer)
     return True
 
 
