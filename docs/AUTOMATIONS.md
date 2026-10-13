@@ -10,6 +10,7 @@ deploy. Settings live in `.env` (see `.env.example`, section "Automations").
 | 8 | Follow-up nudge for unconfirmed Zoom hand-offs | `app/nudge.py` | hourly at :15, leads older than `NUDGE_AFTER_HOURS` | Console → Emails (template, on/off); "mark confirmed" on a conversation; `NUDGE_ENABLED` |
 | 9 | Smart suggestions (most asked questions) | `app/suggestions.py` | `GET /widget-config` (cached 10 min) | Console → Overview "Suggested questions"; `SUGGESTIONS_DAYS`; site attribute overrides |
 | 10 | Multilingual answers | `app/lang.py` + prompt rule 11 | every chat turn | `MULTILINGUAL` |
+| 12 | Pre-call brief + lead score for the host | `app/precall.py` | every booking in the chat; day-before (:45); hot leads hourly at :30 | Console → Bookings; `PRECALL_*`, `HOT_LEAD_*` |
 
 ## 6. Weekly digest
 
@@ -157,9 +158,63 @@ coming, and the model knows it too (memory block).
 The digest email (section 6) now opens with "Hi {host}, here is what your website assistant handled this week: N
 conversations and M bookings." and closes with a sign-off; the model is told to write both from DATA.
 
+## 12. Pre-call brief and lead score (added 2026-10-13)
+
+Before every call Deep gets a one-page brief on the person, built from what the assistant already stores. No new key,
+no paid data: `app/precall.py`.
+
+**What is gathered** (`gather`): every chat session of the person: the booking's session, every session of the same
+browser (visitor id), and every session whose lead, booking or sign-in has the same email. From those: the visits, the
+questions they typed (greetings and booking commands such as "book a call" left out), the pages they opened the chat
+on, channel and referrer, location (from the IP), questions the assistant could not answer, messages left for Deep,
+earlier bookings and cancellations, the company read off their email domain (section 7), their booking note and guests.
+
+**The score** (`score`, 0–100, fixed rules so every point is explained; base 10):
+
+| Signal | Points |
+|---|---|
+| company email / personal email | +15 / 0 |
+| asked about pricing, a trial or sample data, contracts and terms, implementation and timelines | +20 for the first topic, +5 each more (max 30) |
+| questions typed: 6+ / 3–5 / 1–2 | +15 / +10 / +4 |
+| visits: 3+ / 2 | +15 / +8 |
+| booking note: detailed (60+ chars) / short | +10 / +5 |
+| bringing colleagues | +8, +2 each more (max 15) |
+| came from a campaign / from search or an AI assistant | +5 / +3 |
+| asked to talk to a person | +5 |
+| call within 3 days of booking · booked with Deep before | +5 · +5 |
+| cancelled a call before · moved this call | −10 · −3 |
+| asked about jobs · reads like a vendor pitch | −25 · −15 |
+
+Hot is 60+ (`HOT_LEAD_SCORE`), warm 35+, else cold.
+
+**The written part** (`compose`): one model call (`PRECALL_MODEL`, default `CHAT_MODEL`; `PRECALL_MODEL_TIMEOUT` 25 s)
+turns the facts into a 2–3 sentence summary, interests, talking points, questions to ask and watch-outs. The prompt
+allows only the given facts (no invented titles, sizes or budgets), treats everything the visitor typed as data, and
+asks for the name or "they", never a guessed gender. URLs are stripped from the reply. When the model is off
+(`PRECALL_USE_MODEL=false`), slow or returns something unusable, a rule-based brief from the same facts is used, so a
+brief always exists. Stored on `bookings.brief` / `bookings.brief_at`.
+
+**Where Deep sees it**
+
+* "New booking" email: the brief is appended and a hot or warm lead is named in the subject ("· Hot lead · 72/100").
+  The visitor's and guests' emails go out at once; Deep's copy waits on a worker thread for the brief (about 10–30 s)
+  and goes out without it if building fails. If the visitor moved or cancelled meanwhile, it says so at the top.
+* "Brief for tomorrow" (or "for your call today") to Deep, rebuilt so later chats count, in the same :45 pass as the
+  visitor reminder (`PRECALL_HOST_REMINDER`). Skipped for bookings made in the last 12 hours: their "New booking"
+  email already carried it.
+* Hot leads without a call: hourly at :30, anyone who left an email (hand-over, enquiry, sign-in), chatted in the last
+  24 hours, has been quiet 30+ minutes, scores hot and has no booking gets one "Hot lead, no call booked yet" email to
+  Deep with a follow-up brief and a reply button; at most once per 14 days per email, at most 5 per run
+  (`HOT_LEAD_ALERTS`). Anonymous visitors are never alerted: there is nobody to follow up with.
+* Console → Bookings: the score on every booking; open one for the full brief, "refresh brief", "email it to me",
+  "open conversation". Below: everyone who left an email and has no call, scored, with "send hot-lead alerts now".
+
+Endpoints: `GET /admin/bookings/{id}/brief[?refresh=1]`, `POST /admin/bookings/{id}/brief/email`,
+`GET /admin/leads/scored?days=`, `POST /admin/leads/alerts/run`.
+
 ## Operations
 
-* Scheduler jobs (`app/main.py` startup): `recrawl`, `tracking_purge`, `weekly_digest`, `nudges`.
+* Scheduler jobs (`app/main.py` startup): `recrawl`, `tracking_purge`, `weekly_digest`, `nudges`, `reminders`, `hot_leads`.
 * New tables/columns: `companies`; `leads.company`, `leads.enrichment`, `leads.nudged_at`, `leads.confirmed_at`.
 * Turn anything off without a redeploy: `DIGEST_ENABLED=false`, `NUDGE_ENABLED=false`, `ENRICH_ENABLED=false`,
   `MULTILINGUAL=false`; suggestions fall back to the fixed defaults when the database is unreachable.

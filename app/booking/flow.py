@@ -47,8 +47,10 @@ def default_deps() -> Deps:
     from app.booking.email import send_booking_emails
     from app.db import log_event
 
-    return Deps(store_booking=sb.insert, count_active=sb.count_active, busy=sb.busy_between, mail=send_booking_emails,
-                log_event=log_event)
+    def mail(b: dict) -> None:  # Deep's copy carries the pre-call brief (app/precall.py)
+        send_booking_emails(b, with_brief=settings.precall_enabled)
+
+    return Deps(store_booking=sb.insert, count_active=sb.count_active, busy=sb.busy_between, mail=mail, log_event=log_event)
 
 
 # ---------------------------------------------------------------- helpers

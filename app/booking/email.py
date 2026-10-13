@@ -124,8 +124,22 @@ def send_attendee_emails(booking: dict[str, Any], kind: str, mailer=None, attach
     return len(guests)
 
 
-def send_booking_emails(booking: dict[str, Any], mailer=None) -> None:
-    """Visitor confirmation + host 'New booking', both with the .ics invite, queued on the background mailer."""
+def _current(booking: dict[str, Any]) -> dict[str, Any] | None:
+    """The booking as stored now (None when it has no id or the read fails)."""
+    if not booking.get("id"):
+        return None
+    try:
+        from app import store_bookings
+
+        return store_bookings.get(int(booking["id"]))
+    except Exception:
+        return None
+
+
+def send_booking_emails(booking: dict[str, Any], mailer=None, with_brief: bool = False) -> None:
+    """Visitor confirmation + host 'New booking', both with the .ics invite, queued on the background mailer.
+    `with_brief`: the host copy waits on a worker thread for the pre-call brief (app/precall.py) and carries it; the
+    visitor and guest emails never wait. Off in tests and scripts, on for real bookings (PRECALL_ENABLED)."""
     from app import mailer as m
     from app.booking import ics
 
@@ -138,10 +152,30 @@ def send_booking_emails(booking: dict[str, Any], mailer=None) -> None:
         cta = ("Join Zoom", booking["join_url"]) if booking.get("join_url") else (("Confirm on Zoom", booking["handoff_url"]) if booking.get("handoff_url") else None)
         mailer.enqueue(booking["email"], v[0], v[1], html=templates.html_wrap(v[0], v[1], cta), attachments=att,
                        reply_to=settings.host_email, kind="booking_visitor", ref=booking.get("id"))
-    s, b = templates.render_booking_host(booking, tpl)
-    cta_h = ("Join Zoom", booking["join_url"]) if booking.get("join_url") else None
-    mailer.enqueue(settings.host_email, s, b, html=templates.html_wrap(s, b, cta_h, audience="host"), attachments=att, reply_to=booking.get("email"),
-                   kind="booking_host", ref=booking.get("id"))
+
+    def host(brief: dict | None) -> None:
+        from app import precall
+
+        s, b = templates.render_booking_host(booking, tpl)
+        if brief:
+            s += f" · {precall.headline(brief)}" if brief.get("label") in ("hot", "warm") else ""
+            b = b.rstrip("\n") + "\n\n" + precall.text(brief)
+        cta_h = ("Join Zoom", booking["join_url"]) if booking.get("join_url") else None
+        if with_brief:  # the brief took a while: say so if the visitor moved or cancelled meanwhile (their email went out first)
+            now = _current(booking)
+            if now and now.get("status") == "cancelled":
+                s, b, cta_h = s + " (since cancelled)", "Update: the visitor has already cancelled this call.\n\n" + b, None
+            elif now and now.get("rescheduled_at"):
+                s, b = s + " (since moved)", "Update: the visitor has since moved this call; the time below is the original one.\n\n" + b
+        mailer.enqueue(settings.host_email, s, b, html=templates.html_wrap(s, b, cta_h, audience="host"), attachments=att,
+                       reply_to=booking.get("email"), kind="booking_host", ref=booking.get("id"))
+
+    if with_brief:
+        from app import precall
+
+        precall.host_booking_email_async(booking, host)
+    else:
+        host(None)
     send_attendee_emails(booking, "booked", mailer, att)
 
 

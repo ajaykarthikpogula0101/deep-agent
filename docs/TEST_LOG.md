@@ -1,5 +1,21 @@
 # Test log
 
+## 2026-10-13 — pre-call brief and lead score for the host (version 2026.10.13.7)
+
+`app/precall.py`: gather (all chats of the person by browser and email), rule-based score with reasons, model-written
+brief with a rule fallback, stored on `bookings.brief`; in Deep's "New booking" email (async, never holding the visitor
+emails), a day-before host email, hourly hot-lead alerts, Console → Bookings.
+
+```
+pytest: 232 passed, 1 skipped (tests/test_precall.py: 6, one against Postgres)
+live brief for booking 141 with the real model: 11 s, composer=model, "Warm lead · 40/100"; first run said "She"
+  -> prompt now asks for the name or "they"; booking commands ("Book a call with Deep") left out of "what they asked"
+widget suite on 8089 (BROWSER_BOOKING_ENABLED=false): 133 checks pass; booking 154 got a model brief and Deep's mail
+  "[LakeB2B] New booking: Ada Lovelace · ... · Warm lead · 43/100" (sent on attempt 2 after a Gmail SMTP timeout).
+  The suite moves and cancels within 30 s, so that mail arrived after "Cancelled" -> a late host mail now says
+  "(since cancelled)" / "(since moved)" at the top.
+```
+
 ## 2026-10-13 — extra attendees on a booking (version 2026.10.13.6)
 
 "+ Add attendee" in the booking form (name + email, up to 5), validated in the widget and in `flow.clean_attendees`;

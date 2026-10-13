@@ -57,6 +57,14 @@ Templates are stored in the `settings` table under `tpl:*` keys; the defaults li
 * Both go through `app/mailer.py` (background, 3 attempts with backoff); the booking succeeds even if SMTP is down.
   Console → Emails previews and send-tests both.
 
+## Added 2026-10-13: pre-call brief in the host emails
+
+Deep's "New booking" email now ends with a PRE-CALL BRIEF (lead score with the reasons, a summary, what they asked,
+talking points, questions to ask, watch-outs) and names a hot or warm lead in the subject. Two new host emails, not
+templated: "Brief for tomorrow: {name} · {lead}" the day before, and "Hot lead, no call booked yet" for a hot visitor
+who left an email but booked nothing. In the HTML card, UPPERCASE lines are section headings and "• " lines become a
+list. Details and the score rules: docs/AUTOMATIONS.md section 12.
+
 ## Added 2026-10-13: lifecycle emails (moved, cancelled, reminder)
 
 Three more visitor emails, all editable in Console → Emails and all with the same warm shape as the booking

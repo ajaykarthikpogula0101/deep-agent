@@ -380,8 +380,25 @@ def html_wrap(subject: str, body: str, cta: tuple[str, str] | None = None, *, au
                       f'background:#F7F8FC;border:1px solid #E9EBF2;border-radius:12px;padding:6px 16px">{rows}</table>')
         facts.clear()
 
+    bullets: list[str] = []
+
+    def flush_bullets() -> None:
+        if bullets:
+            blocks.append(f'<ul style="margin:0 0 16px;padding-left:20px;color:#2B3147">'
+                          + "".join(f'<li style="margin:0 0 6px">{b}</li>' for b in bullets) + "</ul>")
+            bullets.clear()
+
     for ln in body.splitlines():
         if not ln.strip():
+            continue
+        if ln.startswith("• "):  # bullet lists (the pre-call brief)
+            flush_facts()
+            bullets.append(inline(ln[2:]))
+            continue
+        flush_bullets()
+        if re.fullmatch(r"[A-Z][A-Z0-9 &/'-]{3,40}", ln.strip()):  # an UPPERCASE line is a section heading
+            flush_facts()
+            blocks.append(f'<p style="margin:22px 0 8px;font-size:12px;font-weight:700;letter-spacing:.08em;color:{EMAIL_ACCENT}">{h.escape(ln.strip())}</p>')
             continue
         m = re.match(r"^([A-Za-z ]{1,12}):(\s+)(.*)$", ln)
         if m and m.group(2):
@@ -394,6 +411,7 @@ def html_wrap(subject: str, body: str, cta: tuple[str, str] | None = None, *, au
         else:
             blocks.append(f'<p style="margin:0 0 14px;color:#2B3147">{inline(ln)}</p>')
     flush_facts()
+    flush_bullets()
     button = ""
     if cta and cta[1]:
         button = (f'<table role="presentation" cellspacing="0" cellpadding="0" style="margin:6px 0 22px"><tr><td style="background:{EMAIL_ACCENT};'

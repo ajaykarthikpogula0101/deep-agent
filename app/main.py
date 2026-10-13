@@ -19,7 +19,7 @@ import re
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import conversations, digest, guidance, identity, inbox, mailer, media, memory, nudge, outreach, reminders, store_bookings, suggestions, templates, titles, tracking
+from app import conversations, digest, guidance, identity, inbox, mailer, media, memory, nudge, outreach, precall, reminders, store_bookings, suggestions, templates, titles, tracking
 from app.booking import availability as avail
 from app.booking import browser_booking
 from app.booking import flow, ics
@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.13.6"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.13.7"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -83,6 +83,9 @@ def _startup() -> None:
     if settings.reminder_enabled:  # hourly: the day-before reminder for upcoming bookings (app/reminders.py)
         _scheduler.add_job(reminders.run, CronTrigger.from_crontab("45 * * * *", timezone=settings.host_timezone),
                            id="reminders", replace_existing=True, misfire_grace_time=1800)
+    if settings.precall_enabled and settings.hot_lead_alerts:  # hourly: hot leads who left an email but booked nothing (app/precall.py)
+        _scheduler.add_job(precall.run_alerts, CronTrigger.from_crontab("30 * * * *", timezone=settings.host_timezone),
+                           id="hot_leads", replace_existing=True, misfire_grace_time=1800)
     if settings.outreach_enabled:  # starter outreach rules, once (app/outreach.py)
         outreach.seed_if_empty()
     _scheduler.start()
@@ -840,7 +843,51 @@ def admin_lead_confirm(lead_id: int, x_admin_token: str | None = Header(default=
 @app.get("/admin/bookings")
 def admin_bookings(days: int = 30, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
-    return {"items": store_bookings.recent(days), "mail": mailer.default.stats()}
+    items = store_bookings.recent(days)
+    try:
+        briefs = precall.stored([b["id"] for b in items])
+    except Exception:
+        briefs = {}
+    for b in items:  # the lead score on every row; the full brief is one click away
+        br = briefs.get(b["id"])
+        b["lead"] = {"score": br.get("score"), "label": br.get("label")} if br else None
+    return {"items": items, "mail": mailer.default.stats()}
+
+
+# ---- pre-call brief (app/precall.py)
+def _booking_or_404(booking_id: int) -> dict:
+    b = store_bookings.get(booking_id)
+    if not b:
+        raise HTTPException(404, "booking not found")
+    return b
+
+
+@app.get("/admin/bookings/{booking_id}/brief")
+def admin_booking_brief(booking_id: int, refresh: bool = False, x_admin_token: str | None = Header(default=None)):
+    """The stored brief (built on first open); refresh=1 rebuilds it from everything known now (one model call)."""
+    _require_admin(x_admin_token)
+    b = _booking_or_404(booking_id)
+    brief = precall.build_for_booking(b, refresh=refresh)
+    return {"brief": brief, "text": precall.text(brief), "session_id": b.get("session_id")}
+
+
+@app.post("/admin/bookings/{booking_id}/brief/email")
+def admin_booking_brief_email(booking_id: int, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return precall.send_brief_now(_booking_or_404(booking_id))
+
+
+@app.get("/admin/leads/scored")
+def admin_scored_leads(days: int = 7, x_admin_token: str | None = Header(default=None)):
+    """Everyone who left an email and has no call booked, scored (rules only, no model call)."""
+    _require_admin(x_admin_token)
+    return {"items": precall.scored_leads(hours=24 * max(1, min(days, 90))), "threshold": settings.hot_lead_score}
+
+
+@app.post("/admin/leads/alerts/run")
+def admin_hot_lead_alerts_run(x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return precall.run_alerts()
 
 
 @app.post("/admin/bookings/{booking_id}/cancel")

@@ -78,6 +78,15 @@ class Settings(BaseSettings):
     nudge_after_hours: int = Field(default=24, alias="NUDGE_AFTER_HOURS")
     reminder_enabled: bool = Field(default=True, alias="REMINDER_ENABLED")  # day-before reminder email for every upcoming booking
     reminder_before_hours: int = Field(default=24, alias="REMINDER_BEFORE_HOURS")
+    # pre-call brief for the host (app/precall.py): lead score + brief in the "New booking" email, the day-before host email,
+    # and one alert per hot lead that left an email but booked nothing
+    precall_enabled: bool = Field(default=True, alias="PRECALL_ENABLED")
+    precall_use_model: bool = Field(default=True, alias="PRECALL_USE_MODEL")          # false = rule-based brief only
+    precall_model: str = Field(default="", alias="PRECALL_MODEL")                     # empty = CHAT_MODEL
+    precall_model_timeout: int = Field(default=25, alias="PRECALL_MODEL_TIMEOUT")     # seconds; the brief falls back to rules after this
+    precall_host_reminder: bool = Field(default=True, alias="PRECALL_HOST_REMINDER")  # "Brief for tomorrow" to the host
+    hot_lead_alerts: bool = Field(default=True, alias="HOT_LEAD_ALERTS")
+    hot_lead_score: int = Field(default=60, alias="HOT_LEAD_SCORE")
     enrich_enabled: bool = Field(default=True, alias="ENRICH_ENABLED")
     suggestions_days: int = Field(default=30, alias="SUGGESTIONS_DAYS")
     multilingual: bool = Field(default=True, alias="MULTILINGUAL")
