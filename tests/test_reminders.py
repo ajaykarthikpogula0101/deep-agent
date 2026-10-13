@@ -138,18 +138,68 @@ def test_reminder_job_sends_once_per_upcoming_booking_and_memory_sees_the_change
             c.commit()
 
 
-def test_same_session_booking_gives_the_model_preparation_context(monkeypatch):
-    """A first-time visitor who just booked: the memory block names the call, what it covers, and forbids re-selling."""
-    sb = {"id": 9, "schedule_name": "GTM Strategy Session", "label_visitor": "Fri 16 Oct, 19:30 (Asia/Kolkata)", "duration_min": 45,
-          "status": "confirmed", "description": "A 45-minute working session on data, AI and revenue acceleration."}
-    p = dict(memory._empty(), session_booking=sb)
-    blk = memory.prompt_block(p)
+def test_current_conversation_booking_facts_reach_the_model():
+    """First-time visitor: made, moved and cancelled in THIS conversation are all in the block; nothing booked, no block."""
+    up = {"id": 9, "schedule_name": "GTM Strategy Session", "label_visitor": "Fri 16 Oct, 19:30 (Asia/Kolkata)", "duration_min": 45,
+          "status": "confirmed", "description": "A 45-minute working session on data, AI and revenue acceleration.",
+          "in_session": True, "can_reschedule": True, "can_cancel": True}
+    blk = memory.prompt_block(dict(memory._empty(), upcoming=up))
     assert "They booked in this conversation: GTM Strategy Session (45 min) on Fri 16 Oct, 19:30" in blk
-    assert "The call covers: A 45-minute working session" in blk and "Never offer to book again" in blk and "what to have ready" in blk.lower() or "have ready" in blk
-    assert memory.prompt_block(memory._empty()) == ""  # nothing booked, first visit: no block at all
-    # a returning visitor with the same booking gets the guidance once, attached to the upcoming line
-    p2 = dict(memory._empty(), returning=True, visits=2, upcoming=dict(sb, status="confirmed"), session_booking=sb)
-    blk2 = memory.prompt_block(p2)
-    assert "Upcoming booking: GTM Strategy Session" in blk2 and "The call covers:" in blk2 and blk2.count("do not propose a booking") == 1
+    assert "The call covers: A 45-minute working session" in blk and "never offer to book it again" in blk and "have ready" in blk
+    assert "reschedule my call" in blk and "Welcome back" not in blk and "Returning visitor" not in blk
+    assert memory.prompt_block(memory._empty()) == ""
+    moved = dict(memory._empty(), upcoming=up, recent_change={"id": 9, "kind": "rescheduled", "schedule_name": up["schedule_name"],
+                                                              "label_visitor": up["label_visitor"], "old_label_visitor": "Thu 15 Oct, 18:00 (Asia/Kolkata)",
+                                                              "when": datetime.now(timezone.utc), "in_session": True})
+    blk = memory.prompt_block(moved)
+    assert "They moved that call earlier in this conversation from Thu 15 Oct, 18:00" in blk and "Fri 16 Oct, 19:30 (Asia/Kolkata) is the current time" in blk
+    gone = dict(memory._empty(), recent_change={"id": 9, "kind": "cancelled", "schedule_name": up["schedule_name"], "label_visitor": up["label_visitor"],
+                                                "old_label_visitor": None, "when": datetime.now(timezone.utc), "in_session": True})
+    blk = memory.prompt_block(gone)
+    assert "They cancelled their GTM Strategy Session on Fri 16 Oct, 19:30 (Asia/Kolkata) earlier in this conversation; they have no booking now" in blk
+    # returning visitor: the same booking lines, once, after the history
+    blk2 = memory.prompt_block(dict(memory._empty(), returning=True, visits=2, upcoming=dict(up, in_session=False)))
+    assert "Upcoming booking: GTM Strategy Session" in blk2 and blk2.count("do not propose a booking") == 1 and "Returning visitor" in blk2
     from app.rag import prompts
     assert "do not propose booking again" in prompts.SYSTEM_PROMPT
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_profile_sees_the_current_conversation_and_buttons_only_visits():
+    """No earlier conversations: a booking made, moved and cancelled in the current session is still in the profile;
+    a session where the visitor only used the booking buttons (0 messages) counts as a visit afterwards; and without a
+    visitor id the current session alone gives the booking facts."""
+    from app import store_bookings as sb
+    from app.db import conn
+
+    tag = uuid.uuid4().hex[:8]
+    sid, vid = f"cur-{tag}", f"cur-vid-{tag}"
+    now = datetime.now(timezone.utc)
+    bid = sb.insert({"session_id": sid, "name": "Ada Lovelace", "email": "ada@lovelace.org", "schedule_slug": "discovery-call",
+                     "schedule_name": "LakeB2B Discovery Call", "duration_min": 15, "start_utc": now + timedelta(days=2),
+                     "end_utc": now + timedelta(days=2, minutes=15), "visitor_tz": "Asia/Kolkata", "method": "handoff", "status": "pending_zoom",
+                     "manage_token": "t" + tag, "schedule_description": "A 15-minute intro call."})
+    try:
+        with conn() as c:  # booked through the buttons only: the session has no chat messages
+            c.execute("INSERT INTO sessions(session_id, visitor_id, messages) VALUES (%s, %s, 0)", (sid, vid))
+            c.commit()
+        p = memory.profile(vid, None, sid)
+        assert p["returning"] is False and p["upcoming"]["id"] == bid and p["upcoming"]["in_session"] is True
+        assert p["upcoming"]["description"] == "A 15-minute intro call." and "They booked in this conversation" in memory.prompt_block(p)
+        assert memory.profile(None, None, sid)["upcoming"]["id"] == bid  # no visitor id: the current session still counts
+        sb.reschedule(bid, now + timedelta(days=3), now + timedelta(days=3, minutes=15))
+        p = memory.profile(vid, None, sid)
+        assert p["recent_change"]["kind"] == "rescheduled" and p["recent_change"]["in_session"] is True
+        assert "They moved that call earlier in this conversation" in memory.prompt_block(p)
+        sb.cancel(bid)
+        p = memory.profile(vid, None, sid)
+        assert p["upcoming"] is None and p["recent_change"]["kind"] == "cancelled" and "earlier in this conversation; they have no booking now" in memory.prompt_block(p)
+        # a new conversation on the same device: the buttons-only session is now an earlier visit
+        p = memory.profile(vid, None, f"next-{tag}")
+        assert p["returning"] is True and p["recent_change"]["kind"] == "cancelled" and p["recent_change"]["in_session"] is False
+        assert "You cancelled your LakeB2B Discovery Call" in memory.greeting(p)["line"]
+    finally:
+        with conn() as c:
+            c.execute("DELETE FROM bookings WHERE session_id = %s", (sid,))
+            c.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))
+            c.commit()

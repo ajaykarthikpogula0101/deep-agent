@@ -38,6 +38,13 @@ cancelled your … on …. Whenever it suits you, pick a new time", the welcome 
 cancel, the chat shows a toast right after the action, and the model's memory block carries the change (and the fact
 that a reminder email is coming) so "when is my call?" is answered from the current state.
 
+### The current conversation (2026.10.13.5)
+
+Booking facts are read from every session of the device including the current one, so a call booked, moved or cancelled a
+minute ago is in the very next answer, for first-time visitors too (and without a visitor id, from the current session
+alone). History facts (welcome back, earlier topics and questions) still come only from earlier sessions. A session
+where the visitor only used the booking buttons counts as a visit.
+
 ## Multilingual voice
 
 * Text already answers in the visitor's language (docs/AUTOMATIONS.md §10). The call view now follows:

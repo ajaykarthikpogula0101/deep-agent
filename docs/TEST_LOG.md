@@ -1,5 +1,23 @@
 # Test log
 
+## 2026-10-13 — memory covers the current conversation (version 2026.10.13.5)
+
+`memory.profile()` is now one path: conversation history (returning, topics, questions) from earlier sessions only;
+booking facts (upcoming call with its description, a move or cancel, hand-over, booking details) from every session of
+the device INCLUDING the current one, even for first-time visitors and without a visitor id. A session with a booking
+counts as a visit even with no typed message (booking through the buttons only), so the next "New conversation" welcomes
+them back. `_booking_lines()` gives first-time and returning visitors the same wording ("They booked in this
+conversation" / "They moved that call earlier in this conversation from …" / "They cancelled … earlier in this
+conversation; they have no booking now"). The separate same-session path from 2026.10.13.4 is gone.
+
+```
+pytest: 219 passed, 1 skipped (tests/test_reminders.py: current-conversation block + Postgres round trip of a
+  buttons-only session: book -> move -> cancel -> new conversation)
+live probe (8089, first-time visitor, one conversation): "when is my call?" after booking -> Fri 16 Oct 16:00; after
+  the move -> Sat 17 Oct 16:00; after the cancel -> "You currently have no call booked …"
+widget suite (8089, BROWSER_BOOKING_ENABLED=false): 129 checks pass
+```
+
 ## 2026-10-13 — after a booking the bot helps prepare instead of re-selling (version 2026.10.13.4)
 
 Reported: "yes i want to prepare" right after booking got "would you like to book a discovery call…". Cause: in the same

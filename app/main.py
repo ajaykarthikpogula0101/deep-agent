@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.13.4"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.13.5"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -316,7 +316,7 @@ async def chat(body: ChatIn, request: Request, x_session_id: str | None = Header
 
     extra, attached = media.attachments_block(body.attachments, session_id) if body.attachments else ("", [])
     mem = ""
-    if settings.visitor_memory and (x_visitor_id or visitor.get("signed_in")):
+    if settings.visitor_memory:  # without a visitor id the current conversation still gives booking facts
         mem = memory.prompt_block(memory.profile(x_visitor_id, visitor.get("sub") if visitor.get("signed_in") else None, session_id))
     gen = respond(body.message, body.history, body.timezone, session_id, visitor=visitor, extra_context=extra, attachments=attached, memory=mem)
     return StreamingResponse(iterate_in_threadpool(gen), media_type="text/event-stream",
