@@ -1,5 +1,21 @@
 # Test log
 
+## 2026-10-13 — after a booking the bot helps prepare instead of re-selling (version 2026.10.13.4)
+
+Reported: "yes i want to prepare" right after booking got "would you like to book a discovery call…". Cause: in the same
+session the memory block carried nothing (profile() only looked at earlier sessions) and the card's "Want to prepare?"
+line never reached the model. Now: `memory._session_booking` (the booking made in this conversation, with the stored
+`bookings.schedule_description`) feeds a VISITOR MEMORY block for first-time visitors too, with preparation guidance
+and "never offer to book again"; rule 8 says the same once a "Booking confirmed:" line exists; the booked card's
+prepare line is a real prompt and the history line carries the offer.
+
+```
+live probe (8089): session with a confirmed GTM session -> "yes i want to prepare" ->
+  "Your GTM Strategy Session covers a 45-minute working session … To prepare, have ready: your goals … how you
+   currently generate leads … the questions you want answered. The Zoom link is in your confirmation email."
+pytest: 218 passed, 1 skipped (tests/test_reminders.py +1)
+```
+
 ## 2026-10-13 — bookings on the History page (version 2026.10.13.3)
 
 `GET /bookings` + "Your bookings" section in the History view with state chips; tapping a row opens a booking card in

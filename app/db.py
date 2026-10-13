@@ -113,6 +113,7 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS zoom_run JSONB;             -- the
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS previous_start_utc TIMESTAMPTZ;
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rescheduled_at TIMESTAMPTZ;
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;   -- day-before reminder (app/reminders.py)
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS schedule_description TEXT;     -- what the call type covers, for preparation help
 CREATE INDEX IF NOT EXISTS bookings_start_idx ON bookings(start_utc);
 CREATE INDEX IF NOT EXISTS bookings_email_idx ON bookings(lower(email));
 

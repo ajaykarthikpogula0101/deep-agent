@@ -264,7 +264,8 @@ def confirm(service: BookingService, req: ConfirmRequest, deps: Deps | None = No
                "zoom_meeting_id": zoom.get("meeting_id"), "join_url": zoom.get("join_url"), "passcode": zoom.get("passcode"),
                "zoom_event_id": zoom.get("zoom_event_id"), "handoff_url": zoom.get("handoff_url"), "manage_token": token,
                "origin": origin, "company_line": lead["company"], "zoom_error": zoom.get("error"),
-               "zoom_reschedule_url": zoom.get("reschedule_url"), "zoom_cancel_url": zoom.get("cancel_url"), "zoom_run": zoom.get("run")}
+               "zoom_reschedule_url": zoom.get("reschedule_url"), "zoom_cancel_url": zoom.get("cancel_url"), "zoom_run": zoom.get("run"),
+               "schedule_description": avail.describe(schedule)}
     try:
         booking["id"] = deps.store_booking(booking)
     except Exception as e:  # the Zoom side is done; never lose it silently

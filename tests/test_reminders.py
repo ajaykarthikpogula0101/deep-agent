@@ -136,3 +136,20 @@ def test_reminder_job_sends_once_per_upcoming_booking_and_memory_sees_the_change
             c.execute("DELETE FROM events WHERE kind = 'reminder' AND detail->>'booking_id' IN (%s, %s, %s)", (str(soon), str(later), str(gone)))
             c.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))
             c.commit()
+
+
+def test_same_session_booking_gives_the_model_preparation_context(monkeypatch):
+    """A first-time visitor who just booked: the memory block names the call, what it covers, and forbids re-selling."""
+    sb = {"id": 9, "schedule_name": "GTM Strategy Session", "label_visitor": "Fri 16 Oct, 19:30 (Asia/Kolkata)", "duration_min": 45,
+          "status": "confirmed", "description": "A 45-minute working session on data, AI and revenue acceleration."}
+    p = dict(memory._empty(), session_booking=sb)
+    blk = memory.prompt_block(p)
+    assert "They booked in this conversation: GTM Strategy Session (45 min) on Fri 16 Oct, 19:30" in blk
+    assert "The call covers: A 45-minute working session" in blk and "Never offer to book again" in blk and "what to have ready" in blk.lower() or "have ready" in blk
+    assert memory.prompt_block(memory._empty()) == ""  # nothing booked, first visit: no block at all
+    # a returning visitor with the same booking gets the guidance once, attached to the upcoming line
+    p2 = dict(memory._empty(), returning=True, visits=2, upcoming=dict(sb, status="confirmed"), session_booking=sb)
+    blk2 = memory.prompt_block(p2)
+    assert "Upcoming booking: GTM Strategy Session" in blk2 and "The call covers:" in blk2 and blk2.count("do not propose a booking") == 1
+    from app.rag import prompts
+    assert "do not propose booking again" in prompts.SYSTEM_PROMPT

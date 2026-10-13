@@ -24,7 +24,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.13.3';
+const VERSION = '2026.10.13.4';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -1145,10 +1145,11 @@ class DeepAssistant extends HTMLElement {
         ${res.emails_queued ? `<li>${SVG.checkc}<span>${moved ? 'An updated invite' : 'A confirmation'}${b.join_url ? ' with the Zoom link' : ''} is on its way to <b>${esc(b.email)}</b></span></li>` : ''}
         ${b.ics_url ? `<li>${SVG.checkc}<span>Add it to your calendar so it doesn't slip</span></li>` : ''}
         ${this._cfg.reminders ? `<li>${SVG.checkc}<span>We'll email you a reminder the day before</span></li>` : ''}
-        <li>${SVG.spark.replace('aria-hidden', 'class="nx" aria-hidden')}<span>Want to prepare? Ask me anything before the call.</span></li>
+        <li>${SVG.spark.replace('aria-hidden', 'class="nx" aria-hidden')}<span>Want to prepare? <button type="button" class="linkbtn bk-prep">Ask me what the call covers and what to have ready</button></span></li>
       </ul>${b.id ? `<p class="note"><button type="button" class="linkbtn rs-change">Need a different time? Change it here</button> · <button type="button" class="linkbtn cx-open">Cancel this booking</button></p>` : ''}</div>`;
     const up = { id: b.id, schedule_slug: b.schedule_slug, schedule_name: b.schedule_name, label_visitor: b.label_visitor, duration_min: b.duration_min, method: b.method, can_reschedule: true, can_cancel: true };
     const ch = body.querySelector('.rs-change'); if (ch) ch.onclick = () => this.startReschedule(up, 'Change the time of my call');
+    const pr = body.querySelector('.bk-prep'); if (pr) pr.onclick = () => this._send('Help me prepare for the call: what will we cover and what should I have ready?');
     const cx = body.querySelector('.cx-open'); if (cx) cx.onclick = () => this.startCancel(up, 'Cancel my call');
   }
   // ---------------------------------------------------------------- cancelling a booking from the chat (confirm first; the worker cancels it on Zoom)
@@ -1195,7 +1196,7 @@ class DeepAssistant extends HTMLElement {
   }
   _bkBooked(res) {
     const b = res.booking, pending = res.status !== 'confirmed';
-    const line = pending ? `Time held: ${b.schedule_name} on ${b.label_visitor}; confirm on Zoom to make it final.` : `Booking confirmed: ${b.schedule_name} on ${b.label_visitor}.`;
+    const line = (pending ? `Time held: ${b.schedule_name} on ${b.label_visitor}; confirm on Zoom to make it final.` : `Booking confirmed: ${b.schedule_name} on ${b.label_visitor}.`) + ' If you want to prepare, I can tell you what the call covers and what to have ready.';
     this._history.push({ role: 'assistant', content: line }); this._history = this._history.slice(-12);
     this._transcript.push({ role: 'bot', text: line, ts: Date.now() }); this._persist(); this._announce(pending ? 'Time held. One last step on Zoom.' : 'Booking confirmed.');
     this._emit('booking', { status: res.status, bookingId: b.id, joinUrl: b.join_url || null, handoffUrl: b.handoff_url || null, slot: b.start_iso, schedule: b.schedule_slug, email: b.email });

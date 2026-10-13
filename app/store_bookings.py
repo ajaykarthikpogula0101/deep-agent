@@ -10,7 +10,7 @@ from app.db import conn
 COLS = ["id", "created_at", "lead_id", "session_id", "name", "email", "company", "notes", "schedule_slug", "schedule_name",
         "duration_min", "start_utc", "end_utc", "visitor_tz", "method", "zoom_meeting_id", "join_url", "passcode", "zoom_event_id",
         "handoff_url", "status", "manage_token", "cancelled_at", "origin", "company_line", "zoom_error",
-        "zoom_reschedule_url", "zoom_cancel_url", "zoom_run", "previous_start_utc", "rescheduled_at", "reminder_sent_at"]
+        "zoom_reschedule_url", "zoom_cancel_url", "zoom_run", "previous_start_utc", "rescheduled_at", "reminder_sent_at", "schedule_description"]
 
 
 def insert(b: dict[str, Any]) -> int:
@@ -19,15 +19,15 @@ def insert(b: dict[str, Any]) -> int:
             """INSERT INTO bookings(lead_id, session_id, name, email, company, notes, schedule_slug, schedule_name, duration_min,
                                     start_utc, end_utc, visitor_tz, method, zoom_meeting_id, join_url, passcode, zoom_event_id,
                                     handoff_url, status, manage_token, origin, company_line, zoom_error,
-                                    zoom_reschedule_url, zoom_cancel_url, zoom_run)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                                    zoom_reschedule_url, zoom_cancel_url, zoom_run, schedule_description)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
                RETURNING id""",
             (b.get("lead_id"), b.get("session_id"), b["name"], b["email"], b.get("company") or None, b.get("notes") or None,
              b["schedule_slug"], b.get("schedule_name"), b["duration_min"], b["start_utc"], b["end_utc"], b["visitor_tz"],
              b["method"], b.get("zoom_meeting_id"), b.get("join_url"), b.get("passcode"), b.get("zoom_event_id"),
              b.get("handoff_url"), b["status"], b["manage_token"], b.get("origin") or None, b.get("company_line") or None,
              b.get("zoom_error"), b.get("zoom_reschedule_url"), b.get("zoom_cancel_url"),
-             json.dumps(b["zoom_run"], default=str) if b.get("zoom_run") else None)).fetchone()
+             json.dumps(b["zoom_run"], default=str) if b.get("zoom_run") else None, (b.get("schedule_description") or None))).fetchone()
         c.commit()
     return int(row[0])
 
