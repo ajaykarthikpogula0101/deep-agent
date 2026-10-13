@@ -126,3 +126,11 @@ manage_token, cancelled_at, origin, company_line, zoom_error. Every booking also
 * `pending_zoom` bookings do not block the slot for other visitors (the time is not reserved on Zoom); they are
   listed in the console and reminded after 24 h.
 * The legacy `/legacy` page still renders the 3-slot buttons from the `slots` event; it does not get the picker.
+
+## Your bookings on the History page (added 2026-10-13)
+
+The History view lists the visitor's bookings above the conversations (`GET /bookings`, scoped to the visitor id or the
+signed-in user): upcoming, done and cancelled, each with a state chip and the time it was moved from, if any. Tapping a
+row opens a booking card in the chat with the facts and every action that still applies: Join Zoom or Confirm on Zoom,
+Add to calendar, Reschedule, Cancel, or Book again for past and cancelled ones. The list refreshes after a booking, a
+move or a cancel. The search box filters bookings too.

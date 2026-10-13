@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.13.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.13.3"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -61,7 +61,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
 _scheduler = BackgroundScheduler()
-_track_limiter = RateLimiter(per_minute=30, per_day=2000)  # one beacon per chat open; separate from the chat budget
+_track_limiter = RateLimiter(per_minute=60, per_day=3000)  # beacons and visitor-scoped reads (history, bookings, availability); separate from the chat budget
 _booking_limiter = RateLimiter(per_minute=4, per_day=12)     # confirm attempts per session (plus the per-email active cap)
 _booking_service = BookingService()                         # shared: schedule cache + Zoom token
 _outreach_limiter = RateLimiter(per_minute=60, per_day=3000)  # a few checks per page view (app/outreach.py)
@@ -356,6 +356,37 @@ def conversations_list(request: Request, x_visitor_id: str | None = Header(defau
     vid, uid = _owner(request, x_visitor_id)
     items = conversations.list_for(vid, uid)
     return {"items": items, "unread_conversations": sum(1 for i in items if i["unread"] > 0)}
+
+
+@app.get("/bookings")
+def bookings_list(request: Request, x_visitor_id: str | None = Header(default=None)):
+    """The History page's "Your bookings": upcoming, past and cancelled bookings of this visitor, with what each one can
+    still do (join, confirm on Zoom, add to calendar, reschedule, cancel, book again)."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    vid, uid = _owner(request, x_visitor_id)  # a visitor-scoped read; not counted against the beacon limiter
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    items = []
+    for b in store_bookings.list_for_visitor(vid, uid):
+        v = flow._booking_view(dict(b, **flow.manage_urls(int(b["id"]), b.get("manage_token") or "", _base_url(request))))
+        active = b.get("status") in ("confirmed", "pending_zoom")
+        upcoming = active and b["start_utc"] > now
+        movable = b.get("method") == "handoff" or (b.get("method") == "browser" and bool(b.get("zoom_reschedule_url")))
+        tz = b.get("visitor_tz") or settings.host_timezone
+        from app.booking.zoom import Slot
+
+        v.update(state="cancelled" if b.get("status") == "cancelled" else "upcoming" if upcoming else "past",
+                 can_reschedule=upcoming and movable and b["start_utc"] > now + timedelta(minutes=30),
+                 can_cancel=upcoming and b["start_utc"] > now + timedelta(minutes=5),
+                 old_label_visitor=Slot(b["previous_start_utc"], b.get("duration_min") or 0).label(tz) if b.get("previous_start_utc") else None,
+                 rescheduled_at=b.get("rescheduled_at").isoformat() if b.get("rescheduled_at") else None,
+                 cancelled_at=b.get("cancelled_at").isoformat() if b.get("cancelled_at") else None,
+                 created_at=b.get("created_at").isoformat() if b.get("created_at") else None)
+        v.pop("passcode", None)
+        items.append(v)
+    return {"items": items, "upcoming": sum(1 for i in items if i["state"] == "upcoming")}
 
 
 @app.get("/conversations/{session_id}")

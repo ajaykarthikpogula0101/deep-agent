@@ -1,5 +1,17 @@
 # Test log
 
+## 2026-10-13 — bookings on the History page (version 2026.10.13.3)
+
+`GET /bookings` + "Your bookings" section in the History view with state chips; tapping a row opens a booking card in
+the chat (Join / Confirm on Zoom / Add to calendar / Reschedule / Cancel / Book again). The per-IP read limiter went
+from 30 to 60 a minute (a visitor browsing History, a booking and the picker could hit it; the suite did).
+
+```
+pytest: 217 passed, 1 skipped
+widget suite (8089, BROWSER_BOOKING_ENABLED=false): 129 checks pass (+2: the bookings row and its card)
+GET /bookings for a real visitor: one cancelled booking with its "moved from" time; no passcode in the payload; 400 without a visitor
+```
+
 ## 2026-10-13 — lifecycle emails, day-before reminder, memory after reschedule/cancel, email layout (version 2026.10.13.2)
 
 Three new editable visitor emails (moved, cancelled, day-before reminder) with greeting / thank-you / facts / next step /

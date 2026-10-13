@@ -50,6 +50,24 @@ def reschedule(booking_id: int, start_utc: datetime, end_utc: datetime, run: dic
     return n > 0
 
 
+def list_for_visitor(visitor_id: str | None, user_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+    """Every booking made in a chat session of this browser (visitor id) or signed-in user, newest start first."""
+    if not visitor_id and not user_id:
+        return []
+    cols = ", ".join("b." + c for c in COLS)
+    with conn() as c:
+        rows = c.execute(
+            f"""SELECT {cols} FROM bookings b JOIN sessions s ON s.session_id = b.session_id
+                WHERE s.visitor_id = %s::text OR s.user_id = %s::text ORDER BY b.start_utc DESC LIMIT %s""",
+            (visitor_id, user_id, max(1, min(limit, 100)))).fetchall()
+    out = []
+    for r in rows:
+        b = dict(zip(COLS, r))
+        b["meeting_id"] = b.get("zoom_meeting_id")
+        out.append(b)
+    return out
+
+
 def owned_by_visitor(booking_id: int, visitor_id: str | None, session_id: str | None = None) -> bool:
     """The booking was made in a chat session of this browser (visitor id) or in this very session."""
     if not visitor_id and not session_id:

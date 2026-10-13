@@ -24,7 +24,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.13.2';
+const VERSION = '2026.10.13.3';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -266,6 +266,11 @@ textarea.q { display:block; flex:1; min-width:0; width:auto; min-height:34px; ma
 .convo .p { display:block; margin-top:2px; font-size:12.5px; line-height:1.35; color:var(--da-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
 .convo .r { flex:none; align-self:flex-start; display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:32px; padding-top:2px } .convo .ctime { font-size:11.5px; color:var(--da-muted); white-space:nowrap } .dot { width:8px; height:8px; border-radius:50%; background:var(--da-primary) }
 .cur-tag { padding:1px 7px; border-radius:999px; background:var(--da-lavender); color:var(--da-ink); font-size:10.5px; font-weight:650 }
+.brow { position:relative; display:flex; align-items:center; gap:12px; width:100%; min-width:0; padding:10px; border:0; border-radius:12px; background:transparent; color:var(--da-text); text-align:left; cursor:pointer; transition:background .15s, box-shadow .15s }
+.brow:hover, .brow:focus-visible { background:var(--da-surface); box-shadow:var(--da-shadow-sm) } .brow .c { flex:1 1 auto; min-width:0 } .brow .n { display:block; font-size:13.5px; font-weight:600; line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.brow .p { display:block; font-size:12.5px; color:var(--da-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis } .brow.cancelled .n, .brow.past .n { color:var(--da-muted); font-weight:500 }
+.bstate { flex:none; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:650; background:var(--da-lavender); color:var(--da-ink) } .bstate.ok { background:#E6F6EE; color:#15733F } .bstate.off { background:var(--da-surface); color:var(--da-muted); box-shadow:inset 0 0 0 1px var(--da-line) } .bstate.hold { background:#FFF2E0; color:#8A4B00 }
+.bookings { margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid var(--da-line) }
 .more2 { position:absolute; right:8px; top:50%; transform:translateY(-50%); width:28px; height:28px; border-radius:8px; background:var(--da-surface); color:var(--da-muted); display:none; align-items:center; justify-content:center; cursor:pointer } .more2 svg { width:16px; height:16px }
 .convo:hover .more2, .convo:focus-within .more2 { display:inline-flex } .more2:hover { background:var(--da-subtle); color:var(--da-text) } @media (hover:none) { .more2 { display:none !important } }
 .rename { display:flex; gap:6px; align-items:center; padding:6px 10px 10px 56px } .rename .inp { flex:1; min-width:0; height:34px }
@@ -564,6 +569,7 @@ class DeepAssistant extends HTMLElement {
           <div class="searchbox">${SVG.search}<label class="vh" for="msearch">Search conversations</label><input id="msearch" class="msearch" type="search" placeholder="Search conversations" autocomplete="off"></div>
           <button class="btn primary block newconvo" type="button">${SVG.plus}<span>New conversation</span></button>
         </div>
+        <div class="bookings" hidden><div class="mgroup" role="presentation">Your bookings</div><div class="brows" role="list" aria-label="Your bookings"></div></div>
         <div class="mrows" role="list" aria-label="Conversations"></div>
       </div>
     </section>
@@ -603,7 +609,7 @@ class DeepAssistant extends HTMLElement {
       if (this.getAttribute('mode') === 'launcher') this.close(); });
     // history
     sh.querySelector('.newconvo').onclick = () => this.newChat();
-    sh.querySelector('.msearch').addEventListener('input', (e) => { this._mquery = e.target.value; this._paintConversations(); });
+    sh.querySelector('.msearch').addEventListener('input', (e) => { this._mquery = e.target.value; this._paintConversations(); this._paintBookings(); });
     // composer
     this.$cbox.addEventListener('submit', (e) => { e.preventDefault(); if (this._busy) this._stop(); else this._send(); });
     this.$q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!this._busy) this._send(); } if (e.key === 'Escape' && (this._busy || this.shadowRoot.querySelector('.pop.open'))) { e.preventDefault(); if (this._busy) this._stop(); this._closePops(); } });
@@ -749,7 +755,43 @@ class DeepAssistant extends HTMLElement {
   }
   async _refreshBadge() { const d = await this._conversations(); if (!d.error) this._setBadge(d.unread_conversations || 0); return d; }
   async _markRead(sid) { try { await fetch(this._url('/conversations/' + encodeURIComponent(sid) + '/read'), { method: 'POST', headers: this._headers() }); } catch {} }
+  // ---------------------------------------------------------------- History: the visitor's bookings (GET /bookings)
+  async _loadBookings() {
+    if (!this.api || (!this._vid && !this.getAttribute('token'))) return [];
+    try { const r = await fetch(this._url('/bookings'), { headers: this._headers(false) }); if (r.ok) { const d = await r.json(); this._bookings = d.items || []; } } catch {}
+    return this._bookings || [];
+  }
+  _paintBookings() {
+    const sh = this.shadowRoot, box = sh.querySelector('.bookings'), rows = sh.querySelector('.brows'); if (!box) return; const all = this._bookings || [];
+    const q = (this._mquery || '').trim().toLowerCase(); const items = all.filter((b) => !q || (b.schedule_name || '').toLowerCase().includes(q) || (b.label_visitor || '').toLowerCase().includes(q));
+    box.hidden = !items.length; if (!items.length) return;
+    const chip = (b) => b.state === 'cancelled' ? '<span class="bstate off">Cancelled</span>' : b.state === 'past' ? '<span class="bstate off">Done</span>' : b.status === 'confirmed' ? '<span class="bstate ok">Confirmed</span>' : '<span class="bstate hold">Confirm on Zoom</span>';
+    rows.innerHTML = items.map((b) => `<button class="brow ${esc(b.state)}" type="button" role="listitem" data-bid="${esc(String(b.id))}" aria-label="${esc(b.schedule_name)}, ${esc(b.label_visitor)}, ${esc(b.state)}">
+        <span class="avatar" aria-hidden="true">${SVG.cal}</span><span class="c"><span class="n">${esc(b.schedule_name)}</span><span class="p">${esc(b.label_visitor)}${b.old_label_visitor ? ' · moved from ' + esc(b.old_label_visitor) : ''}</span></span>${chip(b)}</button>`).join('');
+    rows.querySelectorAll('.brow').forEach((el) => { el.onclick = () => { const b = all.find((x) => String(x.id) === el.dataset.bid); if (b) this.openBooking(b); }; });
+  }
+  openBooking(b) {
+    if (this._busy) return; this.showView('chat'); this._clearFollowups();
+    const text = `Show my ${b.schedule_name}`, intro = b.state === 'cancelled' ? `This ${b.schedule_name} on ${b.label_visitor} was cancelled.` : b.state === 'past' ? `Your ${b.schedule_name} on ${b.label_visitor} has already taken place.` : b.status === 'confirmed' ? `Your ${b.schedule_name} on ${b.label_visitor} is confirmed.` : `Your ${b.schedule_name} on ${b.label_visitor} is held until you confirm it on Zoom.`;
+    const user = this._add('user', '', Date.now()); this._setText(user, text);
+    const bot = this._add('bot', '', Date.now()); this._setText(bot, intro);
+    this._transcript.push({ role: 'user', text, ts: Date.now() }, { role: 'bot', text: intro, ts: Date.now() });
+    this._history.push({ role: 'user', content: text }, { role: 'assistant', content: intro }); this._history = this._history.slice(-12); this._persist(); this._markLast();
+    const f = this._bkFlow(bot); f.mode = 'detail'; f.booking = b;
+    const pending = b.state === 'upcoming' && b.status !== 'confirmed';
+    const rows = [['Meeting', b.schedule_name], ['When', b.label_visitor], ['Was', b.old_label_visitor], ['Duration', b.duration_min ? `${b.duration_min} min · Zoom` : ''], ['Status', b.state === 'cancelled' ? 'Cancelled' : b.state === 'past' ? 'Done' : b.status === 'confirmed' ? 'Confirmed' : 'Held, confirm on Zoom']].filter((r) => r[1]);
+    f.card.innerHTML = `<div class="bk bdetail"><div class="sumbox">${rows.map(([k, v]) => `<div class="sumrow"><span>${k}</span><b>${esc(v)}</b></div>`).join('')}</div>
+      <div class="hrow" style="margin-top:8px">${b.state === 'upcoming' && pending && b.handoff_url ? `<a class="btn primary" href="${esc(b.handoff_url)}" target="_blank" rel="noopener">Confirm on Zoom ${SVG.ext}</a>` : ''}${b.state === 'upcoming' && b.join_url ? `<a class="btn primary" href="${esc(b.join_url)}" target="_blank" rel="noopener">${SVG.video}Join Zoom</a>` : ''}${b.state === 'upcoming' && b.ics_url ? `<a class="btn" href="${esc(b.ics_url)}" download>${SVG.cal}Add to calendar</a>` : ''}
+        ${b.can_reschedule ? `<button type="button" class="btn bd-move">${SVG.clock}Reschedule</button>` : ''}${b.can_cancel ? `<button type="button" class="btn bd-cancel">${SVG.close}Cancel</button>` : ''}${b.state !== 'upcoming' ? `<button type="button" class="btn primary bd-again">${SVG.cal}Book again</button>` : ''}</div></div>`;
+    const up = { id: b.id, schedule_slug: b.schedule_slug, schedule_name: b.schedule_name, label_visitor: b.label_visitor, duration_min: b.duration_min, method: b.method, can_reschedule: !!b.can_reschedule, can_cancel: !!b.can_cancel };
+    const mv = f.card.querySelector('.bd-move'); if (mv) mv.onclick = () => this.startReschedule(up, 'Reschedule my call');
+    const cx = f.card.querySelector('.bd-cancel'); if (cx) cx.onclick = () => this.startCancel(up, 'Cancel my call');
+    const ag = f.card.querySelector('.bd-again'); if (ag) ag.onclick = () => this.startBooking(b.schedule_slug || null, 'Book again');
+    this._emit('booking', { status: 'opened', bookingId: b.id, schedule: b.schedule_slug || null });
+    requestAnimationFrame(() => this._reveal(f.card));
+  }
   async _renderConversations() {
+    this._loadBookings().then(() => this._paintBookings());
     const rows = this.shadowRoot.querySelector('.mrows'); rows.setAttribute('aria-busy', 'true');
     if (!this._convos) rows.innerHTML = '<div class="sk"><span class="a"></span><span class="l"><i></i><i></i></span></div>'.repeat(4);
     const d = await this._refreshBadge(); rows.setAttribute('aria-busy', 'false');
@@ -1088,7 +1130,7 @@ class DeepAssistant extends HTMLElement {
     const line = pending ? `New time held: ${b.schedule_name} on ${b.label_visitor}; confirm on Zoom to make it final.` : `Booking moved: ${b.schedule_name} to ${b.label_visitor}.`;
     this._history.push({ role: 'assistant', content: line }); this._history = this._history.slice(-12);
     this._transcript.push({ role: 'bot', text: line, ts: Date.now() }); this._persist(); this._announce(pending ? 'New time held. One last step on Zoom.' : 'Call moved.');
-    this._toast(pending ? `New time held: ${b.label_visitor}` : `Your call is now on ${b.label_visitor}`);
+    this._toast(pending ? `New time held: ${b.label_visitor}` : `Your call is now on ${b.label_visitor}`); this._bookings = null;
     this._emit('booking', { status: res.status, bookingId: b.id, joinUrl: b.join_url || null, handoffUrl: b.handoff_url || null, slot: b.start_iso, schedule: b.schedule_slug, email: b.email });
     this._loadMe().catch(() => {});
   }
@@ -1146,7 +1188,7 @@ class DeepAssistant extends HTMLElement {
     const line = `Booking cancelled: ${b.schedule_name || up.schedule_name} on ${b.label_visitor || up.label_visitor}.`;
     this._history.push({ role: 'assistant', content: line }); this._history = this._history.slice(-12);
     this._transcript.push({ role: 'bot', text: line, ts: Date.now() }); this._persist(); this._announce('Call cancelled.');
-    this._toast('Your call is cancelled. A confirmation is on its way to you and to Deep.');
+    this._toast('Your call is cancelled. A confirmation is on its way to you and to Deep.'); this._bookings = null;
     this._emit('booking', { status: 'cancelled', bookingId: up.id, schedule: b.schedule_slug || up.schedule_slug || null });
     this._loadMe().catch(() => {});
     const ok = card.querySelector('.bk-ok'); if (ok) ok.focus({ preventScroll: true });
@@ -1158,6 +1200,7 @@ class DeepAssistant extends HTMLElement {
     this._transcript.push({ role: 'bot', text: line, ts: Date.now() }); this._persist(); this._announce(pending ? 'Time held. One last step on Zoom.' : 'Booking confirmed.');
     this._emit('booking', { status: res.status, bookingId: b.id, joinUrl: b.join_url || null, handoffUrl: b.handoff_url || null, slot: b.start_iso, schedule: b.schedule_slug, email: b.email });
     this._loadMe().catch(() => {});  // the memory now carries this booking, so "reschedule my call" works in this chat
+    this._bookings = null;
   }
   _onSchedules(bot, items) { const f = this._bkFlow(bot); f.types = items; this._bkGo(f, 'type', false); if (items.some((x) => !x.description)) this._bkLoadTypes(f); }
   _onAvailability(bot, ev) {
