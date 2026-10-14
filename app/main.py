@@ -24,7 +24,7 @@ from urllib.parse import quote as quote_param
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import conversations, digest, gaps, guidance, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking, visitors
+from app import conversations, digest, gaps, geoip_update, guidance, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking, visitors
 from app.booking import availability as avail
 from app.booking import browser_booking
 from app.booking import email_html, flow, ics
@@ -93,8 +93,18 @@ def _startup() -> None:
     chain = tracking.providers()
     if "ipapi" in chain:
         log.warning("GEOIP_PROVIDER includes ipapi (ip-api.com): plain HTTP and non-commercial use only")
+    if geoip_update.configured():  # MaxMind GeoLite2 for the mmdb provider (app/geoip_update.py)
+        if "mmdb" not in chain:
+            log.warning("MAXMIND_LICENSE_KEY is set but GEOIP_PROVIDER=%s has no mmdb: the GeoLite2 files are downloaded but "
+                        "never read; set GEOIP_PROVIDER=mmdb,ipwho", settings.geoip_provider)
+        if geoip_update.start_background():
+            log.info("GeoLite2 files missing or stale in %s: downloading in the background", geoip_update.data_dir())
+        # weekly, Wednesday 04:50 host time: MaxMind publishes on Tuesdays and Fridays; the EULA allows files up to 30 days old
+        _scheduler.add_job(geoip_update.run, CronTrigger.from_crontab("50 4 * * 3", timezone=settings.host_timezone),
+                           id="geoip_update", replace_existing=True, misfire_grace_time=6 * 3600)
     if "mmdb" in chain and tracking.mmdb_problem():
-        log.warning("GEOIP_PROVIDER includes mmdb but %s; it will be skipped", tracking.mmdb_problem())
+        log.warning("GEOIP_PROVIDER includes mmdb but %s; it is skipped%s", tracking.mmdb_problem(),
+                    " until the download finishes" if geoip_update.configured() else " (set MAXMIND_LICENSE_KEY to download them)")
     if settings.digest_enabled:  # weekly digest to the host (app/digest.py)
         _scheduler.add_job(digest.run, CronTrigger.from_crontab(settings.digest_cron, timezone=settings.host_timezone),
                            id="weekly_digest", replace_existing=True, misfire_grace_time=6 * 3600)

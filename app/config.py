@@ -73,7 +73,11 @@ class Settings(BaseSettings):
     # ipwho | ipinfo | ipapi | ipapiis | mmdb | none, or a comma chain such as mmdb,ipwho
     geoip_provider: str = Field(default="ipwho", alias="GEOIP_PROVIDER")
     geoip_token: str = Field(default="", alias="GEOIP_TOKEN")  # ipinfo only
-    geoip_mmdb_dir: str = Field(default="", alias="GEOIP_MMDB_DIR")  # GeoLite2-City.mmdb + GeoLite2-ASN.mmdb; needs maxminddb
+    geoip_mmdb_dir: str = Field(default="", alias="GEOIP_MMDB_DIR")  # GeoLite2-City.mmdb + GeoLite2-ASN.mmdb; empty = data/geoip with a MaxMind key
+    # MaxMind GeoLite2 downloads (app/geoip_update.py): the licence key alone works on the legacy URL; with the account id
+    # the current basic-auth endpoint is used. Empty key = nothing is downloaded
+    maxmind_account_id: str = Field(default="", alias="MAXMIND_ACCOUNT_ID")
+    maxmind_license_key: str = Field(default="", alias="MAXMIND_LICENSE_KEY")
     geoip_daily_cap: int = Field(default=300, alias="GEOIP_DAILY_CAP")  # per provider per UTC day, in-process
     geoip_fail_retry_min: int = Field(default=60, alias="GEOIP_FAIL_RETRY_MIN")  # a failed /24 is not looked up again before this
     geoip_dev_ip: str = Field(default="", alias="GEOIP_DEV_IP")  # honoured only with a localhost DATABASE_URL
@@ -231,6 +235,11 @@ class Settings(BaseSettings):
     def origins(self) -> list[str]:
         # No wildcard, ever. Empty entries are dropped.
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip() and o.strip() != "*"]
+
+    @property
+    def mmdb_dir(self) -> str:
+        """Where the GeoLite2 files live: GEOIP_MMDB_DIR, else data/geoip once a MaxMind key is set ('' = not configured)."""
+        return self.geoip_mmdb_dir or ("data/geoip" if self.maxmind_license_key else "")
 
     @property
     def zoom_api_configured(self) -> bool:

@@ -152,10 +152,23 @@ def classify(geo: Mapping[str, Any] | None) -> tuple[str, str, bool | None]:
         name = clean_org(as_org or org or g.get("isp") or g.get("net_domain") or "")
         return kind, f"{name} matches the {kind} name rule", mobile
     rd = g.get("rdns_domain") or ""
-    if (rd and g.get("rdns_dynamic") is False and domain_root(rd) != domain_root(g.get("net_domain"))
-            and not _rx_kind(rd)):
+    if rd and g.get("rdns_dynamic") is False and not _carrier_domain(rd, g) and not _rx_kind(rd):
         return "corporate", f"reverse DNS names {rd}", mobile
     return "unknown", "no rule matched", mobile
+
+
+def _carrier_domain(rd: str, g: Mapping[str, Any]) -> bool:
+    """The reverse-DNS domain is the network owner's own: its net_domain, or, when the provider gives no domain (GeoLite2),
+    a domain named like the AS owner ('tatacommunications.com', 'actcorp.in' for Atria Convergence Technologies)."""
+    root = domain_root(rd)
+    if g.get("net_domain"):
+        return root == domain_root(g.get("net_domain"))
+    owner = org_key(g.get("as_org") or g.get("org") or g.get("isp") or "")
+    if not owner or not root:
+        return False
+    initials = "".join(w[0] for w in owner.split())
+    return (same_company(org_key(root), owner) or (len(root) >= 4 and owner.replace(" ", "").startswith(root))
+            or root.startswith(owner.replace(" ", "")) or (len(initials) >= 3 and root.startswith(initials)))
 
 
 def org_of(geo: Mapping[str, Any], kind: str) -> str | None:

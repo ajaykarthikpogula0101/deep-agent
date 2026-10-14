@@ -16,6 +16,7 @@ services:
     environment:
       DATABASE_URL: postgresql://assistant:assistant@db:5432/assistant
     ports: [ "8080:8080" ]
+    volumes: [ "geoip:/srv/data/geoip" ]  # MaxMind GeoLite2 files (app/geoip_update.py) survive rebuilds
     depends_on:
       db: { condition: service_healthy }
 
@@ -32,3 +33,4 @@ services:
 
 volumes:
   pgdata: {}
+  geoip: {}

@@ -11,3 +11,4 @@ node_modules/
 edge-profile/
 email_preview/
 .playwright-mcp/
+data/geoip/

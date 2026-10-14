@@ -197,6 +197,7 @@ _errors: dict[str, int] = {}               # provider -> consecutive errors
 _quota: dict[tuple[str, str], int] = {}    # (provider, UTC date) -> outbound lookups today
 _vquota: dict[str, int] = {}               # UTC date -> page-view (purpose='visitor') lookups today, OUTREACH_GEO_DAILY_CAP
 _mmdb: dict[str, Any] = {}                 # opened GeoLite2 readers, or {"missing": reason}
+_mmdb_lock = threading.Lock()              # opening, closing and swapping the files (app/geoip_update.py)
 _rdns_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rdns")
 _ASN_RE = re.compile(r"^AS(\d+)\s*(.*)$", re.I)
 _GEO_STR = ("country", "country_code", "region", "city", "isp", "geo_tz", "as_org", "org", "net_domain", "type", "rdns_domain",
@@ -298,25 +299,51 @@ def _failed(provider: str, reason: str) -> dict[str, Any]:
     return normalise_geo(provider, {}) | {"reason": reason}
 
 
-def _mmdb_lookup(ip: str) -> dict[str, Any]:
-    """Local MaxMind GeoLite2 files (GEOIP_MMDB_DIR): place and AS, no domain. Optional `pip install maxminddb`."""
-    if not _mmdb:
-        try:
-            import maxminddb  # type: ignore[import-not-found]
-            from pathlib import Path
+def _mmdb_readers() -> dict[str, Any]:
+    """The opened readers ({'city', 'asn'}), or {'missing': reason}. Opened once; reset_mmdb() makes the next call reopen."""
+    with _mmdb_lock:
+        if not _mmdb:
+            try:
+                import maxminddb  # type: ignore[import-not-found]
+                from pathlib import Path
 
-            d = Path(settings.geoip_mmdb_dir or ".")
-            _mmdb["city"] = maxminddb.open_database(str(d / "GeoLite2-City.mmdb"))
-            _mmdb["asn"] = maxminddb.open_database(str(d / "GeoLite2-ASN.mmdb"))
-        except Exception as e:  # ImportError, missing files
-            _mmdb.clear()
-            _mmdb["missing"] = str(e)[:200]
-            log.warning("mmdb geo provider unavailable: %s", _mmdb["missing"])
-    if "missing" in _mmdb:
+                d = Path(settings.mmdb_dir or ".")
+                _mmdb["city"] = maxminddb.open_database(str(d / "GeoLite2-City.mmdb"))
+                _mmdb["asn"] = maxminddb.open_database(str(d / "GeoLite2-ASN.mmdb"))
+            except Exception as e:  # ImportError, missing files
+                _close_readers([v for k, v in _mmdb.items() if k != "missing"])
+                _mmdb.clear()
+                _mmdb["missing"] = str(e)[:200]
+                log.warning("mmdb geo provider unavailable: %s", _mmdb["missing"])
+        return dict(_mmdb)
+
+
+def _close_readers(readers: list[Any]) -> None:
+    for r in readers:
+        try:
+            r.close()
+        except Exception:
+            pass
+
+
+def reset_mmdb(swap: Any = None) -> None:
+    """Close the cached GeoLite2 readers so the next lookup opens the files again (app/geoip_update.py after a download).
+    `swap`, if given, runs after the close and before anyone can reopen: Windows cannot replace a file that is mapped."""
+    with _mmdb_lock:
+        _close_readers([v for k, v in _mmdb.items() if k != "missing"])
+        _mmdb.clear()
+        if swap:
+            swap()
+
+
+def _mmdb_lookup(ip: str) -> dict[str, Any]:
+    """Local MaxMind GeoLite2 files (settings.mmdb_dir): place and AS, no domain. Needs the maxminddb package."""
+    readers = _mmdb_readers()
+    if "missing" in readers:
         return _failed("mmdb", "unavailable")
     try:
-        city = _mmdb["city"].get(ip) or {}
-        asn = _mmdb["asn"].get(ip) or {}
+        city = readers["city"].get(ip) or {}
+        asn = readers["asn"].get(ip) or {}
     except Exception as e:
         log.warning("mmdb lookup failed: %s", e)
         return _failed("mmdb", "error")
@@ -338,9 +365,9 @@ def mmdb_problem() -> str | None:
         return "the maxminddb package is not installed (pip install maxminddb)"
     from pathlib import Path
 
-    d = Path(settings.geoip_mmdb_dir or ".")
+    d = Path(settings.mmdb_dir or ".")
     missing = [f for f in ("GeoLite2-City.mmdb", "GeoLite2-ASN.mmdb") if not (d / f).is_file()]
-    return f"missing in GEOIP_MMDB_DIR={settings.geoip_mmdb_dir!r}: {', '.join(missing)}" if missing else None
+    return f"missing in {settings.mmdb_dir or '.'}: {', '.join(missing)}" if missing else None
 
 
 def _retry_in(headers: Mapping[str, str]) -> int:

@@ -56,6 +56,17 @@ def test_classify_why_never_carries_an_ip_or_hostname():
     assert classify(ok(as_org="Small Regional Carrier", rdns_domain="carrier.example", rdns_dynamic=True))[0] == "unknown"
 
 
+@pytest.mark.parametrize("as_org,rd,kind", [
+    ("Small Regional Carrier", "smallregionalcarrier.net", "unknown"),   # the carrier's own name
+    ("Rural Digital Link", "rdlnet.in", "unknown"),                      # its initials
+    ("Smallcarrier Networks", "smallcarrier.example", "unknown"),
+    ("Small Regional Carrier", "acme.co.in", "corporate"),               # someone else's domain still counts
+])
+def test_rdns_rule_without_a_provider_domain(as_org, rd, kind):
+    """GeoLite2 (mmdb) gives no net_domain: a static PTR on the carrier's own domain must not read as a company network."""
+    assert classify(ok(asn=64500, as_org=as_org, rdns_domain=rd, rdns_dynamic=False))[0] == kind
+
+
 def test_names_and_domains():
     assert org_key("Apple.INC") == "apple"
     assert org_key("Infosys Limited") == "infosys"

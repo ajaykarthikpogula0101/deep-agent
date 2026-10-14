@@ -387,7 +387,8 @@ Endpoints: `GET /host/booking/{id}?t=`, `GET /host/booking/sample`, `GET /bookin
 ## Operations
 
 * Scheduler jobs (`app/main.py` startup): `recrawl`, `tracking_purge`, `weekly_digest`, `nudges`, `reminders`, `hot_leads`,
-  `gap_drafts`, `gap_followups`, `outcome_asks`, `score_learning`.
+  `gap_drafts`, `gap_followups`, `outcome_asks`, `score_learning`, and `geoip_update` (weekly MaxMind GeoLite2 refresh,
+  only with `MAXMIND_LICENSE_KEY`; docs/TRACKING.md "Geo providers").
 * New tables/columns: `companies`; `leads.company`, `leads.enrichment`, `leads.nudged_at`, `leads.confirmed_at`; `gap_drafts`,
   `gap_asks`, `gap_followups`, `email_optouts`; `bookings.outcome`, `outcome_note`, `outcome_at`, `outcome_asked_at`, `followup`.
 * Turn anything off without a redeploy: `DIGEST_ENABLED=false`, `NUDGE_ENABLED=false`, `ENRICH_ENABLED=false`,

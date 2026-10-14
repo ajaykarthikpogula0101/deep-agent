@@ -55,7 +55,9 @@ random: it identifies the browser profile, nothing else, and it carries no finge
 | `TRACKING_ENABLED` | `true` | `false` turns the beacon into a no-op; session rows then hold only the visitor id and the message/lead counters (`geo_status=disabled`), never IP, user agent, page, referrer, timezone, language or screen |
 | `GEOIP_PROVIDER` | `ipwho` | `ipwho` (ipwho.is, free, no key, HTTPS, ~10k/month), `ipinfo` (token, 50k/month, commercial OK), `ipapi` (ip-api.com, HTTP only, non-commercial; startup warns), `ipapiis` (api.ipapi.is, HTTPS, no key, ~1k/day; verify its terms before enabling), `mmdb` (local MaxMind GeoLite2 files), `none`, or a comma chain such as `mmdb,ipwho` (the first `ok` wins) |
 | `GEOIP_TOKEN` | | ipinfo token |
-| `GEOIP_MMDB_DIR` | | folder with `GeoLite2-City.mmdb` and `GeoLite2-ASN.mmdb`. Needs `pip install maxminddb` (not in requirements.txt), a MaxMind account and licence key, attribution, and refreshing the files within 30 days (EULA). GeoLite2-ASN has no domain, so email matching falls back to the org name. Missing package or files: skipped with one log line |
+| `GEOIP_MMDB_DIR` | | folder with `GeoLite2-City.mmdb` and `GeoLite2-ASN.mmdb`; empty means `data/geoip` once `MAXMIND_LICENSE_KEY` is set. Read with the `maxminddb` package (in requirements.txt). GeoLite2-ASN has no domain, so email matching falls back to the org name (see "Geo providers" below). Missing files: the provider is skipped with one log line |
+| `MAXMIND_LICENSE_KEY` | | a free MaxMind GeoLite2 licence key: `app/geoip_update.py` downloads both files at startup (when missing or older than 6 days, on a background thread) and weekly. Empty: nothing is downloaded. Never logged |
+| `MAXMIND_ACCOUNT_ID` | | the MaxMind account number. With it the download uses `https://download.maxmind.com/geoip/databases/<edition>/download` with HTTP basic auth, so the key stays out of every URL; without it, the legacy URL that carries the key as a query parameter (redacted from logs) |
 | `GEOIP_DAILY_CAP` | `300` | outbound lookups per provider per UTC day, counted in-process (the app runs one worker); over the cap the provider is skipped with reason `quota` |
 | `GEOIP_FAIL_RETRY_MIN` | `60` | a failed /24 lookup is cached this long before the provider is asked again |
 | `GEOIP_DEV_IP` | | local dev only: honoured only when `DATABASE_URL` points at localhost/127.0.0.1. Private IPs are looked up as this public IP instead and tagged `dev` (admin chip tooltip, `[dev test IP]` in the brief), so every local session gets the same place |
@@ -77,6 +79,58 @@ hostname. Private and loopback addresses are never sent to the provider (`geo_st
 `local test network`), which is what local testing shows; use `GEOIP_DEV_IP` or the CLI to see the rest. A 429 pauses a
 provider (Retry-After or ip-api's X-Ttl, else 15 min), and so do 5 errors in a row. The legacy per-IP `ip_geo` table
 is no longer read or written; purge empties it.
+
+## Geo providers: keys, privacy, limits
+
+Tracking works with no key at all: the default `GEOIP_PROVIDER=ipwho` is a free HTTPS API. A key only changes which
+provider answers.
+
+| Provider | Key | Where the lookup happens | What it gives | Limits |
+|---|---|---|---|---|
+| `ipwho` (ipwho.is) | none | the visitor's IP is sent to ipwho.is | place, timezone, AS number, AS owner, ISP, the network's **domain** | ~10k requests/month on the free tier; no VPN/hosting/mobile flags; check its terms for commercial use |
+| `ipinfo` (ipinfo.io) | `GEOIP_TOKEN` | sent to ipinfo.io | place and AS owner; `asn`, `company`, `privacy` objects only on paid plans | per its plan; commercial use allowed |
+| `ipapi` (ip-api.com) | none | sent over **plain HTTP** | place, AS, netblock org, mobile/proxy/hosting flags | non-commercial only (startup warns) |
+| `ipapiis` (api.ipapi.is) | none | sent to ipapi.is | place, AS, company name and domain, VPN/datacenter flags | ~1k/day; verify its terms first |
+| `mmdb` (MaxMind GeoLite2) | `MAXMIND_LICENSE_KEY` (+ `MAXMIND_ACCOUNT_ID`) to **download** the files | **on this server**: nothing about the visitor leaves it | place, timezone, AS number, AS owner | no lookup quota (`GEOIP_DAILY_CAP` does not apply); MaxMind caps downloads per day (HTTP 429, retried on the next run); GeoLite2 is less precise than MaxMind's paid data |
+
+**mmdb compared with ipwho.** Both give country, region, city, coordinates, timezone, AS number and AS owner, and neither
+(on ipwho's free tier) gives VPN, hosting or mobile flags, so `network.classify` reaches the same verdicts from the AS
+number (`KNOWN_ASN`) and the AS owner's name. What mmdb lacks is the network's **domain** (`net_domain`) and a separate
+ISP name (`isp` repeats the AS owner). In practice:
+
+* email match (`network.match`) compares the business email domain with the AS owner's name instead of with a domain:
+  `infosys.com` still matches "Infosys Limited", `tcs.com` no longer matches "Tata Consultancy Services";
+* the reverse-DNS rule (`NET_RDNS`) recognises the carrier's own PTR domain from the AS owner's name or initials
+  instead of from `net_domain`;
+* organisations seen by page views (`app/visitors.py`) are keyed `org:<name>` instead of by their domain, so their
+  industry is not filled from the homepage (set it in the console), and an organisation first seen under `ipwho` gets
+  a second row after the switch;
+* the admin "network" column shows no domain.
+
+Nothing else changes. In a chain the first `ok` answer wins, so with `mmdb,ipwho` ipwho is asked only for addresses
+GeoLite2 cannot place, or while the files are missing (first start, before the download finishes).
+
+**Downloading the files.** `app/geoip_update.py` fetches GeoLite2-City and GeoLite2-ASN with the key, checks each
+archive against MaxMind's `.sha256`, takes only the `.mmdb` member (regular file, safe path, size capped), checks it
+opens as the right database and swaps it in atomically; tracking's open readers are closed so the next lookup uses the
+new file. It runs at startup when a file is missing or older than 6 days (background thread, startup never waits),
+and weekly on Wednesday 04:50 host time (scheduler job `geoip_update`; MaxMind publishes on Tuesdays and Fridays).
+By hand: `python -m app.geoip_update` (`--force` ignores the 6-day freshness). A refused key (HTTP 401/403) or the
+download cap (429) is logged in plain words; the key is never logged. Under Docker the files live in the `geoip`
+volume. On Windows a running app keeps the files mapped, so a manual `--force` there fails with "is another process
+using it?" and the app's own weekly job does the update instead.
+
+**MaxMind's GeoLite2 EULA** (read the current text on maxmind.com before go-live): keep the files no more than 30 days
+behind a new release (the weekly job does this), do not use the data to identify a specific person or household, and
+credit MaxMind wherever the data is used, for example in the privacy page or site credits: "This product includes
+GeoLite2 data created by MaxMind, available from https://www.maxmind.com". With `mmdb` MaxMind receives no visitor
+data, so it is not a processor in the privacy notice; every remote provider still in the chain is.
+
+**Recommended production setting:** `GEOIP_PROVIDER=mmdb,ipwho` with `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY`
+set, and `TRACK_IP_MODE=masked`. Lookups stay on the server, there is no daily quota, and ipwho only fills gaps. If
+naming organisations by their domain matters more than keeping lookups local, use `ipwho,mmdb` instead: ipwho answers
+first and GeoLite2 covers its quota, outages and 429s. Startup warns when a MaxMind key is set but `mmdb` is not in
+`GEOIP_PROVIDER`.
 
 ## The network behind the IP
 

@@ -73,3 +73,13 @@ def _no_dns(monkeypatch):
     from app.config import settings
 
     monkeypatch.setattr(settings, "domain_check", False)
+
+
+@pytest.fixture(autouse=True)
+def _no_maxmind(monkeypatch):
+    """.env may hold the owner's MaxMind key: no test downloads GeoLite2 or reads a real data/geoip folder.
+    tests/test_geoip_update.py sets a fake key and stubs HTTP itself."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "maxmind_license_key", "")
+    monkeypatch.setattr(settings, "maxmind_account_id", "")
