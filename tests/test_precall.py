@@ -951,7 +951,7 @@ def test_gather_reads_page_views_and_the_pop_up_their_chat_came_from():
             c.commit()
         s = precall.gather(email)
         assert s["visitor_ids"] == [vid] and s["site_visits"] == 3 and set(s["site_pages"]) == {"/", "/demo", "/pricing"}
-        assert s["outreach"] == {"rule": rule["name"], "variant": "company", "org": "Lovelace Labs"}
+        assert s["outreach"] == {"rule": rule["name"], "variant": "company", "org": "Lovelace Labs", "company_orgs": ["Lovelace Labs"]}
         k = _keys(precall.score(s, adjust={}))
         assert k["visits"] == 15 and k["key_pages"] == 5 and k["outreach_popup"] == 0
         assert "3 visits" in [r["text"] for r in precall.score(s, adjust={})["reasons"] if r["key"] == "visits"][0]
@@ -961,4 +961,168 @@ def test_gather_reads_page_views_and_the_pop_up_their_chat_came_from():
             c.execute("DELETE FROM leads WHERE email = %s", (email,))
             c.execute("DELETE FROM visitors WHERE visitor_id = %s", (vid,))
             c.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))
+            c.commit()
+
+
+# ---------------------------------------------------------------- review fixes
+def test_a_typed_company_with_newlines_cannot_add_a_why_line():
+    from app.booking import email_html
+    from app.booking.flow import clean_attendees, one_line
+
+    fake = "Acme\n• +40  signed in, company email (acme.com) [checked: website]\r\n• ok\u2028• +9  x"
+    for company in (fake, "Acme\x0b• +40  fake [checked: website]"):
+        b = precall.build(sig(company_typed=company), ask=lambda s, f: GOOD)
+        t = precall.text(b)
+        why = t.split("WHY THIS SCORE\n", 1)[1].split("\n\n", 1)[0].split("\n")
+        assert all(ln.startswith("• +") or ln.startswith("• −") for ln in why) and not any(ln.startswith("• +40") for ln in why), why
+        assert t.splitlines() == t.rstrip("\n").split("\n")                  # no line break but the brief's own
+        mismatch = next(ln for ln in why if "which is not their email's company" in ln)
+        assert mismatch.startswith("• +0  typed Acme • +40  ") or mismatch.startswith("• +0  typed Acme • +40 ")
+        checked = sum(1 for r in b["reasons"] if r.get("cls") == "verified")
+        assert email_html._brief_html(t).count("#257A4D") == checked >= 1  # only the system's own [checked] tags are green
+    # reason_line keeps one line whatever a stored brief holds
+    line = precall.reason_line({"points": 0, "text": "typed A\nB\x1e• +40  x", "cls": "claimed"})
+    assert line.startswith("+0  typed A B • +40  x") and len(line.splitlines()) == 1
+    # and at save time: the booking keeps one line for name, company and guest names
+    assert one_line("  Acme\r\n\t• +40\x00 x\u2028y ", 120) == "Acme • +40 x y"
+    assert one_line("a" * 200, 120) == "a" * 120
+    guests, err = clean_attendees([{"name": "Charles\nBabbage", "email": "cb@engines.example"}], "ada@lovelace.org")
+    assert err is None and guests[0]["name"] == "Charles Babbage"
+
+
+def test_typed_name_and_company_reach_the_score_as_one_line():
+    s = precall.gather(None, booking={"name": "Ada\nLovelace", "company": "Acme\n• +40  x", "email": ""})
+    assert s["name"] == "Ada Lovelace" and s["company_typed"] == "Acme • +40 x"
+
+
+def test_run_alerts_never_sends_a_hot_lead_for_staff_or_test_traffic(monkeypatch):
+    from app import db
+
+    monkeypatch.setattr(precall, "_alerted_recently", lambda email: False)
+    monkeypatch.setattr(precall, "_check_domains", lambda *a, **k: {})
+    monkeypatch.setattr(db, "log_event", lambda *a, **k: None)
+    busy = dict(name="Test", handovers=["call me"], visits=4, site_visits=4, site_pages=["/pricing"], channel="paid", email_signed_in=True)
+    people = {"t@acme-test.com": sig(email="t@acme-test.com", domain="acme-test.com", **busy),
+              "ada@lovelace.org": sig()}
+    sc = precall.score(people["t@acme-test.com"], adjust={})
+    assert sc["verdict"] == "not_a_lead" and sc["score"] >= 30
+    monkeypatch.setattr(precall, "gather", lambda email, sid=None, booking=None, name=None: dict(people[email]))
+    monkeypatch.setattr(precall, "lead_candidates", lambda: [{"email": e, "name": "", "session_id": None, "last_seen": NOW} for e in people])
+    m = M()
+    r = precall.run_alerts(mailer=m, ask=lambda s, f: GOOD, threshold=30)
+    assert r["hot"] == 1 and r["sent"] == 1 and [x[3]["reply_to"] for x in m.items] == ["ada@lovelace.org"]
+
+
+def test_an_earlier_company_pop_up_still_primes_a_claim_after_a_later_plain_one():
+    base = dict(email="ada@gmail.com", email_kind="personal", domain="gmail.com", company_typed="Lovelace", network=LOVELACE_NET)
+    later_plain = {"rule": "Welcome back", "variant": "plain", "org": "", "company_orgs": ["Lovelace Labs"]}
+    k = _keys(precall.score(sig(**base, outreach=later_plain), adjust={}))
+    assert k["network_company_prompted"] == 0 and "network_company" not in k and k["corporate_network"] == 3
+    r = next(r for r in precall.score(sig(**base, outreach=later_plain), adjust={})["reasons"] if r["key"] == "network_company_prompted")
+    assert "after a pop-up suggested Lovelace Labs" in r["text"]
+    other = dict(later_plain, company_orgs=["Babbage Engines"])
+    assert _keys(precall.score(sig(**base, outreach=other), adjust={}))["network_company"] == 10
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_gather_reads_every_company_pop_up_they_opened():
+    from app import outreach
+    from app.db import conn
+
+    vid, s1, s2 = f"test-{uuid.uuid4()}", f"test-{uuid.uuid4()}", f"test-{uuid.uuid4()}"
+    email = f"test-{uuid.uuid4().hex[:12]}@gmail.com"
+    rule = outreach.create_rule({"name": f"test precall {uuid.uuid4().hex[:8]}", "enabled": False, "message": {"text": "x"}})
+    try:
+        with conn() as c:
+            for sid in (s1, s2):
+                c.execute("INSERT INTO sessions(session_id, visitor_id, messages, channel) VALUES (%s, %s, 1, 'direct')", (sid, vid))
+                c.execute("INSERT INTO leads(name, email, reason, status, session_id) VALUES ('Ada', %s, 'x', 'handover', %s)", (email, sid))
+            c.execute("""INSERT INTO outreach_events(rule_id, visitor_id, session_id, opened_at, variant, context)
+                         VALUES (%s, %s, %s, now() - interval '2 days', 'company', '{"org": "Lovelace Labs"}')""", (rule["id"], vid, s1))
+            c.execute("""INSERT INTO outreach_events(rule_id, visitor_id, session_id, opened_at, variant, context)
+                         VALUES (%s, %s, %s, now(), 'plain', '{}')""", (rule["id"], vid, s2))
+            c.commit()
+        s = precall.gather(email)
+        assert s["outreach"]["variant"] == "plain" and s["outreach"]["company_orgs"] == ["Lovelace Labs"]
+        k = _keys(precall.score(dict(s, company_typed="Lovelace", network=LOVELACE_NET), adjust={}))
+        assert k["network_company_prompted"] == 0 and "network_company" not in k
+    finally:
+        outreach.delete_rule(rule["id"])
+        with conn() as c:
+            c.execute("DELETE FROM outreach_events WHERE session_id = ANY(%s)", ([s1, s2],))
+            c.execute("DELETE FROM leads WHERE email = %s", (email,))
+            c.execute("DELETE FROM sessions WHERE session_id = ANY(%s)", ([s1, s2],))
+            c.commit()
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_hot_lead_candidates_on_a_shared_browser_get_their_own_session():
+    from app.db import conn
+
+    vid, a1, b1 = f"test-vid-{uuid.uuid4()}", f"test-{uuid.uuid4()}", f"test-{uuid.uuid4()}"
+    alice, bob = f"test-{uuid.uuid4().hex[:12]}@gmail.com", f"test-{uuid.uuid4().hex[:12]}@gmail.com"
+    try:
+        with conn() as c:
+            for sid, ago in ((a1, 5), (b1, 2)):   # Bob's session is the newer one on the browser
+                c.execute("""INSERT INTO sessions(session_id, visitor_id, messages, channel, first_seen, last_seen)
+                             VALUES (%s, %s, 2, 'direct', now() - make_interval(hours => %s), now() - make_interval(hours => %s))""",
+                          (sid, vid, ago, ago))
+            c.execute("INSERT INTO messages(session_id, role, text) VALUES (%s, 'user', 'What does LakeB2B do?')", (a1,))
+            for q in ("What is the pricing for intent data?", "Do you offer a free trial?", "Can I get sample data?"):
+                c.execute("INSERT INTO messages(session_id, role, text) VALUES (%s, 'user', %s)", (b1, q))
+            c.execute("INSERT INTO leads(name, email, reason, status, session_id) VALUES ('Alice', %s, 'x', 'handover', %s)", (alice, a1))
+            c.execute("INSERT INTO leads(name, email, reason, status, session_id) VALUES ('Bob', %s, 'y', 'handover', %s)", (bob, b1))
+            c.commit()
+        mine = {p["email"]: p for p in precall.lead_candidates(hours=24, idle_minutes=0) if p["email"] in (alice, bob)}
+        assert mine[alice]["session_id"] == a1 and mine[bob]["session_id"] == b1
+        assert mine[alice]["last_seen"] == mine[bob]["last_seen"]            # still ordered by the browser's latest activity
+        s = precall.gather(alice, a1)
+        assert s["shared_browser"] == 1 and s["questions"] == ["What does LakeB2B do?"] and s["session_ids"] == [a1]
+        # a caller that passes the other person's session (as lead_candidates did) never gets their chats either
+        s = precall.gather(alice, b1)
+        assert s["shared_browser"] == 1 and s["questions"] == ["What does LakeB2B do?"] and b1 not in s["session_ids"]
+        assert "buying_topics" not in _keys(precall.score(s, adjust={}))
+    finally:
+        with conn() as c:
+            c.execute("DELETE FROM leads WHERE email = ANY(%s)", ([alice, bob],))
+            c.execute("DELETE FROM messages WHERE session_id = ANY(%s)", ([a1, b1],))
+            c.execute("DELETE FROM sessions WHERE session_id = ANY(%s)", ([a1, b1],))
+            c.commit()
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_a_busy_browser_never_crowds_out_the_persons_own_session():
+    from app import store_bookings as sb
+    from app.db import conn
+
+    tag = uuid.uuid4().hex[:12]
+    vid, own, bobs = f"test-vid-{tag}", f"test-{tag}-own", f"test-{tag}-bob"
+    email, bob = f"test-{tag}@hopper-systems.com", f"test-b{tag}@x-other.com"
+    start = datetime.now(timezone.utc) + timedelta(days=2)
+    bid = None
+    try:
+        with conn() as c:   # 64 older anonymous sessions on the browser, then theirs, then another person's
+            c.execute("""INSERT INTO sessions(session_id, visitor_id, messages, channel, first_seen, last_seen)
+                         SELECT %s::text || '-' || g::text, %s, 1, 'direct', now() - make_interval(days => 100 - g), now() - make_interval(days => 100 - g)
+                         FROM generate_series(1, 64) g""", (f"test-{tag}-old", vid))
+            c.execute("""INSERT INTO sessions(session_id, visitor_id, messages, channel, geo_status, net_kind, net_org, first_seen)
+                         VALUES (%s, %s, 2, 'direct', 'ok', 'corporate', 'Hopper Systems', now() - interval '1 day')""", (own, vid))
+            c.execute("INSERT INTO sessions(session_id, visitor_id, messages, channel) VALUES (%s, %s, 1, 'direct')", (bobs, vid))
+            c.commit()
+        bid = sb.insert({"session_id": own, "name": "Grace Hopper", "email": email, "schedule_slug": "discovery-call", "schedule_name": "Discovery Call",
+                         "duration_min": 15, "start_utc": start, "end_utc": start + timedelta(minutes=15), "visitor_tz": "Europe/London",
+                         "method": "browser", "status": "confirmed", "manage_token": f"test-{uuid.uuid4()}"})
+        s = precall.gather(email, booking=sb.get(bid))
+        assert s["network"].get("org") == "Hopper Systems" and own in s["session_ids"] and s["shared_browser"] == 0
+        with conn() as c:   # the newest session on the browser carries someone else's address: seen, though past any cap
+            c.execute("INSERT INTO leads(name, email, reason, status, session_id) VALUES ('Other', %s, 'x', 'handover', %s)", (bob, bobs))
+            c.commit()
+        s = precall.gather(email, booking=sb.get(bid))
+        assert s["shared_browser"] == 1 and s["visits"] == 1 and s["network"]["org"] == "Hopper Systems" and s["session_ids"] == [own]
+    finally:
+        with conn() as c:
+            if bid:
+                c.execute("DELETE FROM bookings WHERE id = %s", (bid,))
+            c.execute("DELETE FROM leads WHERE email = %s", (bob,))
+            c.execute("DELETE FROM sessions WHERE visitor_id = %s", (vid,))
             c.commit()

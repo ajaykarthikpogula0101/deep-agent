@@ -15,6 +15,7 @@ Side effects are injectable (Deps) so the whole flow is testable without Postgre
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -54,6 +55,15 @@ def default_deps() -> Deps:
 
 
 # ---------------------------------------------------------------- helpers
+_BREAKS = re.compile(r"[\s\x00-\x1f\x7f-\x9f]+")
+
+
+def one_line(s: str | None, n: int) -> str:
+    """A typed name or company as stored: line breaks, tabs and control characters become one space, then clipped to n.
+    A newline kept in either would start a line of its own in the brief and the host emails."""
+    return _BREAKS.sub(" ", s or "").strip()[:n].rstrip()
+
+
 def _schedule_view(s: Schedule) -> dict[str, Any]:
     return {"slug": s.slug, "name": s.name, "duration_min": s.duration_min, "description": avail.describe(s),
             "booking_link": s.booking_link}
@@ -141,7 +151,7 @@ def clean_attendees(raw: list | None, booker_email: str) -> tuple[list[dict[str,
     for g in raw or []:
         if not isinstance(g, dict):
             continue
-        name, email = (g.get("name") or "").strip()[:120], (g.get("email") or "").strip()[:200]
+        name, email = one_line(g.get("name"), 120), (g.get("email") or "").strip()[:200]
         if not name and not email:
             continue
         if len(name) < 2:
@@ -215,8 +225,9 @@ def _book_on_zoom(service: BookingService, schedule: Schedule, start_utc: dateti
 
 def confirm(service: BookingService, req: ConfirmRequest, deps: Deps | None = None) -> dict[str, Any]:
     deps = deps or default_deps()
-    name, email = (req.name or "").strip()[:120], (req.email or "").strip()[:200]
-    company, notes = (req.company or "").strip()[:120], (req.notes or "").strip()[:1000]
+    name, email = one_line(req.name, 120), (req.email or "").strip()[:200]
+    company, notes = one_line(req.company, 120), (req.notes or "").strip()[:1000]  # notes keep their lines (shown quoted)
+    req.name, req.company = name, company  # the browser booking types them into Zoom's form
     if not name or not _EMAIL_RE.match(email):
         return {"status": "invalid", "message": "Please give your full name and a valid email address."}
     if looks_like_placeholder(name, email):

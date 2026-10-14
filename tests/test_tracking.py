@@ -12,10 +12,22 @@ from app.tracking import classify_channel, client_ip, format_origin, is_public, 
 
 def test_client_ip_prefers_proxy_headers_only_when_trusted():
     h = {"x-forwarded-for": "203.0.113.9, 10.0.0.1", "x-real-ip": "203.0.113.10"}
-    assert client_ip(h, "10.0.0.2", trust_proxy=True) == "203.0.113.10"  # x-real-ip wins over the XFF chain
+    assert client_ip(h, "10.0.0.2", trust_proxy=True) == "203.0.113.9"    # the XFF walk wins over x-real-ip
     assert client_ip({"x-forwarded-for": "203.0.113.9, 10.0.0.1"}, "10.0.0.2", trust_proxy=True) == "203.0.113.9"
-    assert client_ip({"cf-connecting-ip": "198.51.100.7", **h}, "10.0.0.2", trust_proxy=True) == "198.51.100.7"
+    assert client_ip({"x-real-ip": "203.0.113.10"}, "10.0.0.2", trust_proxy=True) == "203.0.113.10"   # no XFF: x-real-ip
     assert client_ip(h, "10.0.0.2", trust_proxy=False) == "10.0.0.2"
+
+
+def test_forged_cf_connecting_ip_or_x_real_ip_never_beats_the_forwarded_for_walk():
+    """nginx in front (a trusted peer) appends the real address to X-Forwarded-For but passes the visitor's own
+    CF-Connecting-IP through: the walk decides."""
+    forged = {"cf-connecting-ip": "17.253.0.5", "x-forwarded-for": "17.253.0.5, 49.207.200.10"}
+    assert client_ip(forged, "127.0.0.1", trust_proxy=True) == "49.207.200.10"
+    assert client_ip({"x-real-ip": "17.253.0.5", "x-forwarded-for": "49.207.200.10"}, "10.0.0.2", trust_proxy=True) == "49.207.200.10"
+    assert client_ip({"cf-connecting-ip": "17.253.0.5"}, "127.0.0.1", trust_proxy=True) == "127.0.0.1"   # no XFF: not from Cloudflare
+    # every hop a trusted proxy (Cloudflare's ranges listed in TRUSTED_PROXIES): the outermost one's header names the visitor
+    assert client_ip({"cf-connecting-ip": "49.207.200.10", "x-forwarded-for": "10.0.0.7, 10.0.0.5"}, "10.0.0.2", trust_proxy=True) == \
+        "49.207.200.10"
 
 
 def test_client_ip_ignores_garbage_headers():
@@ -72,6 +84,16 @@ def test_format_origin_reads_like_a_sentence():
     assert format_origin(camp) == "Germany · campaign linkedin/cpc/q4"
 
 
+def _doc_nets_public(monkeypatch):
+    """Let the session tests look up and cache the reserved documentation ranges (TEST-NET-1/2/3): the app treats them
+    as private, so no real lookup is ever cached there and a test's ip_net row cannot be anyone else's."""
+    real = tracking.is_public
+    monkeypatch.setattr(tracking, "is_public", lambda ip: str(ip).startswith(DOC_NETS) or real(ip))
+
+
+DOC_NETS = ("192.0.2.", "198.51.100.", "203.0.113.")
+
+
 def _db_up() -> bool:
     try:
         from app.db import conn, init_schema
@@ -92,19 +114,18 @@ def test_session_round_trip_without_network(monkeypatch):
         "latitude": 12.97, "longitude": 77.59, "connection": {"isp": "Jio"}, "timezone": {"id": "Asia/Kolkata"}}))
     monkeypatch.setattr(tracking.settings, "tracking_enabled", True)
     monkeypatch.setattr(tracking.settings, "track_ip_mode", "masked")
-    # 203.0.113.0/24 is a documentation range and Python's ipaddress treats it as private, so use a real public one
-    sid, vid, ip = f"test-{uuid.uuid4()}", f"vis-{uuid.uuid4()}", "49.207.200.10"
+    sid, vid, ip = f"test-{uuid.uuid4()}", f"vis-{uuid.uuid4()}", "203.0.113.10"
+    _doc_nets_public(monkeypatch)
+    nets = _Nets(ip)   # the /24 row this test writes is the only one it deletes
     from app.db import conn
 
     def cleanup():
         with conn() as c:
             c.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))
-            c.execute("DELETE FROM ip_geo WHERE ip = %s", (ip,))
-            c.execute("DELETE FROM ip_net WHERE net = %s", (mask_ip(ip),))  # a cached real lookup would bypass the stub
             c.commit()
+        nets.drop()
 
     monkeypatch.setattr(tracking.settings, "net_rdns", False)
-    cleanup()
     try:
         res = tracking.start_session(sid, vid, ip, "pytest/1.0", "https://deependhq.com/pillars?utm_source=newsletter&utm_medium=email",
                                      "https://mail.google.com/", "Asia/Kolkata", "en-IN", "1440x900")
@@ -118,7 +139,7 @@ def test_session_round_trip_without_network(monkeypatch):
         assert line.endswith("visit 1 · 2 messages")
         with conn() as c:
             stored_ip, city, geo_status = c.execute("SELECT ip, city, geo_status FROM sessions WHERE session_id = %s", (sid,)).fetchone()
-        assert (stored_ip, city, geo_status) == ("49.207.200.0", "Bengaluru", "ok")  # masked after the lookup
+        assert (stored_ip, city, geo_status) == ("203.0.113.0", "Bengaluru", "ok")  # masked after the lookup
         # the host brief carries the origin line
         from app.booking.email import render_brief
 
@@ -196,10 +217,9 @@ def test_ensure_session_creates_row_with_visitor_and_geo(monkeypatch):
 
     monkeypatch.setattr(tracking, "_fetch_geo", lambda ip: normalise_geo("ipwho", IPWHO))
     monkeypatch.setattr(tracking.settings, "tracking_enabled", True)
-    sid, vid, ip = f"test-{uuid.uuid4()}", f"vis-{uuid.uuid4()}", "49.207.200.10"
-    with conn() as c:
-        c.execute("DELETE FROM ip_net WHERE net = %s", (mask_ip(ip),))  # a cached real lookup would bypass the stub
-        c.commit()
+    sid, vid, ip = f"test-{uuid.uuid4()}", f"vis-{uuid.uuid4()}", "198.51.100.10"
+    _doc_nets_public(monkeypatch)
+    nets = _Nets(ip)
     try:
         assert tracking.ensure_session(sid, visitor_id=vid, ip=ip, user_agent="pytest",
                                        page="https://deependhq.com/pricing?utm_source=linkedin",
@@ -210,9 +230,7 @@ def test_ensure_session_creates_row_with_visitor_and_geo(monkeypatch):
         assert r["channel"] == "social" and r["geo_status"] == "ok" and r["city"] == "Bengaluru"
     finally:
         _drop(sid)
-        with conn() as c:
-            c.execute("DELETE FROM ip_net WHERE net = %s", (mask_ip(ip),))
-            c.commit()
+        nets.drop()
 
 
 @pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
@@ -542,3 +560,38 @@ def test_purge_keeps_places_only_for_organisations():
             assert (row["city"], row["lat"]) == (("Pune", 18.5) if kind == "corporate" else (None, None))
     finally:
         _drop(*sids.values())
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_one_ips_reverse_dns_never_decides_its_neighbours_network(monkeypatch):
+    """ipinfo's hostname is a fact about the one IP looked up: that call keeps rdns_domain/rdns_dynamic, the /24 cache
+    (and every neighbour served from it) never does, including rows cached before the fields were left out."""
+    from app import network
+    from app.db import conn
+
+    _fresh_provider_state(monkeypatch, chain="ipinfo")
+    _doc_nets_public(monkeypatch)
+    payload = {"country": "IN", "region": "Karnataka", "city": "Pune", "loc": "18.52,73.85", "org": "AS64500 Small Town Broadband",
+               "timezone": "Asia/Kolkata", "hostname": "mail.acme-widgets.example"}
+    calls = []
+    monkeypatch.setattr(tracking, "_fetch_one", lambda p, ip: calls.append(ip) or normalise_geo("ipinfo", payload))
+    a, b = "192.0.2.10", "192.0.2.77"
+    nets = _Nets(a)
+    try:
+        first = tracking.geolocate(a)
+        assert first["rdns_domain"] == "acme-widgets.example" and first["rdns_dynamic"] is False
+        with conn() as c:
+            data = c.execute("SELECT data FROM ip_net WHERE net = %s", (mask_ip(a),)).fetchone()[0]
+            assert data["rdns_domain"] is None and data["rdns_dynamic"] is None and data["city"] == "Pune"
+            assert tracking.cached_geo(b, c)["rdns_domain"] is None
+        neighbour = tracking.geolocate(b)
+        assert calls == [a] and neighbour["rdns_domain"] is None and neighbour["rdns_dynamic"] is None
+        assert network.classify(neighbour)[0] == network.classify(normalise_geo("ipinfo", dict(payload, hostname=None)))[0]
+        with conn() as c:   # a row cached before the fix still holds them: they are dropped on read
+            c.execute("UPDATE ip_net SET data = data || '{\"rdns_domain\": \"acme-widgets.example\", \"rdns_dynamic\": false}'::jsonb WHERE net = %s",
+                      (mask_ip(a),))
+            c.commit()
+            assert tracking.cached_geo(b, c)["rdns_domain"] is None
+        assert tracking.geolocate(b)["rdns_domain"] is None and calls == [a]
+    finally:
+        nets.drop()

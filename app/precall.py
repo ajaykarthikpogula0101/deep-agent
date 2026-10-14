@@ -114,6 +114,14 @@ def _clip(s: Any, n: int) -> str:
     return t if len(t) <= n else t[: n - 1].rstrip() + "…"
 
 
+_BREAKS = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]+")  # everything str.splitlines() splits on, and other controls
+
+
+def _one_line(s: Any) -> str:
+    """Line breaks and control characters as one space; other spacing kept (the brief's '+15  reason' lines)."""
+    return _BREAKS.sub(" ", str(s or "")).strip()
+
+
 def _path(page: str | None) -> str:
     if not page:
         return ""
@@ -419,9 +427,10 @@ def gather(email: str | None, session_id: str | None = None, booking: dict[str, 
         kind = "personal"  # gmial.com, mailinator.com: no company behind it
     attendees = [g for g in (b.get("attendees") or []) if g.get("email")]
     sig: dict[str, Any] = {
-        "name": name or b.get("name") or "", "email": email, "domain": domain, "email_kind": kind,
+        # typed on the form: one line (a newline in them must never start a line of its own in the brief)
+        "name": _clip(name or b.get("name"), 120), "email": email, "domain": domain, "email_kind": kind,
         # for a personal email the booking's company_line is only what they typed (booking/flow.py): never shown as a fact
-        "company_line": (b.get("company_line") or "") if kind == "business" else "", "company_typed": b.get("company") or "",
+        "company_line": (b.get("company_line") or "") if kind == "business" else "", "company_typed": _clip(b.get("company"), 120),
         "schedule_name": b.get("schedule_name") or "", "schedule_description": b.get("schedule_description") or "",
         "schedule_slug": b.get("schedule_slug") or "", "duration_min": b.get("duration_min"), "visitor_tz": b.get("visitor_tz") or "",
         "notes": b.get("notes") or "", "start_utc": b.get("start_utc"), "booked_at": b.get("created_at") or (datetime.now(timezone.utc) if b else None),
@@ -435,7 +444,7 @@ def gather(email: str | None, session_id: str | None = None, booking: dict[str, 
         # how the email domain is proven (enrich.domain_proof; 'n/a' for personal or no email) and the guests' domains
         "domain_proof": "" if kind == "business" else "n/a", "domain_proofs": {},
         "good_calls_before": 0, "not_fit_before": 0, "email_signed_in": False, "shared_browser": 0,
-        "visitor_ids": [], "outreach": {},
+        "visitor_ids": [], "session_ids": [], "outreach": {},
     }
     try:
         from app.db import conn
@@ -503,31 +512,48 @@ def _optional(c: Any, fn: Callable[..., Any], *args: Any) -> Any:
         return None
 
 
+_SESSION_COLS = """session_id, first_seen, last_seen, messages, page, channel, referrer_host, utm, city, country_code, user_name,
+                   isp, asn, net_org, net_domain, net_kind, net_flags, geo_tz, client_tz, geo_status, visitor_id"""
+
+
 def _read_sessions(c: Any, sig: dict[str, Any], b: dict[str, Any], email: str, session_id: str | None) -> list[str]:
     """Every chat session of the person, the visits among them, and what they typed. Returns the session ids."""
     from app.titles import GREETING_RE
 
-    seeds = {session_id} if session_id else set()
+    mine: set[str] = set()  # tied to their email: a booking, a lead or a sign-in
     if email:
-        seeds |= {r[0] for r in c.execute(
+        mine = {r[0] for r in c.execute(
             """SELECT session_id FROM bookings WHERE lower(email) = %(e)s AND session_id IS NOT NULL
                UNION SELECT session_id FROM leads WHERE lower(email) = %(e)s AND session_id IS NOT NULL
                UNION SELECT session_id FROM sessions WHERE lower(user_email) = %(e)s""", {"e": email}).fetchall()}
-    seeds.discard(None)
-    rows = []
+    seeds = (mine | ({session_id} if session_id else set())) - {None}
+    rows, linked = [], []
     if seeds:
+        # the seeds always, plus the newest 60 other sessions of the same browsers (one browser can hold 90+ sessions,
+        # and a cap over all of them dropped the person's own newer ones)
         rows = c.execute(
-            """SELECT session_id, first_seen, last_seen, messages, page, channel, referrer_host, utm, city, country_code, user_name,
-                      isp, asn, net_org, net_domain, net_kind, net_flags, geo_tz, client_tz, geo_status, visitor_id
-               FROM sessions
-               WHERE session_id = ANY(%(s)s)
-                  OR visitor_id IN (SELECT visitor_id FROM sessions WHERE session_id = ANY(%(s)s) AND visitor_id IS NOT NULL)
-               ORDER BY first_seen LIMIT 60""", {"s": list(seeds)}).fetchall()
-    others = _other_people(c, [r[0] for r in rows], email) if email and rows else set()
+            f"""SELECT {_SESSION_COLS} FROM sessions WHERE session_id = ANY(%(s)s)
+                UNION ALL
+                (SELECT {_SESSION_COLS} FROM sessions
+                 WHERE visitor_id IN (SELECT visitor_id FROM sessions WHERE session_id = ANY(%(s)s) AND visitor_id IS NOT NULL)
+                   AND NOT session_id = ANY(%(s)s)
+                 ORDER BY first_seen DESC LIMIT 60)""", {"s": list(seeds)}).fetchall()
+        rows.sort(key=lambda r: r[1])
+        if email:  # every session of those browsers, uncapped: the shared-browser check must see them all
+            linked = [r[0] for r in c.execute(
+                """SELECT session_id FROM sessions WHERE session_id = ANY(%(s)s)
+                   OR visitor_id IN (SELECT visitor_id FROM sessions WHERE session_id = ANY(%(s)s) AND visitor_id IS NOT NULL)""",
+                {"s": list(seeds)}).fetchall()]
+    others = _other_people(c, linked, email) if linked else {}
     if others:  # a shared browser: another person's chats and network never count for this one
-        rows = [r for r in rows if r[0] in seeds]
-        sig["shared_browser"] = len(others)
+        # their own sessions only: those tied to their email, and the passed session unless it is someone else's (a hot-lead
+        # candidate or a console row can name another person's newer session on the same browser)
+        own = mine | ({session_id} if session_id and session_id not in others else set())
+        rows = [r for r in rows if r[0] in own]
+        seeds &= own
+        sig["shared_browser"] = len(set().union(*others.values()))
     sids = [r[0] for r in rows] or list(seeds)
+    sig["session_ids"] = sids
     sig["visitor_ids"] = list(dict.fromkeys(r[20] for r in rows if len(r) > 20 and r[20]))
     booked = {r[0] for r in c.execute("SELECT DISTINCT session_id FROM bookings WHERE session_id = ANY(%s)", (sids,)).fetchall()}
     visits = [r for r in rows if (r[3] or 0) > 0 or r[0] in booked]
@@ -576,17 +602,22 @@ def _untag(email: str | None) -> str:
     return local.split("+")[0] + "@" + dom
 
 
-def _other_people(c: Any, sids: list[str], email: str) -> set[str]:
-    """The other people's addresses (+tags stripped) on these sessions: bookings, leads, sign-ins. Not empty = the browser
-    was shared, and only this person's own sessions count (the booking's and those tied to their email)."""
+def _other_people(c: Any, sids: list[str], email: str) -> dict[str, set[str]]:
+    """The other people's addresses (+tags stripped) on these sessions, per session: bookings, leads, sign-ins. Not
+    empty = the browser was shared, and only this person's own sessions count (those tied to their email, and the
+    passed session unless it carries someone else's address)."""
     rows = c.execute(
-        """SELECT lower(email) FROM bookings WHERE session_id = ANY(%(s)s) AND email IS NOT NULL
-           UNION SELECT lower(email) FROM leads WHERE session_id = ANY(%(s)s) AND email IS NOT NULL
-           UNION SELECT lower(user_email) FROM sessions WHERE session_id = ANY(%(s)s) AND user_email IS NOT NULL
-           UNION SELECT lower(to_jsonb(s)->>'verified_email') FROM sessions s
+        """SELECT session_id, lower(email) FROM bookings WHERE session_id = ANY(%(s)s) AND email IS NOT NULL
+           UNION SELECT session_id, lower(email) FROM leads WHERE session_id = ANY(%(s)s) AND email IS NOT NULL
+           UNION SELECT session_id, lower(user_email) FROM sessions WHERE session_id = ANY(%(s)s) AND user_email IS NOT NULL
+           UNION SELECT session_id, lower(to_jsonb(s)->>'verified_email') FROM sessions s
                  WHERE session_id = ANY(%(s)s) AND to_jsonb(s)->>'verified_email' IS NOT NULL""", {"s": sids}).fetchall()
     me = _untag(email)
-    return {_untag(e) for (e,) in rows if e and "@" in e} - {me}
+    out: dict[str, set[str]] = {}
+    for sid, e in rows:
+        if e and "@" in e and _untag(e) != me:
+            out.setdefault(sid, set()).add(_untag(e))
+    return out
 
 
 def _read_identity(c: Any, sig: dict[str, Any], sids: list[str], email: str) -> None:
@@ -650,12 +681,18 @@ def _read_site(c: Any, sig: dict[str, Any], vids: list[str]) -> None:
 
 
 def _read_outreach(c: Any, sig: dict[str, Any], sids: list[str]) -> None:
-    """The pop-up their chat was opened from (app/outreach.py), and the organisation it named, if any."""
+    """The pop-up their chat was opened from (app/outreach.py), the organisation it named, if any, and every organisation
+    an opened company pop-up named (company_orgs: what primes a typed company claim)."""
     r = c.execute(
         """SELECT r.name, e.variant, e.context->>'org' FROM outreach_events e LEFT JOIN outreach_rules r ON r.id = e.rule_id
            WHERE e.session_id = ANY(%s) AND e.opened_at IS NOT NULL ORDER BY e.opened_at DESC LIMIT 1""", (sids,)).fetchone()
     if r:
-        sig["outreach"] = {"rule": r[0] or "a deleted rule", "variant": r[1] or "plain", "org": r[2] or ""}
+        # every organisation a company pop-up they opened named, newest first: a later plain pop-up never unprimes a claim
+        orgs = [o for (o,) in c.execute(
+            """SELECT e.context->>'org' FROM outreach_events e WHERE e.session_id = ANY(%s) AND e.opened_at IS NOT NULL
+               AND e.variant = 'company' AND e.context->>'org' IS NOT NULL ORDER BY e.opened_at DESC LIMIT 10""", (sids,)).fetchall()]
+        sig["outreach"] = {"rule": r[0] or "a deleted rule", "variant": r[1] or "plain", "org": r[2] or "",
+                           "company_orgs": list(dict.fromkeys(orgs))}
 
 
 TOLD_FIELDS = ("role", "use_case", "data_needs", "region", "volume", "timeline", "budget", "current_tools", "team_size", "decision_role")
@@ -779,8 +816,8 @@ def score(sig: dict[str, Any], adjust: dict[str, int] | None = None) -> dict[str
     domain = (sig.get("domain") or "").lower()
     kind = sig.get("email_kind") or ""
     attendees = sig.get("attendees") or []
-    typed = (sig.get("company_typed") or "").strip()
-    name = (sig.get("name") or "").strip()
+    typed = _clip(sig.get("company_typed"), 120)  # one line: their words go into reason and watch-out lines
+    name = _clip(sig.get("name"), 120)
     notes = (sig.get("notes") or "").strip()
 
     # 1. risk first: staff, tests, competitors and addresses with nobody (or the wrong inbox) behind them
@@ -1023,22 +1060,24 @@ def _network_rules(sig: dict[str, Any], net: dict[str, Any], add: Callable[..., 
     org = net.get("org") or "an unnamed organisation"
     lab = network.label(kind, net.get("mobile"))
     pop = sig.get("outreach") or {}
-    typed = (sig.get("company_typed") or "").strip()
-    primed = (m == "claim" and pop.get("variant") == "company"
-              and network.same_company(network.org_key(pop.get("org")), network.org_key(typed)))
+    typed = _clip(sig.get("company_typed"), 120)
+    # any company pop-up they opened primes the claim, not only the latest one (a later plain pop-up changes nothing)
+    named = [o for o in pop.get("company_orgs") or ([pop.get("org")] if pop.get("variant") == "company" else []) if o]
+    hit = next((o for o in named if network.same_company(network.org_key(o), network.org_key(typed))), None)
+    primed = m == "claim" and hit is not None
     if primed:  # our own pop-up suggested the company they then typed: an echo, not independent evidence
-        add("network_company_prompted", 0, f"typed {typed} after a pop-up suggested {pop.get('org')}, so the company is not independent evidence")
+        add("network_company_prompted", 0, f"typed {typed} after a pop-up suggested {hit}, so the company is not independent evidence")
         if sig.get("email_kind") != "business":
             add("corporate_network", 3, f"visited from a company network ({org})")
     elif m == "claim" and sig.get("email_kind") != "business":
         add("network_company", 10, f"visited from {org}'s network, matching the company they typed")
     elif m == "email":
         add("network_email", 5, f"visited from {org}'s network, matching their email domain")
-    elif m == "other_company" and not sig.get("company_typed") and sig.get("email_kind") != "business":
+    elif m == "other_company" and not typed and sig.get("email_kind") != "business":
         add("corporate_network", 3, f"visited from a company network ({org})")
     elif m == "mismatch":
-        add("network_mismatch", 0, f"typed {sig.get('company_typed')} but visited from {org}'s network",
-            f"They typed {sig.get('company_typed')} but visited from {org}'s network: ask where they work")
+        add("network_mismatch", 0, f"typed {typed} but visited from {org}'s network",
+            f"They typed {typed} but visited from {org}'s network: ask where they work")
     if kind == "consumer":
         add("consumer_network", 0, f"on a {lab} ({org})")
     elif kind in ("hosting", "privacy", "coworking"):
@@ -1188,7 +1227,7 @@ def company_view(sig: dict[str, Any]) -> dict[str, str]:
     visitor typed), 'dead' (their email domain does not exist or takes no mail: no company confirmed), '' when nothing
     is known. `domain` is only set for 'website' and 'domain'; `proof` is the email domain's check (enrich.domain_proof)."""
     business = sig.get("email_kind") == "business"
-    line, typed = sig.get("company_line") or "", (sig.get("company_typed") or "").strip()
+    line, typed = sig.get("company_line") or "", _clip(sig.get("company_typed"), 120)
     domain = sig.get("domain") or ""
     if business and _proof(sig) == "dead":
         return {"name": "none confirmed", "trust": "dead", "domain": "", "also": typed}
@@ -1221,7 +1260,7 @@ def _company_check(sig: dict[str, Any]) -> str:
     from app import network
 
     lab = "network of unknown type" if net.get("kind") == "unknown" else network.label(net.get("kind"), net.get("mobile"))
-    return f"Company check: they typed {sig['company_typed']!r} but used a personal email and a {lab}; nothing confirms the company."
+    return f"Company check: they typed {_clip(sig['company_typed'], 120)!r} but used a personal email and a {lab}; nothing confirms the company."
 
 
 def _tz_note(sig: dict[str, Any]) -> str:
@@ -1443,8 +1482,9 @@ def headline(brief: dict[str, Any]) -> str:
 
 
 def reason_line(r: dict[str, Any]) -> str:
-    """'+15  company email (lovelace.org) [checked: website]': the trailing tag is always the system's (WHY THIS SCORE)."""
-    line = f"{'+' if r['points'] >= 0 else '−'}{abs(r['points'])}  {r['text']}"
+    """'+15  company email (lovelace.org) [checked: website]': the trailing tag is always the system's (WHY THIS SCORE).
+    One line: a newline in their words (a typed company) would otherwise start a fake reason of its own."""
+    line = f"{'+' if r['points'] >= 0 else '−'}{abs(r['points'])}  {_one_line(r['text'])}"
     tag = TAG.get(r.get("cls") or "")
     if tag:
         line += f" [{tag}{': ' + r['proof'] if r.get('proof') else ''}]"
@@ -1495,7 +1535,7 @@ def text(brief: dict[str, Any] | None) -> str:
     out += ["", brief.get("summary") or ""]
 
     def section(title: str, items: list[str], quote: bool = False) -> None:
-        items = [i for i in items if i]
+        items = [_one_line(i) for i in items if i]  # one line each: a newline would read as a bullet or heading of its own
         if items:
             out.extend(["", title] + [f"• “{i}”" if quote else f"• {i}" for i in items])
 
@@ -1613,19 +1653,23 @@ def lead_candidates(hours: int = 24, idle_minutes: int = ALERT_IDLE_MINUTES) -> 
                    SELECT session_id, visitor_id, last_seen FROM sessions
                    WHERE messages > 0 AND last_seen > now() - make_interval(hours => %(h)s) AND last_seen < now() - make_interval(mins => %(m)s)),
                fam AS (
-                   SELECT r.session_id AS rsid, r.last_seen, s.session_id FROM recent r
+                   SELECT r.last_seen, s.session_id, s.last_seen AS own_seen FROM recent r
                    JOIN sessions s ON s.session_id = r.session_id OR (r.visitor_id IS NOT NULL AND s.visitor_id = r.visitor_id))
-               SELECT f.rsid, f.last_seen, l.email, l.name FROM fam f JOIN leads l ON l.session_id = f.session_id
+               SELECT f.session_id, f.last_seen, f.own_seen, l.email, l.name FROM fam f JOIN leads l ON l.session_id = f.session_id
                UNION ALL
-               SELECT f.rsid, f.last_seen, s.user_email, s.user_name FROM fam f JOIN sessions s ON s.session_id = f.session_id
+               SELECT f.session_id, f.last_seen, f.own_seen, s.user_email, s.user_name FROM fam f JOIN sessions s ON s.session_id = f.session_id
                WHERE s.user_email IS NOT NULL""", {"h": hours, "m": idle_minutes}).fetchall()
         people: dict[str, dict[str, Any]] = {}
-        for sid, last_seen, email, name in rows:
+        # session_id is the session their email is on, never the recent one that matched: on a shared browser that is
+        # often another person's, and gather() would count its chats for this one
+        for sid, last_seen, own_seen, email, name in rows:
             e = (email or "").strip().lower()
             if not e or "@" not in e:
                 continue
-            if e not in people or last_seen > people[e]["last_seen"]:
-                people[e] = {"email": e, "name": name or "", "session_id": sid, "last_seen": last_seen}
+            if e not in people or (last_seen, own_seen) > (people[e]["last_seen"], people[e]["_own"]):
+                people[e] = {"email": e, "name": name or "", "session_id": sid, "last_seen": last_seen, "_own": own_seen}
+        for p in people.values():
+            p.pop("_own")
         if not people:
             return []
         booked = {r[0] for r in c.execute(
@@ -1668,7 +1712,7 @@ def run_alerts(mailer=None, ask=None, threshold: int | None = None) -> dict[str,
 
                 sig["domain_proof"] = enrich.domain_proof(None, None, st, datetime.now(timezone.utc))
                 sc = score(sig)
-        if sc["score"] < threshold:
+        if sc["score"] < threshold or sc["verdict"] == "not_a_lead":  # staff or test traffic is never a hot lead, whatever it scores
             continue
         hot += 1
         if _alerted_recently(p["email"]):

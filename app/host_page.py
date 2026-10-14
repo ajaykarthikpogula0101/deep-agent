@@ -102,7 +102,8 @@ EARLIER_COLS = ("session_id", "first_seen", "messages", "page", "channel", "refe
 
 
 def _read_earlier(c: Any, sid: str | None, vid: str | None, email: str) -> list[dict[str, Any]]:
-    """Other visits of the same browser, or linked by the same (unverified) email. Never selects ip, user_agent, lat, lon."""
+    """Other visits of the same browser, or linked by the same (unverified) email. Never selects ip, user_agent, lat, lon.
+    Reads more than the page shows: on a shared browser own_earlier() then drops other people's rows."""
     rows = c.execute(
         """SELECT s.session_id, s.first_seen, s.messages, s.page, s.channel, s.referrer_host, s.city, s.country_code, s.net_org,
                   s.isp, s.net_kind, s.net_flags,
@@ -115,7 +116,7 @@ def _read_earlier(c: Any, sid: str | None, vid: str | None, email: str) -> list[
                                  UNION SELECT session_id FROM leads WHERE lower(email) = %(e)s AND session_id IS NOT NULL)
              OR lower(s.user_email) = %(e)s)
              AND (s.messages > 0 OR EXISTS (SELECT 1 FROM bookings x WHERE x.session_id = s.session_id))
-           ORDER BY s.first_seen DESC LIMIT %(n)s""", {"sid": sid, "vid": vid, "e": email, "n": EARLIER_MAX}).fetchall()
+           ORDER BY s.first_seen DESC LIMIT %(n)s""", {"sid": sid, "vid": vid, "e": email, "n": EARLIER_MAX * 6}).fetchall()
     return [dict(zip(EARLIER_COLS, r)) for r in rows]
 
 
@@ -235,6 +236,15 @@ def _earlier_row(r: dict[str, Any]) -> dict[str, Any]:
             "via": "same browser" if r.get("via") == "browser" else "same email (unverified)"}
 
 
+def own_earlier(earlier: list[dict[str, Any]], sig: dict[str, Any]) -> list[dict[str, Any]]:
+    """On a shared browser (precall's check found another person's email on it) only their own visits: those linked by
+    their email and the sessions gather() counted for them, as the brief does. Everyone else's stay off the page."""
+    if not sig.get("shared_browser"):
+        return earlier
+    own = set(sig.get("session_ids") or [])
+    return [r for r in earlier if r.get("via") == "email" or r.get("session_id") in own]
+
+
 def _brief_view(brief: dict[str, Any] | None, live: bool, sig: dict[str, Any]) -> dict[str, Any] | None:
     from app import precall
 
@@ -314,7 +324,8 @@ def assemble(b: dict[str, Any], *, sig: dict[str, Any], brief: dict[str, Any] | 
         "first_seen": _local(sig.get("first_seen"), "%d %b %Y"),
         "brief": _brief_view(brief, brief_live, sig), "outcome": _outcome(b, status, now),
         "transcript": rows, "total": max(total, len(rows)), "truncated": total > len(rows),
-        "earlier": [_earlier_row(r) for r in earlier[:EARLIER_MAX]],
+        "earlier": [_earlier_row(r) for r in own_earlier(earlier, sig)[:EARLIER_MAX]],
+        "shared_browser": int(sig.get("shared_browser") or 0),
         "earlier_bookings": [{"date": _local(x.get("start_utc"), "%d %b %Y"), "call": x.get("schedule_name") or "",
                               "status": x.get("status") or "", "outcome": x.get("outcome") or ""} for x in earlier_bookings],
         "urls": {"join": safe_url(b.get("join_url")) if status == "confirmed" else "",
@@ -545,8 +556,9 @@ def _brief(d: dict[str, Any]) -> str:
     g = br["groups"]
     if g:
         word = br["headline"].rsplit(" · ", 1)[0] if br["verdict"] else br["label"]
-        body += (f"<div class='score'><b>{esc(br['score'])}</b><span>/100 · {esc(word)}</span>"
-                 + (f"<span class='note'>At booking: {esc(br['at_booking'])}</span>" if br["at_booking"] is not None else "") + "</div>")
+        # numbers, not esc(): esc(0) is '' and a 0 score would show blank
+        body += (f"<div class='score'><b>{int(br['score'] or 0)}</b><span>/100 · {esc(word)}</span>"
+                 + (f"<span class='note'>At booking: {int(br['at_booking'])}</span>" if br["at_booking"] is not None else "") + "</div>")
         body += "<div class='tiles'>" + "".join(
             f"<div class='tile{' neg' if k == 'risk' and (g.get(k) or 0) < 0 else ''}'><span>{k.capitalize()}</span>"
             f"<b>{'−' if (g.get(k) or 0) < 0 else ''}{abs(int(g.get(k) or 0))}</b></div>" for k in ("fit", "intent", "engagement", "risk")) + "</div>"
@@ -628,6 +640,8 @@ def _earlier(d: dict[str, Any]) -> str:
             "<li>" + esc(" · ".join(x for x in (r["date"], r["first_q"] or r["path"],
                                                 f"{r['messages']} message{'s' if r['messages'] != 1 else ''}", r["channel"], r["network"], r["via"]) if x))
             + "</li>" for r in d["earlier"]) + "</ul>"
+    if d.get("shared_browser"):
+        body += "<p class='note'>Shared browser: other people's visits on it are hidden.</p>"
     if d["earlier_bookings"]:
         body += "<h3>Earlier bookings</h3><ul class='rows'>" + "".join(
             "<li>" + esc(" · ".join(x for x in (r["date"], r["call"], r["status"], r["outcome"].replace("_", " ")) if x)) + "</li>"

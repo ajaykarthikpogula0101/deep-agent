@@ -221,22 +221,27 @@ def _page_path(page: str | None, site_host: str | None) -> str | None:
 
 # ---------------------------------------------------------------- the request path
 # t: SET LOCAL statement_timeout for the statements after this one (folded in to save a round trip), and no wait for
-# the WAL flush at commit: a page-view counter lost in a crash is harmless, an fsync on every page view is not
+# the WAL flush at commit: a page-view counter lost in a crash is harmless, an fsync on every page view is not.
+# old: the row locked FOR UPDATE before the insert (it is joined into the insert's source, so it runs first). Under READ
+# COMMITTED the lock waits for a concurrent check of the same device (two tabs) and then reads the row that check
+# committed, not the statement's snapshot, so only the check that really advanced visits sees a new visit. No row and
+# not inserted = another check inserted it first: not a new visit either.
 _UPSERT = """
 WITH t AS (SELECT set_config('statement_timeout', '250ms', true) AS st, set_config('synchronous_commit', 'off', true) AS sc),
-     old AS (SELECT visits FROM visitors WHERE visitor_id = %(vid)s),
+     old AS (SELECT visits FROM visitors WHERE visitor_id = %(vid)s FOR UPDATE),
      e AS (SELECT CASE WHEN EXISTS (SELECT 1 FROM bookings b JOIN sessions s ON s.session_id = b.session_id WHERE s.visitor_id = %(vid)s) THEN 'booked'
                        WHEN EXISTS (SELECT 1 FROM sessions WHERE visitor_id = %(vid)s AND messages > 0) THEN 'chatted' END AS eng)
 INSERT INTO visitors AS v (visitor_id, first_page, referrer_host, channel, utm_source, pages, engaged)
 SELECT %(vid)s, %(path)s, %(rh)s, %(ch)s, %(utm)s,
-       CASE WHEN %(path)s::text IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(%(path)s::text) END, e.eng FROM e, t
+       CASE WHEN %(path)s::text IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(%(path)s::text) END, e.eng
+FROM e CROSS JOIN t LEFT JOIN old ON true
 ON CONFLICT (visitor_id) DO UPDATE SET
   visits = v.visits + (v.last_seen < now() - make_interval(mins => %(gap)s))::int,
   pages = CASE WHEN %(path)s::text IS NULL OR v.pages ? %(path)s::text OR jsonb_array_length(v.pages) >= 30 THEN v.pages
                ELSE v.pages || jsonb_build_array(%(path)s::text) END,
   engaged = COALESCE(EXCLUDED.engaged, v.engaged), last_seen = now()
-RETURNING visits, engaged, (xmax = 0) AS inserted, visits <> COALESCE((SELECT visits FROM old), 0) AS new_visit, company_key,
-          company_visits, net_kind, country_code"""
+RETURNING visits, engaged, (xmax = 0) AS inserted, (xmax = 0) OR COALESCE(visits <> (SELECT visits FROM old), false) AS new_visit,
+          company_key, company_visits, net_kind, country_code"""
 _ROW = ("visits", "engaged", "inserted", "new_visit", "company_key", "company_visits", "net_kind", "country_code")
 
 

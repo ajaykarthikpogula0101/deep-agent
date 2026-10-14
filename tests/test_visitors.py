@@ -16,7 +16,7 @@ import pytest
 from app import enrich, outreach as o, tracking, visitors as v
 from app.config import settings
 
-NET_A = "49.207.201.0"   # pre-seeded company network (never 49.207.200.0/24: tests/test_tracking.py uses it)
+NET_A = "49.207.201.0"   # pre-seeded company network (never 49.207.200.0/24: it holds real cached lookups)
 IP_A = "49.207.201.10"
 IP_MISS = "49.207.202.10"
 IP_QUOTA = "49.207.203.10"
@@ -663,3 +663,55 @@ def test_admin_reads_and_the_try_form(api, monkeypatch):
     assert d["variant"] == "location" and "India" in d["fires"]["text"]
     d = api.client.post("/admin/outreach/try", json=dict(body, engaged="chatted"), headers=h).json()
     assert d["fires"] is None
+
+
+def _race(vid, before):
+    """Two checks of one device at once (two tabs): A runs the upsert and holds its transaction open while B's upsert
+    waits on the row, then A commits. `before` runs on A's connection first. Returns (A's row, B's row)."""
+    import threading
+
+    from app.db import conn
+
+    params = {"vid": vid, "path": "/", "rh": None, "ch": "direct", "utm": None, "gap": 30}
+    out: dict = {}
+
+    def b_check():
+        with conn() as b:
+            out["pid"] = b.execute("SELECT pg_backend_pid()").fetchone()[0]
+            out["b"] = dict(zip(v._ROW, b.execute(v._UPSERT, params).fetchone()))
+            b.commit()
+
+    with conn() as a:
+        before(a)
+        ra = dict(zip(v._ROW, a.execute(v._UPSERT, params).fetchone()))
+        th = threading.Thread(target=b_check)
+        th.start()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:   # B is blocked on A's row before A commits
+            pid = out.get("pid")
+            if pid and a.execute("SELECT wait_event_type = 'Lock' FROM pg_stat_activity WHERE pid = %s", (pid,)).fetchone()[0]:
+                break
+            time.sleep(0.02)
+        a.commit()
+    th.join(10)
+    return ra, out["b"]
+
+
+@DB
+def test_concurrent_checks_count_one_visit_once():
+    vid, fresh = _vid(), _vid()
+
+    def seed(c):
+        c.execute("INSERT INTO visitors(visitor_id, visits, last_seen) VALUES (%s, 1, now() - interval '2 hours')", (vid,))
+        c.commit()
+
+    try:
+        a, b = _race(vid, seed)
+        assert a["new_visit"] is True and a["visits"] == 2
+        assert b["new_visit"] is False and b["visits"] == 2    # B saw A's committed row, not its own snapshot
+        assert _row(vid)["visits"] == 2
+        a, b = _race(fresh, lambda c: None)                    # a new device: A inserts, B only updates
+        assert a["inserted"] is True and a["new_visit"] is True
+        assert b["inserted"] is False and b["new_visit"] is False and b["visits"] == 1
+    finally:
+        _cleanup(vids=[vid, fresh])

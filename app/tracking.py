@@ -87,19 +87,23 @@ def is_trusted_proxy(ip: str) -> bool:
 def client_ip(headers: Mapping[str, str], peer: str | None, trust_proxy: bool | None = None) -> str:
     """The visitor's IP. Behind Cloudflare / nginx the socket peer is the proxy and the real address is in a header;
     headers are believed only when TRUST_PROXY is on and the peer is in TRUSTED_PROXIES (else anyone could forge one).
-    X-Forwarded-For is walked right to left past trusted hops: the first untrusted address is the client."""
+    X-Forwarded-For is walked right to left past trusted hops: the first untrusted address is the client, and it wins
+    over CF-Connecting-IP and X-Real-IP (nginx appends to X-Forwarded-For but passes a visitor's own CF-Connecting-IP
+    through unchanged). Those two are read only where the walk cannot answer: every X-Forwarded-For hop is a trusted
+    proxy (Cloudflare's ranges in TRUSTED_PROXIES), or there is no X-Forwarded-For (X-Real-IP only: Cloudflare always
+    sends X-Forwarded-For, so a CF-Connecting-IP without it did not come from Cloudflare)."""
     global _ignored_warned
     trust = settings.trust_proxy if trust_proxy is None else trust_proxy
     peer = (peer or "").strip()
     if trust and is_trusted_proxy(peer):
-        for h in ("cf-connecting-ip", "x-real-ip"):
-            v = (headers.get(h) or "").strip()
-            if _valid_ip(v):
-                return v
         hops = [h.strip() for h in (headers.get("x-forwarded-for") or "").split(",") if _valid_ip(h.strip())]
         for h in reversed(hops):
             if not is_trusted_proxy(h):
                 return h
+        for h in ("cf-connecting-ip", "x-real-ip") if hops else ("x-real-ip",):
+            v = (headers.get(h) or "").strip()
+            if _valid_ip(v):
+                return v
         if hops:
             return hops[0]
     elif trust and any(headers.get(h) for h in _FWD_HEADERS) and (
@@ -452,6 +456,16 @@ _FRESH_SQL = """SELECT data, (status = 'ok' AND fetched_at > now() - make_interv
                FROM ip_net WHERE net = %s"""
 
 
+_PER_IP = ("rdns_domain", "rdns_dynamic")  # ipinfo's hostname: true of the one IP looked up, not of its /24
+
+
+def _shared(geo: Mapping[str, Any]) -> dict[str, Any]:
+    """A lookup as the /24 (/48) cache holds it and serves it to every neighbour: without the per-IP reverse-DNS fields
+    (rows cached before they were left out lose them on read too). network.classify reads those fields, so one static PTR
+    must not make a whole small-ISP /24 'corporate'."""
+    return {**geo, **{k: None for k in _PER_IP if k in geo}}
+
+
 def cached_geo(ip: str, c: Any) -> dict[str, Any] | None:
     """The cached lookup for this address's /24 (/48) on the given connection, or None on a miss or a stale row.
     Never fetches (the page-view path, app/visitors.py). A private address is {'status': 'private'} unless GEOIP_DEV_IP
@@ -463,7 +477,7 @@ def cached_geo(ip: str, c: Any) -> dict[str, Any] | None:
             return {"status": "private"} if _valid_ip(ip) else None
         ip, dev = alt, True
     row = c.execute(_FRESH_SQL, (GEO_CACHE_DAYS, mask_ip(ip))).fetchone()
-    return _dev_tag(row[0], dev) if row and row[1] else None
+    return _dev_tag(_shared(row[0]), dev) if row and row[1] else None
 
 
 def _take_visitor_slot() -> bool:
@@ -479,7 +493,8 @@ def _take_visitor_slot() -> bool:
 
 
 def geolocate(ip: str, purpose: str = "session") -> dict[str, Any]:
-    """Cached per /24 (/48): private/loopback addresses are never sent anywhere, and the cache holds no IP.
+    """Cached per /24 (/48): private/loopback addresses are never sent anywhere, and the cache holds no IP and no per-IP
+    reverse-DNS field (_shared).
     purpose='visitor' (a page view, app/visitors.py) also needs one of OUTREACH_GEO_DAILY_CAP slots on a miss; over the
     cap it fails with reason 'quota' WITHOUT caching, so a later chat or booking lookup of the same /24 still runs."""
     dev = False
@@ -492,7 +507,7 @@ def geolocate(ip: str, purpose: str = "session") -> dict[str, Any]:
     with conn() as c:
         row = c.execute(_FRESH_SQL, (GEO_CACHE_DAYS, net)).fetchone()
     if row and row[1]:
-        return _dev_tag(row[0], dev)
+        return _dev_tag(_shared(row[0]), dev)
     if purpose == "visitor" and not _take_visitor_slot():
         return _failed("visitor", "quota")
     geo = _fetch_geo(ip)
@@ -504,9 +519,9 @@ def geolocate(ip: str, purpose: str = "session") -> dict[str, Any]:
                            CASE WHEN %(s)s = 'failed' THEN now() + make_interval(mins => %(m)s) END, now())
                    ON CONFLICT (net) DO UPDATE SET provider = EXCLUDED.provider, data = EXCLUDED.data, status = EXCLUDED.status,
                        retry_after = EXCLUDED.retry_after, fetched_at = now()""",
-                {"net": net, "p": geo.get("provider"), "d": json.dumps(geo), "s": geo["status"], "m": settings.geoip_fail_retry_min})
+                {"net": net, "p": geo.get("provider"), "d": json.dumps(_shared(geo)), "s": geo["status"], "m": settings.geoip_fail_retry_min})
             c.commit()
-    return _dev_tag(geo, dev)
+    return _dev_tag(geo, dev)  # this call's own IP keeps its reverse-DNS fields
 
 
 # ---------------------------------------------------------------- session rows

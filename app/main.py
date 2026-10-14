@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 from pathlib import Path
+from typing import Annotated
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -13,7 +14,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 
 import re
@@ -142,13 +143,25 @@ def _shutdown() -> None:
     _scheduler.shutdown(wait=False)
 
 
+def _clipped(n: int) -> BeforeValidator:
+    return BeforeValidator(lambda v: v[:n] if isinstance(v, str) else v)
+
+
+# Page context the browser sends (landing URL, referrer, path, title, language): cut to size, never a 422. A visitor who
+# landed on a long tracking or redirect URL must still be able to chat and book; the tail of a URL is not worth a request.
+PageUrl = Annotated[str | None, _clipped(2000)]
+PagePath = Annotated[str | None, _clipped(500)]
+PageTitle = Annotated[str | None, _clipped(200)]
+PageShort = Annotated[str | None, _clipped(16)]   # navigator.language, screen size
+
+
 class BeaconIn(BaseModel):
     """The /track fields, carried by /chat and /booking/confirm while the widget has no confirmed /track (lost beacon,
     blocked path). Kept only as first values, like the beacon's."""
-    page: str | None = Field(default=None, max_length=2000)
-    referrer: str | None = Field(default=None, max_length=2000)
-    lang: str | None = Field(default=None, max_length=16)
-    screen: str | None = Field(default=None, max_length=16)
+    page: PageUrl = None
+    referrer: PageUrl = None
+    lang: PageShort = None
+    screen: PageShort = None
 
 
 class ChatIn(BaseModel):
@@ -169,24 +182,24 @@ def _visitor(request: Request, hint_name: str | None = None, hint_email: str | N
 class TrackIn(BaseModel):
     session_id: str = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     visitor_id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
-    page: str | None = Field(default=None, max_length=2000)
-    referrer: str | None = Field(default=None, max_length=2000)
+    page: PageUrl = None
+    referrer: PageUrl = None
     timezone: str | None = Field(default=None, max_length=64)
-    lang: str | None = Field(default=None, max_length=16)
-    screen: str | None = Field(default=None, max_length=16)
+    lang: PageShort = None
+    screen: PageShort = None
 
 
 class OutreachCheckIn(BaseModel):
     """Activity snapshot from the loader (docs/OUTREACH.md). Nothing here is stored except the page of a firing."""
     visitor_id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
-    page: str | None = Field(default=None, max_length=2000)
-    path: str | None = Field(default=None, max_length=500)
-    title: str | None = Field(default=None, max_length=200)
-    first_page: str | None = Field(default=None, max_length=2000)
+    page: PageUrl = None
+    path: PagePath = None
+    title: PageTitle = None
+    first_page: PageUrl = None
     pages: list[str] = Field(default_factory=list, max_length=60)
     dwell_s: int = Field(default=0, ge=0, le=1_000_000)
     scroll_pct: int = Field(default=0, ge=0, le=100)
-    referrer: str | None = Field(default=None, max_length=2000)
+    referrer: PageUrl = None
     visits: int = Field(default=0, ge=0, le=100_000)
     shown: list[int] = Field(default_factory=list, max_length=60)
     gpc: bool = False                                        # Global Privacy Control or DNT: no visitors row, no lookup
@@ -216,11 +229,11 @@ class OutreachSettingsIn(BaseModel):
 
 class OutreachTryIn(BaseModel):
     """Dry run from the console: which rule would fire for this activity (nothing is recorded)."""
-    path: str = Field(default="/", max_length=500)
+    path: Annotated[str, _clipped(500)] = "/"
     pages: list[str] = Field(default_factory=list, max_length=60)
     dwell_s: int = Field(default=0, ge=0, le=100_000)
     scroll_pct: int = Field(default=0, ge=0, le=100)
-    referrer: str | None = Field(default=None, max_length=2000)
+    referrer: PageUrl = None
     visits: int = Field(default=1, ge=0, le=100_000)
     booking: bool = False
     first_name: str | None = Field(default=None, max_length=60)

@@ -716,7 +716,8 @@ class DeepAssistant extends HTMLElement {
       .then((r) => r.ok ? r.json() : null).then((d) => { if (d && d.ok) store.set(this._key('tracked'), sid); }).catch(() => {});
   }
   _tracked() { return store.get(this._key('tracked')) === this._sid; }
-  _beaconData() { return { page: location.href, referrer: document.referrer || null, lang: navigator.language || null, screen: screen && screen.width ? `${screen.width}x${screen.height}` : null }; }
+  // capped like the server's fields (it clips too): a long tracking URL must never cost the visitor a chat or a booking
+  _beaconData() { return { page: String(location.href).slice(0, 2000), referrer: (document.referrer || '').slice(0, 2000) || null, lang: navigator.language || null, screen: screen && screen.width ? `${screen.width}x${screen.height}` : null }; }
   // The host set `api` after the element rendered (index.html, demo.html used to): key the sid under the real api and
   // start what an empty api skipped. A live conversation is never swapped.
   _adoptApi() {

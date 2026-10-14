@@ -116,3 +116,49 @@ def test_chat_creates_one_row_and_keeps_first_beacon(monkeypatch):
             assert c.execute("SELECT count(*) FROM sessions WHERE session_id = 's1'").fetchone()[0] == s1_before
     finally:
         _cleanup(sid)
+
+
+LONG = "https://deependhq.com/?q=" + "a" * 2100   # a long tracking or redirect URL
+
+
+def test_long_page_context_is_clipped_never_rejected():
+    from app import main
+
+    beacon = {"page": LONG, "referrer": LONG, "lang": "en-US-u-ca-gregory-nu-latn", "screen": "1440x900"}
+    c = main.ChatIn(message="hi", beacon=beacon)
+    assert len(c.beacon.page) == 2000 and c.beacon.page == LONG[:2000] and len(c.beacon.referrer) == 2000 and len(c.beacon.lang) == 16
+    b = main.ConfirmIn(schedule_slug="discovery-call", start="2026-10-06T10:00:00+05:30", name="Ada", email="ada@example.test", beacon=beacon)
+    assert len(b.beacon.page) == 2000
+    t = main.TrackIn(session_id=f"test-{uuid.uuid4()}", **beacon)
+    assert len(t.page) == 2000 and len(t.referrer) == 2000
+    o = main.OutreachCheckIn(page=LONG, first_page=LONG, referrer=LONG, path="/" + "p" * 600, title="T" * 300)
+    assert (len(o.page), len(o.first_page), len(o.referrer), len(o.path), len(o.title)) == (2000, 2000, 2000, 500, 200)
+    assert len(main.OutreachTryIn(path="/" + "p" * 600, referrer=LONG).path) == 500
+    assert main.BeaconIn().page is None and main.BeaconIn(page="https://deependhq.com/").page == "https://deependhq.com/"
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_chat_track_and_booking_accept_a_long_landing_url(monkeypatch):
+    from app.booking import flow
+    from app.chat import sse
+
+    client, main = _client(monkeypatch)
+
+    def fake_respond(*a, **k):
+        yield sse({"type": "done"})
+
+    monkeypatch.setattr(main, "respond", fake_respond)
+    monkeypatch.setattr(flow, "confirm", lambda service, req: {"status": "invalid", "message": "stubbed"})
+    s1, s2, s3 = (f"test-{uuid.uuid4()}" for _ in range(3))
+    beacon = {"page": LONG, "referrer": LONG}
+    try:
+        r = client.post("/chat", headers={**HEADERS, "X-Session-Id": s1}, json={"message": "hi", "beacon": beacon})
+        assert r.status_code == 200 and _session(s1)["page"] == LONG[:500]
+        r = client.post("/track", headers=HEADERS, json={"session_id": s2, **beacon})
+        assert r.status_code == 200 and r.json()["ok"]
+        r = client.post("/booking/confirm", headers={**HEADERS, "X-Session-Id": s3},
+                        json={"schedule_slug": "discovery-call", "start": "2026-10-06T10:00:00+05:30", "name": "Ada Lovelace",
+                              "email": "ada@example.test", "beacon": beacon})
+        assert r.status_code == 200 and r.json()["status"] == "invalid"
+    finally:
+        _cleanup(s1, s2, s3)

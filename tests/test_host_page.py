@@ -329,3 +329,28 @@ def test_page_shows_evidence_tags_verdict_and_claims():
     assert "none confirmed" in h and "their email domain does not exist or takes no mail; they typed: Lovelace Analytical Engines" in h
     mx = dict(p["sig"], domain_proof="mx", company_verified=False, enrich_source="", company_typed="")
     assert "from their email domain, which receives mail; website not checked" in page(sig=mx)
+
+
+# ---------------------------------------------------------------- review fixes
+def test_shared_browser_earlier_visits_are_only_their_own():
+    p = host_page.sample_inputs()
+    own = p["earlier"][0]                                                      # their own visit on this browser (sample-0)
+    other = dict(own, session_id="sample-x", first_q="Do you sell hospital contacts?", net_org="Babbage Engines")
+    by_email = dict(own, session_id="sample-e", first_q="Is there an API?", via="email")
+    rows = [own, other, by_email]
+    h = page(earlier=rows)                                                     # nobody else on the browser: every visit shows
+    assert "Do you sell hospital contacts?" in h and "Shared browser" not in h
+    shared = dict(p["sig"], shared_browser=1, session_ids=["sample", "sample-0"])
+    h = page(earlier=rows, sig=shared)
+    assert "Do you sell hospital contacts?" not in h and "Babbage Engines" not in h
+    assert "How do you price contact data?" in h and "Is there an API?" in h
+    assert "Shared browser: other people's visits on it are hidden." in h
+    assert [r["session_id"] for r in host_page.own_earlier(rows, shared)] == ["sample-0", "sample-e"]
+
+
+def test_a_zero_score_shows_as_zero():
+    p = host_page.sample_inputs()
+    h = page(brief=dict(p["brief"], score=0, at_booking={"score": 12}))
+    assert "<div class='score'><b>0</b><span>/100" in h and "At booking: 12</span>" in h
+    h = page(brief=dict(p["brief"], score=7, at_booking={"score": 0}))
+    assert "<b>7</b>" in h and "<span class='note'>At booking: 0</span>" in h
