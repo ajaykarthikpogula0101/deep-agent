@@ -15,11 +15,13 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import iterate_in_threadpool
 
 import re
+from html import escape as html_escape
+from urllib.parse import quote as quote_param
 
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import conversations, digest, guidance, identity, inbox, mailer, media, memory, nudge, outreach, precall, reminders, store_bookings, suggestions, templates, titles, tracking
+from app import conversations, digest, gaps, guidance, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, store_bookings, suggestions, templates, titles, tracking
 from app.booking import availability as avail
 from app.booking import browser_booking
 from app.booking import flow, ics
@@ -35,7 +37,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.14.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.14.3"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -86,6 +88,16 @@ def _startup() -> None:
     if settings.precall_enabled and settings.hot_lead_alerts:  # hourly: hot leads who left an email but booked nothing (app/precall.py)
         _scheduler.add_job(precall.run_alerts, CronTrigger.from_crontab("30 * * * *", timezone=settings.host_timezone),
                            id="hot_leads", replace_existing=True, misfire_grace_time=1800)
+    if settings.gap_loop_enabled:  # nightly: drafted answers for unanswered questions; every 15 min: send approved answers (app/gaps.py)
+        _scheduler.add_job(gaps.run, CronTrigger.from_crontab(settings.gap_cron, timezone=settings.host_timezone),
+                           id="gap_drafts", replace_existing=True, misfire_grace_time=6 * 3600)
+        _scheduler.add_job(gaps.send_due, CronTrigger.from_crontab("*/15 * * * *", timezone=settings.host_timezone),
+                           id="gap_followups", replace_existing=True, misfire_grace_time=900)
+    if settings.outcomes_enabled:  # hourly: "how did the call go?" to the host; nightly: re-learn the lead score (app/outcomes.py)
+        _scheduler.add_job(outcomes.send_asks, CronTrigger.from_crontab("5 * * * *", timezone=settings.host_timezone),
+                           id="outcome_asks", replace_existing=True, misfire_grace_time=1800)
+        _scheduler.add_job(outcomes.learn, CronTrigger.from_crontab("40 3 * * *", timezone=settings.host_timezone),
+                           id="score_learning", replace_existing=True, misfire_grace_time=6 * 3600)
     if settings.outreach_enabled:  # starter outreach rules, once (app/outreach.py)
         outreach.seed_if_empty()
     _scheduler.start()
@@ -200,7 +212,7 @@ class TemplatesIn(BaseModel):
 
 
 class TestMailIn(BaseModel):
-    kind: str = Field(pattern=r"^(host|visitor_booking|visitor_handover|visitor_nudge|visitor_confirmed|host_booking)$")
+    kind: str = Field(pattern=r"^(host|visitor_booking|visitor_handover|visitor_nudge|visitor_confirmed|host_booking|visitor_rescheduled|visitor_cancelled|visitor_reminder|visitor_gap)$")
 
 
 class AttendeeIn(BaseModel):
@@ -868,7 +880,9 @@ def admin_booking_brief(booking_id: int, refresh: bool = False, x_admin_token: s
     _require_admin(x_admin_token)
     b = _booking_or_404(booking_id)
     brief = precall.build_for_booking(b, refresh=refresh)
-    return {"brief": brief, "text": precall.text(brief), "session_id": b.get("session_id")}
+    return {"brief": brief, "text": precall.text(brief), "session_id": b.get("session_id"),
+            "booking": {k: b.get(k) for k in ("id", "name", "email", "status", "start_utc", "end_utc", "schedule_name", "outcome", "outcome_note",
+                                              "outcome_at", "followup")}}
 
 
 @app.post("/admin/bookings/{booking_id}/brief/email")
@@ -888,6 +902,182 @@ def admin_scored_leads(days: int = 7, x_admin_token: str | None = Header(default
 def admin_hot_lead_alerts_run(x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
     return precall.run_alerts()
+
+
+# ---- call outcomes, follow-up drafts and the learning lead score (app/outcomes.py)
+class OutcomeIn(BaseModel):
+    outcome: str = Field(pattern=r"^(good_fit|follow_up|not_fit|no_show)$")
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class FollowupIn(BaseModel):
+    subject: str = Field(min_length=1, max_length=160)
+    body: str = Field(min_length=20, max_length=6000)
+
+
+@app.post("/admin/bookings/{booking_id}/outcome")
+def admin_booking_outcome(booking_id: int, body: OutcomeIn, x_admin_token: str | None = Header(default=None)):
+    """Record how the call went; Good fit / Follow up / No-show also draft the follow-up email (one model call)."""
+    _require_admin(x_admin_token)
+    b = outcomes.record(booking_id, body.outcome, body.note, by="console")
+    if not b:
+        raise HTTPException(404, "booking not found")
+    fu = b.get("followup") or {}
+    draft = fu if fu.get("sent_at") else outcomes.draft_followup(b)
+    return {"outcome": b["outcome"], "followup": draft}
+
+
+@app.post("/admin/bookings/{booking_id}/followup/draft")
+def admin_followup_draft(booking_id: int, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    b = _booking_or_404(booking_id)
+    if (b.get("followup") or {}).get("sent_at"):
+        raise HTTPException(409, "the follow-up was already sent")
+    d = outcomes.draft_followup(b)
+    if not d:
+        raise HTTPException(400, "rate the call Good fit, Follow up or No-show first")
+    return {"followup": d}
+
+
+@app.post("/admin/bookings/{booking_id}/followup/send")
+def admin_followup_send(booking_id: int, body: FollowupIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return outcomes.send_followup(_booking_or_404(booking_id), body.subject, body.body)
+
+
+@app.get("/admin/score/learning")
+def admin_score_learning(x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return outcomes.learned()
+
+
+@app.post("/admin/score/learn")
+def admin_score_learn(x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return outcomes.learn()
+
+
+@app.post("/admin/outcomes/ask/run")
+def admin_outcome_asks_run(x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return outcomes.send_asks()
+
+
+def _outcome_booking(booking_id: int, t: str) -> dict:
+    b = store_bookings.get(booking_id) if links.check("outcome", booking_id, t) else None
+    if not b:
+        raise HTTPException(404, "link not valid")
+    return b
+
+
+@app.get("/outcome/{booking_id}", response_class=HTMLResponse)
+def outcome_page(booking_id: int, t: str = "", o: str = ""):
+    """The page behind the buttons in "How did the call go?": the choice is preselected, saving takes one press."""
+    return HTMLResponse(outcomes.page_ask(_outcome_booking(booking_id, t), t, o))
+
+
+@app.post("/outcome/{booking_id}", response_class=HTMLResponse)
+def outcome_save(booking_id: int, t: str = "", o: str = Form(...), note: str = Form(default="")):
+    _outcome_booking(booking_id, t)
+    if o not in outcomes.OUTCOMES:
+        raise HTTPException(400, "unknown outcome")
+    b = outcomes.record(booking_id, o, note, by="email")
+    fu = b.get("followup") or {}
+    draft = fu if fu.get("sent_at") else outcomes.draft_followup(b)
+    return HTMLResponse(outcomes.page_saved(b, t, draft))
+
+
+@app.post("/outcome/{booking_id}/send", response_class=HTMLResponse)
+def outcome_send(booking_id: int, t: str = "", subject: str = Form(...), body: str = Form(...)):
+    b = _outcome_booking(booking_id, t)
+    return HTMLResponse(outcomes.page_sent(b, outcomes.send_followup(b, subject, body)))
+
+
+# ---- knowledge-gap loop (app/gaps.py)
+class GapApproveIn(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+    answer: str = Field(min_length=10, max_length=3000)
+    link: str | None = Field(default=None, max_length=500)
+    email_askers: bool = True
+
+
+@app.get("/admin/gaps/drafts")
+def admin_gap_drafts(status: str = "draft", days: int = 7, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    if status not in ("draft", "approved", "dismissed"):
+        raise HTTPException(400, "status must be draft, approved or dismissed")
+    return {"items": gaps.list_drafts(status), "stats": gaps.stats(max(1, min(days, 90))), "since": gaps.since(),
+            "followup": settings.gap_followup, "links": links.enabled()}
+
+
+@app.post("/admin/gaps/run")
+def admin_gap_run(x_admin_token: str | None = Header(default=None)):
+    """Draft answers now instead of waiting for the night (one model call per new question group)."""
+    _require_admin(x_admin_token)
+    return gaps.run()
+
+
+@app.post("/admin/gaps/drafts/{draft_id}/approve")
+def admin_gap_approve(draft_id: int, body: GapApproveIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    try:
+        return gaps.approve(draft_id, body.question, body.answer, body.link, body.email_askers)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/admin/gaps/drafts/{draft_id}/dismiss")
+def admin_gap_dismiss(draft_id: int, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return {"ok": gaps.set_status(draft_id, "dismissed")}
+
+
+@app.post("/admin/gaps/drafts/{draft_id}/restore")
+def admin_gap_restore(draft_id: int, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return {"ok": gaps.set_status(draft_id, "draft")}
+
+
+@app.post("/admin/gaps/drafts/{draft_id}/redraft")
+def admin_gap_redraft(draft_id: int, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    try:
+        return gaps.redraft(draft_id)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/admin/gaps/drafts/{draft_id}/askers")
+def admin_gap_askers(draft_id: int, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return {"items": gaps.askers(draft_id)}
+
+
+@app.post("/admin/gaps/followups/send")
+def admin_gap_followups_send(x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return gaps.send_due()
+
+
+@app.get("/email/optout", response_class=HTMLResponse)
+def email_optout_page(e: str = "", t: str = ""):
+    if not links.check("optout", e, t):
+        raise HTTPException(404, "link not valid")
+    return HTMLResponse(outcomes._page("No more emails like this?",
+                        f"<p class='muted'>We'll stop sending answers and follow-ups to <b>{html_escape(e)}</b>. Booking emails you ask for still arrive.</p>"
+                        f"<form method='post' action='/email/optout?e={quote_param(e)}&t={html_escape(t)}'><button type='submit'>Yes, stop these emails</button></form>"))
+
+
+@app.post("/email/optout", response_class=HTMLResponse)
+def email_optout(e: str = "", t: str = ""):
+    if not links.check("optout", e, t):
+        raise HTTPException(404, "link not valid")
+    gaps.opt_out(e)
+    return HTMLResponse(outcomes._page("Done", "<p class='ok'>You won't get emails like this again.</p>"))
 
 
 @app.post("/admin/bookings/{booking_id}/cancel")

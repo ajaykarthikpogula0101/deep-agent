@@ -86,3 +86,16 @@ notes as before.
 `{attendees}` lists the extra guests as "Name <email>, …" (empty when there are none; the "Guests:" line then
 disappears). Each guest receives a short built-in note per event: invited, moved, cancelled, day-before reminder
 (`app/booking/email.py: attendee_notice`), sent with the same layout and replies going to the host.
+
+## Added 2026-10-14: answers to unanswered questions, and call outcomes
+
+| Email | To | When | Default subject |
+|---|---|---|---|
+| Answer to their question | the visitor | 10 min after Deep approves a drafted answer to a question they asked (docs/AUTOMATIONS.md §13) | `Your question, answered: {question_short}` |
+| How did the call go? | `HOST_EMAIL` | 20 min after a booked call ends, with four buttons | `[{brand}] How did the call with {name} go? · {title} · {date}` |
+| Follow-up after the call | the visitor | only when Deep presses "Send" on the drafted follow-up (§14) | written by the model, edited by Deep |
+
+The answer email is the template `visitor_gap` (Console → Emails), with five extra variables: `{answers}` (their question
+in their words and the answer, for each question answered), `{question_short}`, `{asked_date}`, `{chat_link}` (the site
+with `utm_campaign=gap-followup`) and `{optout_line}` (the signed unsubscribe link). The other two are not templates: the
+outcome email is fixed, and the follow-up is drafted per call.

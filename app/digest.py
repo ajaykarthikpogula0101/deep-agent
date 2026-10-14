@@ -75,8 +75,9 @@ def _fmt_ts(ts: Any, tz: str) -> str:
 
 
 def render(m: dict[str, Any], prev: dict[str, Any] | None, g: dict[str, Any], leads: list[dict[str, Any]],
-           period: str, tpl: dict[str, str] | None = None) -> tuple[str, str]:
-    """(subject, body) from already-computed numbers. `prev` holds the metrics of the week before (or None)."""
+           period: str, tpl: dict[str, str] | None = None, results: list[dict[str, str]] | None = None) -> tuple[str, str]:
+    """(subject, body) from already-computed numbers. `prev` holds the metrics of the week before (or None); `results`
+    the call outcomes and the knowledge-gap loop as [{"label", "text"}] (results_lines())."""
     tpl = tpl or templates.get_templates()
     brand = tpl.get("brand_default") or templates.DEFAULTS["brand_default"]
     host = tpl.get("host_name") or templates.DEFAULTS["host_name"]
@@ -97,6 +98,8 @@ def render(m: dict[str, Any], prev: dict[str, Any] | None, g: dict[str, Any], le
         lines.append(f"Median answer     {m['median_latency_ms'] / 1000:.1f} s")
     if m.get("errors"):
         lines.append(f"Errors            {m['errors']}")
+    if results:
+        lines += ["", "Results"] + [f"  {r['label']}: {r['text']}" for r in results]
     lines += ["", "Most asked"]
     top = (m.get("top_questions") or [])[:MAX_TOP]
     lines += [f"  {i}. {q['question']}  ×{q['count']}" for i, q in enumerate(top, 1)] or ["  (nothing yet)"]
@@ -127,7 +130,8 @@ def render(m: dict[str, Any], prev: dict[str, Any] | None, g: dict[str, Any], le
 
 
 def data_for_model(m: dict[str, Any], prev: dict[str, Any] | None, g: dict[str, Any], leads: list[dict[str, Any]],
-                   period: str, tpl: dict[str, str] | None = None, subject: str | None = None) -> dict[str, Any]:
+                   period: str, tpl: dict[str, str] | None = None, subject: str | None = None,
+                   results: list[dict[str, str]] | None = None) -> dict[str, Any]:
     """The same facts as render(), as JSON for the rich digest (docs/AUTOMATIONS.md §6): every string the model may
     use, already formatted, same caps as the text. Pure; the key set is frozen (app/digest_rich.py checks the HTML
     against it). `subject` is the one render() produced (build() passes it so the text is rendered once)."""
@@ -139,7 +143,7 @@ def data_for_model(m: dict[str, Any], prev: dict[str, Any] | None, g: dict[str, 
     p = prev or {}
     csat = m.get("csat") or {}
     if subject is None:
-        subject, _ = render(m, prev, g, leads, period, tpl)
+        subject, _ = render(m, prev, g, leads, period, tpl, results)
     metrics = {
         "conversations": m.get("conversations", 0), "conversations_delta": _delta(m.get("conversations"), p.get("conversations")),
         "questions": m.get("questions", 0), "questions_delta": _delta(m.get("questions"), p.get("questions")),
@@ -165,7 +169,25 @@ def data_for_model(m: dict[str, Any], prev: dict[str, Any] | None, g: dict[str, 
         "unanswered": [{"question": u["question"], "count": u["count"]} for u in (g.get("unanswered") or [])[:MAX_GAPS]],
         "thumbs_down": len(g.get("thumbs_down") or []),
         "leads": out_leads,
+        "results": [{"label": r["label"], "text": r["text"]} for r in results or []],
     }
+
+
+def results_lines(days: int) -> list[dict[str, str]]:
+    """The week's results beyond the chat: calls by outcome (app/outcomes.py) and the knowledge-gap loop (app/gaps.py).
+    Each part is skipped when it has nothing to say or fails."""
+    from app import gaps, outcomes
+
+    out = []
+    for label, fn in (("Calls", lambda: outcomes.week_line(outcomes.week(days))), ("Knowledge gaps", lambda: gaps.stats_line(gaps.stats(days)))):
+        try:
+            text = fn()
+        except Exception as e:
+            log.warning("digest %s line failed: %s", label.lower(), e)
+            text = ""
+        if text:
+            out.append({"label": label, "text": text})
+    return out
 
 
 def period_label(days: int, now: datetime | None = None) -> str:
@@ -192,9 +214,10 @@ def build(days: int = 7, rich: bool = False) -> dict[str, Any]:
     leads = leads_recent(days)
     period = period_label(days)
     tpl = templates.get_templates()
-    subject, body = render(m, prev, g, leads, period, tpl)
+    results = results_lines(days)
+    subject, body = render(m, prev, g, leads, period, tpl, results)
     d = {"days": days, "subject": subject, "body": body, "to": settings.host_email, "metrics": m,
-         "data": data_for_model(m, prev, g, leads, period, tpl, subject=subject), "html": None}
+         "data": data_for_model(m, prev, g, leads, period, tpl, subject=subject, results=results), "html": None}
     if rich:
         d["html"] = digest_rich.compose(d)
         d["rich"] = digest_rich.last_stats()

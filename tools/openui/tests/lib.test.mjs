@@ -10,7 +10,7 @@ import { CHAT_EXAMPLES } from "../prompts.mjs";
 test("app/rag/ui_cards_prompt.txt equals the generator output byte for byte", async () => {
   const live = await chatPrompt();
   assert.equal(readFileSync(CHAT_PROMPT_FILE, "utf8"), live);
-  assert.ok(live.startsWith("ANSWER CARD (optional)") && live.endsWith("\n") && !live.endsWith("\n\n"));
+  assert.ok(live.startsWith("ANSWER CARD.") && live.endsWith("\n") && !live.endsWith("\n\n"));
   for (const bad of ["## Hoisting", "Query(", "$binding", "charts for trends"]) assert.ok(!live.includes(bad), bad);
   for (const good of ["@ToAssistant", "@OpenUrl", "any @ToAssistant argument is ignored"]) assert.ok(live.includes(good), good);
 });

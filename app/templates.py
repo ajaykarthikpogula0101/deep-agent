@@ -156,6 +156,18 @@ DEFAULTS: dict[str, str] = {
         "If the time no longer works, just reply to this email and we'll find another.\n\n"
         "{host_name}\n{site}\n"
     ),
+    # knowledge-gap loop (app/gaps.py): the answer to a question the assistant could not answer, once the host approved it
+    "visitor_gap_enabled": "true",
+    "visitor_gap_subject": "Your question, answered: {question_short}",
+    "visitor_gap_body": (
+        "Hi {first_name},\n\n"
+        "When you visited {site} on {asked_date}, you asked our assistant something it couldn't answer yet. "
+        "{host_name}'s team has written the answer for you:\n\n"
+        "{answers}\n\n"
+        "Anything else on your mind? Reply to this email and a person reads it, or pick a time to talk with {host_name}: {booking_link}\n\n"
+        "{host_name}\n{site}\n\n"
+        "{optout_line}\n"
+    ),
 }
 
 KINDS = {"handoff": "Demo request, handing off to Zoom", "booked": "Demo booked", "enquiry": "Enquiry, scheduler unavailable",
@@ -183,7 +195,8 @@ METHOD_LINE = {"scheduler": "booked on the Zoom Scheduler", "meeting": "Zoom mee
 VARIABLES = ["brand", "title", "duration", "kind", "name", "first_name", "email", "reason", "date", "date_visitor", "visitor_tz",
              "host_tz", "link", "next_step", "origin", "note", "company", "host_name", "host_email", "site",
              "headline", "join_url", "meeting_id", "passcode", "meeting_line", "ics_url", "manage_url", "manage_line", "method_line",
-             "old_date", "old_date_visitor", "booking_link", "attendees"]
+             "old_date", "old_date_visitor", "booking_link", "attendees",
+             "answers", "question_short", "asked_date", "chat_link", "optout_line"]   # the last five: the gap follow-up only
 
 _VAR = re.compile(r"\{([a-z_]+)\}")
 _cache: dict[str, tuple[float, dict[str, str]]] = {}
@@ -349,7 +362,8 @@ EMAIL_ACCENT = "#F28C28"
 EMAIL_INK = "#151B32"
 
 
-def html_wrap(subject: str, body: str, cta: tuple[str, str] | None = None, *, audience: str = "visitor") -> str:
+def html_wrap(subject: str, body: str, cta: tuple[str, str] | None = None, *, audience: str = "visitor",
+              actions: list[tuple[str, str]] | None = None) -> str:
     """The plain-text email (always sent alongside as the text part) as a light, branded HTML card.
 
     Layout: an orange accent bar and the "ask deep >_" wordmark, the subject as the title, the greeting paragraph a little
@@ -420,6 +434,13 @@ def html_wrap(subject: str, body: str, cta: tuple[str, str] | None = None, *, au
         # the button goes right after the facts (or the greeting) so the next step is above the fold
         at = next((i + 1 for i, b in enumerate(blocks) if b.startswith("<table")), min(1, len(blocks)))
         blocks.insert(at, button)
+    if actions:  # a row of choices (e.g. the call outcome): the first is the filled pill, the rest outlined; wraps on phones
+        pills = "".join(
+            f'<a href="{h.escape(url)}" style="display:inline-block;margin:0 8px 10px 0;padding:11px 20px;border-radius:999px;font-weight:700;'
+            f'font-size:15px;text-decoration:none;' + (f'background:{EMAIL_ACCENT};color:#1A1208;border:2px solid {EMAIL_ACCENT}' if i == 0
+                                                        else f'background:#FFFFFF;color:{EMAIL_INK};border:2px solid #D9DDEA') + f'">{h.escape(label)}</a>'
+            for i, (label, url) in enumerate(actions) if url)
+        blocks.append(f'<div style="margin:8px 0 14px">{pills}</div>')
     site = settings.site_base_url.replace("https://", "").replace("http://", "")
     foot = ("Sent by the website assistant. Reply to this email to reach the visitor directly." if audience == "host"
             else f"Sent by the {h.escape(site)} assistant. Reply to this email and a person reads it.")
@@ -482,6 +503,12 @@ def preview(kind: str, overrides: dict[str, str] | None = None) -> dict[str, str
         r = render_booking_visitor(sample_booking_for(kind.split("_", 1)[1]), tpl)
         s, b = r if r else ("(disabled)", "")
         return {"subject": s, "body": b}
+    if kind == "visitor_gap":
+        from app import gaps
+
+        r = gaps.render_followup(gaps.SAMPLE_PERSON, gaps.SAMPLE_ITEMS, tpl)
+        s, b = (r[0], r[1]) if r else ("(disabled)", "")
+        return {"subject": s, "body": b}
     if kind == "host":
         s, b = render_host(lead, tpl)
     else:
@@ -493,7 +520,7 @@ def preview(kind: str, overrides: dict[str, str] | None = None) -> dict[str, str
 
 def previews(overrides: dict[str, str] | None = None) -> dict[str, dict[str, str]]:
     return {k: preview(k, overrides) for k in ("host", "visitor_booking", "visitor_handover", "visitor_nudge", "visitor_confirmed", "host_booking",
-                                                "visitor_rescheduled", "visitor_cancelled", "visitor_reminder")}
+                                                "visitor_rescheduled", "visitor_cancelled", "visitor_reminder", "visitor_gap")}
 
 
 def sample_booking_for(kind: str) -> dict[str, Any]:

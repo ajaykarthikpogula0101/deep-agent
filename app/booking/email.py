@@ -257,6 +257,15 @@ def send_test(kind: str) -> dict:
         cta = ("Book a new time", settings.site_base_url) if kind == "visitor_cancelled" else ("Join Zoom", templates.SAMPLE_BOOKING["join_url"])
         return {"ok": _send(settings.host_email, "[test] " + subject, body, html=templates.html_wrap(subject, body, cta)),
                 "to": settings.host_email, "subject": subject}
+    if kind == "visitor_gap":
+        from app import gaps
+
+        r = gaps.render_followup(gaps.SAMPLE_PERSON, gaps.SAMPLE_ITEMS)
+        if not r:
+            return {"ok": False, "error": "that visitor email is disabled"}
+        subject, body, cta = r
+        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=templates.html_wrap(subject, body, cta)),
+                "to": settings.host_email, "subject": subject}
     if kind == "host":
         subject, body = render_brief(templates.SAMPLE_LEAD)
     else:

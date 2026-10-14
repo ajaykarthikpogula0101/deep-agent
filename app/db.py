@@ -117,6 +117,11 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS schedule_description TEXT;     -- 
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS attendees JSONB NOT NULL DEFAULT '[]'::jsonb;  -- extra guests: a list of name + email objects
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS brief JSONB;            -- pre-call brief for the host: lead score and talking points (app/precall.py)
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS brief_at TIMESTAMPTZ;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS outcome TEXT;           -- good_fit | not_fit | no_show | follow_up (app/outcomes.py)
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS outcome_note TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS outcome_at TIMESTAMPTZ;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS outcome_asked_at TIMESTAMPTZ;  -- the "how did it go?" email to the host
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS followup JSONB;         -- drafted follow-up email to the visitor: subject, body, sent_at
 CREATE INDEX IF NOT EXISTS bookings_start_idx ON bookings(start_utc);
 CREATE INDEX IF NOT EXISTS bookings_email_idx ON bookings(lower(email));
 
@@ -238,6 +243,53 @@ CREATE TABLE IF NOT EXISTS custom_answers (
     embedding   vector({EMBED_DIM}) NOT NULL,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Knowledge-gap loop (app/gaps.py): questions the assistant could not answer, grouped into drafts the owner approves.
+-- An approved draft becomes a custom answer; the people who asked get the answer by email (gap_followups).
+CREATE TABLE IF NOT EXISTS gap_drafts (
+    id               BIGSERIAL PRIMARY KEY,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    question         TEXT NOT NULL,                  -- the question in plain words (becomes the custom answer's question)
+    answer           TEXT NOT NULL DEFAULT '',
+    link             TEXT,
+    grounded         BOOLEAN NOT NULL DEFAULT false,  -- the draft rests on site content; false = it needs the owner's facts
+    missing          TEXT,                            -- what the drafter could not find on the site
+    sources          JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status           TEXT NOT NULL DEFAULT 'draft',  -- draft | approved | dismissed
+    composer         TEXT,                            -- model | rules
+    note             TEXT,
+    custom_answer_ids JSONB NOT NULL DEFAULT '[]'::jsonb,  -- the custom answers it became: the question and how visitors worded it
+    approved_at      TIMESTAMPTZ,
+    embedding        vector({EMBED_DIM}) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS gap_drafts_status_idx ON gap_drafts(status, updated_at DESC);
+CREATE TABLE IF NOT EXISTS gap_asks (
+    message_id  BIGINT PRIMARY KEY,                  -- the assistant turn that could not answer (messages.id)
+    draft_id    BIGINT NOT NULL,
+    session_id  TEXT,
+    ts          TIMESTAMPTZ NOT NULL,
+    question    TEXT NOT NULL,
+    kind        TEXT NOT NULL DEFAULT 'refused'      -- refused | thumbs_down
+);
+CREATE INDEX IF NOT EXISTS gap_asks_draft_idx ON gap_asks(draft_id);
+CREATE TABLE IF NOT EXISTS gap_followups (
+    id          BIGSERIAL PRIMARY KEY,
+    draft_id    BIGINT NOT NULL,
+    email       TEXT NOT NULL,
+    name        TEXT,
+    session_id  TEXT,
+    asked_at    TIMESTAMPTZ,
+    question    TEXT,                                -- their own words
+    status      TEXT NOT NULL DEFAULT 'pending',     -- pending | sent | skipped
+    reason      TEXT,
+    due_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    sent_at     TIMESTAMPTZ,
+    UNIQUE (draft_id, email)
+);
+CREATE TABLE IF NOT EXISTS email_optouts (
+    email  TEXT PRIMARY KEY,
+    ts     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 _pool: ConnectionPool | None = None
@@ -280,6 +332,8 @@ def init_schema() -> None:
         if row and row[0] not in (-1, EMBED_DIM):
             c.execute("DROP TABLE chunks")
             c.execute("DROP TABLE IF EXISTS custom_answers")
+            c.execute("DROP TABLE IF EXISTS gap_drafts")
+            c.execute("DROP TABLE IF EXISTS gap_asks")
             c.execute("DELETE FROM pages")
             c.execute(SCHEMA)
         c.commit()

@@ -192,62 +192,81 @@ def gather(email: str | None, session_id: str | None = None, booking: dict[str, 
 
 
 # ---------------------------------------------------------------- 2. how warm
-def score(sig: dict[str, Any]) -> dict[str, Any]:
-    """Rule-based lead score. Base 10, clamped to 0..100; hot >= 60, warm >= 35. Every point comes with a reason."""
+def score(sig: dict[str, Any], adjust: dict[str, int] | None = None) -> dict[str, Any]:
+    """Rule-based lead score. Base 10, clamped to 0..100; hot >= 60, warm >= 35. Every point comes with a reason.
+
+    Each rule has a key. Once enough calls are rated (app/outcomes.py), `adjust` adds the learned correction per key
+    (e.g. +6 for "visits" when returning visitors turned into good calls more often); None loads the current one."""
+    if adjust is None:
+        from app import outcomes
+
+        adjust = outcomes.adjustments()
     reasons: list[dict[str, Any]] = []
 
-    def add(points: int, text: str) -> None:
-        reasons.append({"points": points, "text": text})
+    def add(key: str, points: int, text: str) -> None:
+        adj = int(adjust.get(key, 0) or 0)
+        r = {"key": key, "points": points + adj, "text": text}
+        if adj:
+            r["base"] = points
+        reasons.append(r)
 
     if sig.get("email_kind") == "business":
-        add(15, f"company email ({sig.get('domain')})")
+        add("business_email", 15, f"company email ({sig.get('domain')})")
     elif sig.get("email_kind") == "personal":
-        add(0, f"personal email address ({sig.get('domain')})")
+        add("personal_email", 0, f"personal email address ({sig.get('domain')})")
     hay = "\n".join(sig.get("questions") or []) + "\n" + (sig.get("notes") or "") + "\n" + "\n".join(sig.get("handovers") or [])
     topics = [label for label, rx in BUYING_TOPICS if rx.search(hay)]
     if topics:
-        add(min(30, 20 + 5 * (len(topics) - 1)), "asked about " + ", ".join(topics))
+        add("buying_topics", min(30, 20 + 5 * (len(topics) - 1)), "asked about " + ", ".join(topics))
     n = int(sig.get("question_count") or 0)
     if n >= 6:
-        add(15, f"asked {n} questions")
+        add("questions", 15, f"asked {n} questions")
     elif n >= 3:
-        add(10, f"asked {n} questions")
+        add("questions", 10, f"asked {n} questions")
     elif n >= 1:
-        add(4, f"asked {n} question{'s' if n > 1 else ''}")
+        add("questions", 4, f"asked {n} question{'s' if n > 1 else ''}")
     v = int(sig.get("visits") or 0)
     if v >= 3:
-        add(15, f"{v} visits" + (f" since {_when(sig['first_seen']).split(',')[0]}" if sig.get("first_seen") else ""))
+        add("visits", 15, f"{v} visits" + (f" since {_when(sig['first_seen']).split(',')[0]}" if sig.get("first_seen") else ""))
     elif v == 2:
-        add(8, "came back for a second visit")
+        add("visits", 8, "came back for a second visit")
     notes = (sig.get("notes") or "").strip()
     if len(notes) >= 60:
-        add(10, "wrote a detailed note")
+        add("note", 10, "wrote a detailed note")
     elif len(notes) >= 10:
-        add(5, "left a note")
+        add("note", 5, "left a note")
     g = len(sig.get("attendees") or [])
     if g:
-        add(min(15, 8 + 2 * (g - 1)), f"bringing {g} colleague{'s' if g > 1 else ''}")
+        add("colleagues", min(15, 8 + 2 * (g - 1)), f"bringing {g} colleague{'s' if g > 1 else ''}")
     ch = sig.get("channel") or ""
     if ch in ("paid", "email", "campaign"):
-        add(5, f"came from a campaign ({sig.get('utm_source') or ch})")
+        add("campaign", 5, f"came from a campaign ({sig.get('utm_source') or ch})")
     elif ch in ("search", "ai"):
-        add(3, "found the site through " + ("search" if ch == "search" else "an AI assistant"))
+        add("search", 3, "found the site through " + ("search" if ch == "search" else "an AI assistant"))
     if sig.get("handovers"):
-        add(5, "asked to talk to a person")
+        add("asked_for_person", 5, "asked to talk to a person")
     if sig.get("start_utc") and sig.get("booked_at") and sig["start_utc"] - sig["booked_at"] <= timedelta(days=3):
-        add(5, "wants to talk within 3 days")
+        add("soon", 5, "wants to talk within 3 days")
     if sig.get("previous_bookings"):
-        add(5, "has booked with Deep before")
+        add("booked_before", 5, "has booked with Deep before")
     if sig.get("cancelled_before"):
-        add(-10, "cancelled a call before")
+        add("cancelled_before", -10, "cancelled a call before")
     if sig.get("rescheduled"):
-        add(-3, "moved this call once")
+        add("moved", -3, "moved this call once")
     if JOBS_RE.search(hay):
-        add(-25, "asked about jobs, which is not a buying signal")
+        add("jobs", -25, "asked about jobs, which is not a buying signal")
     if VENDOR_RE.search(hay):
-        add(-15, "reads like a vendor pitching their own services")
+        add("vendor", -15, "reads like a vendor pitching their own services")
     total = max(0, min(100, 10 + sum(r["points"] for r in reasons)))
-    return {"score": total, "label": label_for(total), "reasons": reasons, "topics": topics}
+    return {"score": total, "label": label_for(total), "reasons": reasons, "topics": topics, "learned": bool(adjust)}
+
+
+# what each rule key means, for the console's "what the score learned" table
+RULES = {"business_email": "company email", "personal_email": "personal email address", "buying_topics": "asked about pricing, trials, contracts or setup",
+         "questions": "number of questions asked", "visits": "came back to the site", "note": "wrote a note with the booking",
+         "colleagues": "bringing colleagues", "campaign": "came from a campaign", "search": "came from search or an AI assistant",
+         "asked_for_person": "asked to talk to a person", "soon": "wants to talk within 3 days", "booked_before": "booked with Deep before",
+         "cancelled_before": "cancelled a call before", "moved": "moved the call", "jobs": "asked about jobs", "vendor": "pitching their own services"}
 
 
 # ---------------------------------------------------------------- 3. the brief

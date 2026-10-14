@@ -91,6 +91,23 @@ class Settings(BaseSettings):
     precall_host_reminder: bool = Field(default=True, alias="PRECALL_HOST_REMINDER")  # "Brief for tomorrow" to the host
     hot_lead_alerts: bool = Field(default=True, alias="HOT_LEAD_ALERTS")
     hot_lead_score: int = Field(default=60, alias="HOT_LEAD_SCORE")
+    # knowledge-gap loop (app/gaps.py): nightly drafts for unanswered questions; an approved draft becomes a custom answer
+    # and (GAP_FOLLOWUP) the people who asked get the answer by email
+    gap_loop_enabled: bool = Field(default=True, alias="GAP_LOOP_ENABLED")
+    gap_cron: str = Field(default="20 3 * * *", alias="GAP_CRON")                     # host timezone; after the 02:30 re-crawl
+    gap_days: int = Field(default=30, alias="GAP_DAYS")                               # look-back for unanswered questions
+    gap_max_drafts: int = Field(default=10, alias="GAP_MAX_DRAFTS")                   # new drafts (model calls) per night
+    gap_similarity: float = Field(default=0.78, alias="GAP_SIMILARITY")               # same question, other words (bge-small cosine: rewordings 0.76-0.97, different questions up to 0.75)
+    gap_model: str = Field(default="", alias="GAP_MODEL")                             # empty = CHAT_MODEL
+    gap_followup: bool = Field(default=True, alias="GAP_FOLLOWUP")
+    gap_followup_max_days: int = Field(default=45, alias="GAP_FOLLOWUP_MAX_DAYS")     # only people who asked this recently
+    # call outcomes (app/outcomes.py): "how did it go?" to the host after each call, follow-up drafts, and a lead score
+    # that re-weights its rules from the outcomes once SCORE_LEARN_MIN calls are rated
+    outcomes_enabled: bool = Field(default=True, alias="OUTCOMES_ENABLED")
+    outcome_ask_after_minutes: int = Field(default=20, alias="OUTCOME_ASK_AFTER_MINUTES")
+    score_learning: bool = Field(default=True, alias="SCORE_LEARNING")
+    score_learn_min: int = Field(default=20, alias="SCORE_LEARN_MIN")
+    link_secret: str = Field(default="", alias="LINK_SECRET")  # signs one-tap email links; empty = derived from ADMIN_TOKEN
     enrich_enabled: bool = Field(default=True, alias="ENRICH_ENABLED")
     suggestions_days: int = Field(default=30, alias="SUGGESTIONS_DAYS")
     multilingual: bool = Field(default=True, alias="MULTILINGUAL")

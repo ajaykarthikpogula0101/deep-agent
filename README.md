@@ -11,7 +11,7 @@ gives Deep a brief on every lead before the call.
 ![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-237%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-248%20passing-2EA44F)
 
 [Features](#features) · [Quick start](#quick-start) · [Configuration](#configuration) · [Embed it](#embed-it) ·
 [Deploy](#deploy) · [Tests](#tests) · [Docs](#documentation)
@@ -27,6 +27,8 @@ gives Deep a brief on every lead before the call.
 | **Answers with sources** | Retrieval over the crawled deependhq.com (llms-full.txt, data.js, sitemap pages), with a confidence floor: off-topic questions get a polite refusal instead of a guess. Prompt-injection fences on everything retrieved. |
 | **Booking in the chat** | Call type → date → time → details → confirm. The visitor can add attendees and gets a Zoom link and an `.ics` invite. Reschedule, cancel and "book again" also work from the chat. Uses Zoom's official API, a public-page fallback, or a browser worker on the public scheduler page. |
 | **Pre-call brief and lead score** | Before every call Deep gets a brief: who they are, what they asked, pages they read, where they came from and a 0–100 score with reasons. Hot leads trigger an alert. |
+| **Learns from unanswered questions** | Every night the questions the bot couldn't answer become drafted answers. Deep approves one with a click, the bot answers it from then on, and the people who asked get the answer by email. |
+| **Learns from every call** | After each call Deep taps Good fit / Follow up / Not a fit / No-show. The bot drafts the follow-up email, and the lead score re-weights its rules from real outcomes. |
 | **Voice in any language** | A mic button and a hands-free voice call. Server speech-to-text (Whisper) detects the language automatically. It ignores silence and noise and re-reads text written in the wrong alphabet. Answers are spoken back. |
 | **Answer cards** | Comparisons, KPI tiles, timelines and next-step buttons rendered under the answer (openui-lang, sandboxed). |
 | **Remembers return visitors** | "Welcome back" with the last topic, upcoming bookings, and a conversation history page. |
@@ -114,6 +116,8 @@ All settings live in `.env`. `.env.example` lists every option with a comment. T
 | `BROWSER_BOOKING_ENABLED`, `JEV_PYTHON` | booking on the public Zoom page by a browser worker ([BROWSER_BOOKING](docs/BROWSER_BOOKING.md)) |
 | `WIDGET_SIGNING_SECRET`, `CLERK_JWT_ISSUER_DOMAIN` | signed-in visitors from a host app ([WIDGET](docs/WIDGET.md)) |
 | `PRECALL_*`, `HOT_LEAD_*`, `DIGEST_*` | briefs, lead alerts and the weekly digest ([AUTOMATIONS](docs/AUTOMATIONS.md)) |
+| `GAP_*`, `OUTCOME*`, `SCORE_LEARN*` | the knowledge-gap loop and call outcomes ([AUTOMATIONS](docs/AUTOMATIONS.md) §13–14) |
+| `PUBLIC_BASE_URL` | where this service is reachable; every link in an email points here |
 
 > [!IMPORTANT]
 > Never commit `.env`; it is in `.gitignore`. Set long random values for `ADMIN_TOKEN` and `WIDGET_SIGNING_SECRET`
@@ -162,12 +166,15 @@ gcloud run deploy deependhq-assistant --source . --region asia-south1 \
 | hourly :15 | one follow-up email to visitors who started a booking on Zoom but didn't confirm |
 | hourly :30 | hot-lead alerts |
 | hourly :45 | booking reminders and pre-call briefs |
+| hourly :05 | "How did the call go?" to Deep after each call |
+| nightly 03:20 / 03:40 | drafted answers for unanswered questions / re-learn the lead score |
+| every 15 min | send approved answers to the people who asked |
 | daily 03:10 | purge old tracking data |
 
 ## Tests
 
 ```bash
-pytest                                        # 237 tests, no network, no database
+pytest                                        # 248 tests, no network (the database ones skip without Postgres)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)
 python scripts/verify_zoom.py                 # check Zoom S2S credentials once they are in .env
 node scripts/browser_check_widget.mjs http://127.0.0.1:8080 out   # the widget in a real headless browser
@@ -184,6 +191,8 @@ app/
   rag/             retrieval with a confidence floor, prompts, injection fences
   booking/         Zoom clients, in-chat booking flow, emails, .ics, browser booking
   precall.py       pre-call brief and lead score
+  gaps.py          unanswered questions → drafted answers → emails to the people who asked
+  outcomes.py      call outcomes, follow-up drafts, the learning lead score
   media.py         uploads, speech-to-text clean-up, text-to-speech
   memory.py        return-visitor memory
   outreach.py      proactive greeting rules
@@ -211,7 +220,7 @@ docs/              feature guides (below)
 | [BROWSER_BOOKING](docs/BROWSER_BOOKING.md) | booking on the public Zoom page without API credentials |
 | [ZOOM_SETUP](docs/ZOOM_SETUP.md) | Zoom Server-to-Server OAuth app |
 | [FAILURE_MODES](docs/FAILURE_MODES.md) | every booking failure and its fallback |
-| [AUTOMATIONS](docs/AUTOMATIONS.md) | digest, nudges, reminders, enrichment, pre-call briefs, lead alerts |
+| [AUTOMATIONS](docs/AUTOMATIONS.md) | digest, nudges, reminders, enrichment, pre-call briefs, lead alerts, knowledge-gap loop, call outcomes |
 | [EMAILS](docs/EMAILS.md) | every email, who gets it, how to change the wording |
 | [MEMORY_VOICE](docs/MEMORY_VOICE.md) | return-visitor memory, multilingual voice and its accuracy |
 | [OUTREACH](docs/OUTREACH.md) | proactive greeting rules |

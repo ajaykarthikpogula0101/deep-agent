@@ -41,3 +41,12 @@ def _no_rich_digest(monkeypatch):
 
     monkeypatch.setattr(settings, "digest_rich_email", False)
     monkeypatch.setattr(digest_rich, "available", lambda: False)
+
+
+@pytest.fixture(autouse=True)
+def _no_learned_score(monkeypatch):
+    """The lead score uses its fixed points in tests: corrections learned from real call outcomes in the database
+    (app/outcomes.py) never leak in. tests/test_outcomes.py passes `adjust` explicitly."""
+    from app import outcomes
+
+    monkeypatch.setattr(outcomes, "adjustments", lambda: {})

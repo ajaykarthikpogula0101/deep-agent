@@ -212,9 +212,92 @@ brief always exists. Stored on `bookings.brief` / `bookings.brief_at`.
 Endpoints: `GET /admin/bookings/{id}/brief[?refresh=1]`, `POST /admin/bookings/{id}/brief/email`,
 `GET /admin/leads/scored?days=`, `POST /admin/leads/alerts/run`.
 
+## 13. Knowledge-gap loop (added 2026-10-14)
+
+Questions the assistant could not answer used to end up in a list. Now they come back as drafted answers that Deep
+approves with one click; the assistant answers them from then on, and the people who asked get the answer by email.
+`app/gaps.py`.
+
+**Every night** (`GAP_CRON`, default 03:20 host time, after the re-crawl) the visitor questions of the last `GAP_DAYS`
+(30) that were refused (low confidence) or marked "not helpful" are collected. Left out: greetings and small talk,
+booking commands and the booking form's own messages, one-word fragments, and questions an existing custom answer now
+covers. Each question joins the draft it matches (`GAP_SIMILARITY` 0.78 on the local embeddings: rewordings score
+0.76–0.97, different questions up to 0.75) or starts a new group. The biggest new groups (`GAP_MAX_DRAFTS`, 10 a night)
+get one model call each (`GAP_MODEL`, default `CHAT_MODEL`) with the site's six closest excerpts:
+
+* the question in plain words, and an answer **only** from the excerpts; where the site is silent the draft says what is
+  missing and leaves a `[placeholder]` for Deep's fact ("needs your facts" in the console, "answered from the site" when
+  it is fully covered);
+* off-topic questions (weather, homework), small talk and fragments that only made sense mid-conversation are
+  dismissed automatically (Deep can restore them).
+
+Without a model the draft is left for Deep to write. Each message is processed once (`gap_asks`).
+
+**Console → Gaps → Drafted answers**: the question as visitors wrote it, the drafted question, answer and source link
+(all editable), "Approve", "draft again", "dismiss", and the approved and dismissed lists. "draft new answers now" runs
+the nightly job on demand.
+
+**Approve** refuses an answer that still has a `[placeholder]`, then creates the custom answer: the question plus up to
+four of the visitors' own wordings (so a reworded question hits it too), all with the same answer and link. From that
+moment the assistant gives that answer word for word, with no model call (`CUSTOM_ANSWER_MIN_SCORE`).
+
+**The email to the people who asked** (`GAP_FOLLOWUP`, checkbox per draft, template `visitor_gap` in Console → Emails):
+everyone who asked and left an email on that browser (sign-in, booking, enquiry, hand-over) gets the answer, quoting
+their own words, with a "Read more" link, an "Ask Deep more" button and Deep's booking link. Safeguards:
+
+* only questions asked after the loop went live (`settings` key `gaps:since`, written on the first run), so switching it
+  on never emails people (or colleagues' test chats) from before, and only within `GAP_FOLLOWUP_MAX_DAYS` (45);
+* never addresses on the host's own domain (`HOST_EMAIL`, `EMAIL_FROM`), never anyone who opted out;
+* it goes out 10 minutes after approval (time to undo: dismissing the draft cancels it), one email per person with all
+  their answered questions, at most one every 3 days (sent every 15 minutes);
+* every email has a signed unsubscribe link (`/email/optout`, a page with a button: mail scanners that open links change
+  nothing); `email_optouts` is checked before every send.
+
+The email's links carry `utm_campaign=gap-followup`, so session tracking counts who came back and who booked.
+
+Endpoints: `GET /admin/gaps/drafts?status=draft|approved|dismissed`, `POST /admin/gaps/run`,
+`POST /admin/gaps/drafts/{id}/approve|dismiss|restore|redraft`, `GET /admin/gaps/drafts/{id}/askers`,
+`POST /admin/gaps/followups/send`, `GET|POST /email/optout`.
+
+## 14. Call outcomes and the learning lead score (added 2026-10-14)
+
+After every call Deep says how it went with one tap; the assistant drafts the follow-up email, and the lead score learns
+which signals really lead to good calls. `app/outcomes.py`.
+
+**"How did the call with Ada go?"** `OUTCOME_ASK_AFTER_MINUTES` (20) after a booked call ends, Deep gets one email with
+the call, the lead score at booking and four buttons: **Good fit · Follow up · Not a fit · No-show** (hourly at :05;
+only calls booked after the feature went live, `outcomes:since`; calls that ended more than 3 days ago are not asked
+about). The buttons are signed links (`LINK_SECRET`, else derived from `ADMIN_TOKEN`) to a small page with that choice
+preselected, a note box and "Save": a mail scanner opening the link changes nothing.
+
+**The follow-up draft**: Good fit, Follow up and No-show draft an email to the visitor right away (one model call, from
+the brief, the chat and Deep's note; never invented prices, dates or promises; a no-show gets "sorry we missed you" with
+the booking link). The page shows it editable with "Send to Ada"; replies go to Deep. Nothing reaches the visitor
+without that press, and it is sent once. Not a fit drafts nothing.
+
+**Console → Bookings**: an "outcome" column ("rate it" for calls that ended without one); open a booking for the four
+buttons, the note, and the follow-up editor ("Send", "draft again").
+
+**Learning** (`learn`, nightly at 03:40 and after every outcome): every rule of the lead score now has a key. Good fit
+and Follow up count as good calls, Not a fit and No-show as not. With n rated calls and a good-call rate p, each rule's
+rate among the calls that had it is smoothed toward p (as if 5 more calls at p) and becomes a correction of
+`40 × (rate − p)` points, capped at ±20, and 0 for a rule seen in fewer than 3 calls. The corrections apply to every
+score once `SCORE_LEARN_MIN` (20) calls are rated (`SCORE_LEARNING`); before that Console → Bookings shows what they
+would be. Each reason in a brief keeps its original points (`base`) next to the learned ones, so the change is visible.
+The card also shows how far apart good calls and the rest score, before and after learning.
+
+**Weekly digest**: a "Results" section with the week's calls by outcome and the source that brought the most good
+calls, and the knowledge-gap loop (drafts waiting, approved, emailed, came back, booked).
+
+Endpoints: `POST /admin/bookings/{id}/outcome`, `POST /admin/bookings/{id}/followup/draft|send`,
+`GET /admin/score/learning`, `POST /admin/score/learn`, `POST /admin/outcomes/ask/run`, `GET|POST /outcome/{id}`,
+`POST /outcome/{id}/send`.
+
 ## Operations
 
-* Scheduler jobs (`app/main.py` startup): `recrawl`, `tracking_purge`, `weekly_digest`, `nudges`, `reminders`, `hot_leads`.
-* New tables/columns: `companies`; `leads.company`, `leads.enrichment`, `leads.nudged_at`, `leads.confirmed_at`.
+* Scheduler jobs (`app/main.py` startup): `recrawl`, `tracking_purge`, `weekly_digest`, `nudges`, `reminders`, `hot_leads`,
+  `gap_drafts`, `gap_followups`, `outcome_asks`, `score_learning`.
+* New tables/columns: `companies`; `leads.company`, `leads.enrichment`, `leads.nudged_at`, `leads.confirmed_at`; `gap_drafts`,
+  `gap_asks`, `gap_followups`, `email_optouts`; `bookings.outcome`, `outcome_note`, `outcome_at`, `outcome_asked_at`, `followup`.
 * Turn anything off without a redeploy: `DIGEST_ENABLED=false`, `NUDGE_ENABLED=false`, `ENRICH_ENABLED=false`,
   `MULTILINGUAL=false`; suggestions fall back to the fixed defaults when the database is unreachable.

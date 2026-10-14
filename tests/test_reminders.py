@@ -98,12 +98,14 @@ def _db_up() -> bool:
 
 
 @pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
-def test_reminder_job_sends_once_per_upcoming_booking_and_memory_sees_the_change():
+def test_reminder_job_sends_once_per_upcoming_booking_and_memory_sees_the_change(monkeypatch):
     from app import store_bookings as sb
     from app.db import conn
 
     tag = uuid.uuid4().hex[:8]
     sid, vid = f"rem-{tag}", f"rem-vid-{tag}"
+    real_due = reminders.due  # only this test's bookings: a real booking made minutes ago must never be marked as reminded
+    monkeypatch.setattr(reminders, "due", lambda *a, **k: [b for b in real_due(*a, **k) if b.get("session_id") == sid])
     now = datetime.now(timezone.utc)
     mk = lambda start, status="confirmed": sb.insert({"session_id": sid, "name": "Ada Lovelace", "email": "ada@lovelace.org", "schedule_slug": "discovery-call",  # noqa: E731
                                                        "schedule_name": "LakeB2B Discovery Call", "duration_min": 15, "start_utc": start, "end_utc": start + timedelta(minutes=15),

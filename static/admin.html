@@ -54,6 +54,14 @@
   .brief h3 { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--beam-text); margin:16px 0 6px; font-weight:600 }
   .brief ul { margin:0; padding-left:20px } .brief li { margin:0 0 4px } .brief .sum { font-size:16px; margin:10px 0 0; max-width:820px }
   .pv { white-space:pre-wrap; font:13px/1.5 "IBM Plex Mono", monospace; margin:0; color:var(--text) } .pv b { color:var(--scan) }
+  .gd { border-top:1px solid var(--line); padding:16px 0 } .gd:first-child { border-top:0; padding-top:4px }
+  .gd .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px } .gd label.f { display:flex; flex-direction:column; gap:4px; margin-bottom:8px }
+  .gd input[type=text], .gd textarea, .oc textarea, .oc input[type=text] { width:100% } .gd textarea { min-height:110px } .gd .q { font-weight:600 }
+  .gd label.f input, .gd label.f textarea { font:400 14px/1.5 "IBM Plex Sans", system-ui, sans-serif; text-transform:none; letter-spacing:0; color:var(--text) }
+  .oc .opts { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 10px } .oc .opts .btn.on { background:var(--beam); border-color:var(--beam); color:var(--on-beam); font-weight:600 }
+  .oc textarea { min-height:70px } .oc .fu textarea { min-height:220px }
+  .out { display:inline-block; border-radius:999px; padding:1px 9px; font-size:12px; border:1px solid var(--line-strong); white-space:nowrap }
+  .out.good_fit, .out.follow_up { color:var(--scan); border-color:var(--scan) } .out.not_fit, .out.no_show { color:var(--danger); border-color:var(--danger) } .out.rate { color:var(--beam-text); border-color:var(--beam-text) }
   #tplform label { display:flex; flex-direction:column; gap:4px } #tplform label input[type=checkbox] { width:auto } #tplform label:has(input[type=checkbox]) { flex-direction:row; align-items:center; gap:8px; font:inherit; text-transform:none; letter-spacing:0; color:var(--text) }
 </style>
 </head>
@@ -91,12 +99,17 @@
   <section class="pane" id="bookings">
     <div id="bk-list-wrap">
       <div class="card"><h2>Bookings made in the chat · lead score from the pre-call brief (open a row for the full brief)</h2><div class="wrap" id="bk-list"></div></div>
+      <div class="card"><h2>What the lead score learned from your call outcomes <button class="btn" type="button" id="learn-run" style="float:right">recalculate</button></h2>
+        <p class="muted" style="margin:0 0 10px;font-size:13px" id="learn-note"></p><div class="wrap" id="learn-table"></div></div>
       <div class="card"><h2>Left an email, no call booked · scored with the same rules <button class="btn" type="button" id="hot-run" style="float:right">send hot-lead alerts now</button></h2>
         <p class="muted" style="margin:0 0 10px;font-size:13px" id="hot-note"></p><div class="wrap" id="hot-list"></div></div>
     </div>
-    <div id="bk-view" style="display:none"><button class="btn back" id="bk-back">← all bookings</button><div class="card brief" id="bk-brief"></div></div>
+    <div id="bk-view" style="display:none"><button class="btn back" id="bk-back">← all bookings</button><div class="card oc" id="bk-outcome"></div><div class="card brief" id="bk-brief"></div></div>
   </section>
   <section class="pane" id="gaps">
+    <div class="card"><h2>Drafted answers · approve one to teach the assistant, and the people who asked get the answer by email
+      <span style="float:right;display:flex;gap:8px;flex-wrap:wrap"><select id="gd-status"><option value="draft">waiting for you</option><option value="approved">approved</option><option value="dismissed">dismissed</option></select><button class="btn" type="button" id="gd-run">draft new answers now</button><button class="btn" type="button" id="gd-send">send approved emails now</button></span></h2>
+      <p class="muted" id="gd-note" style="margin:0 0 6px;font-size:13px"></p><div id="gd-list"></div></div>
     <div class="grid2">
       <div class="card"><h2>Questions the assistant could not answer</h2><p class="muted" style="margin:0 0 10px;font-size:13px">Add the missing information to the site, or write a custom answer for it.</p><div class="wrap" id="unanswered"></div></div>
       <div class="card"><h2>Answers marked "not helpful"</h2><div class="wrap" id="down"></div></div>
@@ -172,6 +185,10 @@
           <label><input type="checkbox" name="visitor_reminder_enabled"> send this email (once per booking, 24 h before; REMINDER_BEFORE_HOURS)</label>
           <label class="mono muted">subject<input name="visitor_reminder_subject" style="width:100%"></label>
           <label class="mono muted">body<textarea name="visitor_reminder_body" style="min-height:180px"></textarea></label>
+          <h2>Visitor email with the answer to a question the assistant couldn't answer (after you approve a drafted answer)</h2>
+          <label><input type="checkbox" name="visitor_gap_enabled"> send this email ({answers} holds their question(s) and your answer(s))</label>
+          <label class="mono muted">subject<input name="visitor_gap_subject" style="width:100%"></label>
+          <label class="mono muted">body<textarea name="visitor_gap_body" style="min-height:220px"></textarea></label>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <button class="btn primary" type="submit">Save templates</button>
             <button class="btn" type="button" id="tplreset">Reset all to defaults</button>
@@ -189,6 +206,7 @@
         <div class="card"><h2>Preview · visitor call cancelled <button class="btn" type="button" data-test="visitor_cancelled" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_cancelled"></pre></div>
         <div class="card"><h2>Preview · visitor day-before reminder <button class="btn" type="button" data-test="visitor_reminder" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_reminder"></pre></div>
         <div class="card"><h2>Preview · host new booking (chat) <button class="btn" type="button" data-test="host_booking" style="float:right">send test</button></h2><pre class="pv" id="pv-host_booking"></pre></div>
+        <div class="card"><h2>Preview · visitor answer to their question <button class="btn" type="button" data-test="visitor_gap" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_gap"></pre></div>
         <p class="status" id="teststatus"></p>
       </div>
     </div>
@@ -311,11 +329,14 @@ async function openConvo(sid) {
 $('back').onclick = loadConvos;
 // ---- bookings + pre-call brief (app/precall.py)
 const leadChip = l => l && l.label ? `<span class="lead ${esc(l.label)}">${esc(l.label)} · ${l.score}</span>` : '<span class="muted">—</span>';
+const OUTCOMES = { good_fit: 'Good fit', follow_up: 'Follow up', not_fit: 'Not a fit', no_show: 'No-show' };
+const outChip = b => b.outcome ? `<span class="out ${esc(b.outcome)}">${esc(OUTCOMES[b.outcome] || b.outcome)}${b.followup && b.followup.sent_at ? ' · followed up' : ''}</span>`
+  : (b.status !== 'cancelled' && b.end_utc && new Date(b.end_utc) < new Date() ? '<span class="out rate">rate it</span>' : '<span class="muted">—</span>');
 async function loadBookings() {
   const [d, h] = await Promise.all([api(`/admin/bookings?days=${Math.max(days(), 30)}`), api(`/admin/leads/scored?days=${days()}`)]);
   $('bk-view').style.display = 'none'; $('bk-list-wrap').style.display = '';
-  $('bk-list').innerHTML = d.items.length ? `<table><thead><tr><th>call time</th><th>lead</th><th>name</th><th>company</th><th>call</th><th>guests</th><th>status</th><th>booked</th></tr></thead><tbody>` +
-    d.items.map(b => `<tr class="click" data-id="${b.id}"><td>${fmt(b.start_utc)}</td><td>${leadChip(b.lead)}</td><td>${esc(b.name)}<div class="muted" style="font-size:12px">${esc(b.email)}</div></td><td class="ell">${esc(String(b.company_line || b.company || '').split(' · ')[0])}</td><td class="ell">${esc(b.schedule_name || '')}</td><td>${(b.attendees || []).length || ''}</td><td class="${b.status === 'cancelled' ? 'bad' : b.status === 'confirmed' ? 'ok' : 'warn'}">${esc(b.status)}</td><td class="muted">${fmt(b.created_at)}</td></tr>`).join('') + '</tbody></table>'
+  $('bk-list').innerHTML = d.items.length ? `<table><thead><tr><th>call time</th><th>lead</th><th>name</th><th>company</th><th>call</th><th>guests</th><th>status</th><th>outcome</th><th>booked</th></tr></thead><tbody>` +
+    d.items.map(b => `<tr class="click" data-id="${b.id}"><td>${fmt(b.start_utc)}</td><td>${leadChip(b.lead)}</td><td>${esc(b.name)}<div class="muted" style="font-size:12px">${esc(b.email)}</div></td><td class="ell">${esc(String(b.company_line || b.company || '').split(' · ')[0])}</td><td class="ell">${esc(b.schedule_name || '')}</td><td>${(b.attendees || []).length || ''}</td><td class="${b.status === 'cancelled' ? 'bad' : b.status === 'confirmed' ? 'ok' : 'warn'}">${esc(b.status)}</td><td>${outChip(b)}</td><td class="muted">${fmt(b.created_at)}</td></tr>`).join('') + '</tbody></table>'
     : '<p class="muted">No bookings in this period.</p>';
   $('bk-list').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => openBrief(tr.dataset.id));
   $('hot-note').textContent = `Hot is ${h.threshold}+. A hot lead gets one alert email to the host (hourly, at most once per 14 days per email).`;
@@ -323,12 +344,46 @@ async function loadBookings() {
     h.items.map(x => `<tr class="click" data-sid="${esc(x.session_id)}"><td>${leadChip(x)}</td><td>${esc(x.name || '')}<div class="muted" style="font-size:12px">${esc(x.email)}</div></td><td class="ell">${esc(String(x.company || '').split(' · ')[0])}</td><td>${x.visits}</td><td>${x.questions}</td><td class="muted ell" title="${esc(x.reasons.map(r => r.text).join('; '))}">${esc(x.reasons.filter(r => r.points).map(r => r.text).join('; '))}</td><td class="muted">${fmt(x.last_seen)}</td></tr>`).join('') + '</tbody></table>'
     : '<p class="muted">Nobody in this period left an email without booking.</p>';
   $('hot-list').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { document.querySelector('nav button[data-pane="convos"]').click(); openConvo(tr.dataset.sid); });
+  renderLearning(await api('/admin/score/learning'));
+}
+function renderLearning(L) {
+  const s = L.separation || {};
+  $('learn-note').textContent = !L.calls ? `No rated calls yet. After each call you get a "How did it go?" email; once ${L.min_calls} calls are rated, the score re-weights its rules from what really turned into good calls.`
+    : (L.active ? `Learning is on: ${L.calls} rated calls, ${Math.round(100 * L.good_rate)}% good. The changes below are applied to every score.`
+      : `${L.calls} of ${L.min_calls} rated calls so far (${L.good} good). The changes below show what the score would learn; they apply from ${L.min_calls} calls.`)
+    + (s.good_before != null && s.rest_before != null ? ` Good calls scored ${s.good_before} on average vs ${s.rest_before} for the rest` + (L.active || Object.keys(L.would_adjust || {}).length ? `; with the learned weights ${s.good_after} vs ${s.rest_after}.` : '.') : '');
+  const rows = (L.table || []).filter(r => r.calls);
+  $('learn-table').innerHTML = rows.length ? `<table><thead><tr><th>rule</th><th>calls with it</th><th>good calls</th><th>points change</th></tr></thead><tbody>` + rows.map(r => `<tr><td>${esc(r.rule)}</td><td>${r.calls}</td><td>${r.good_rate == null ? '—' : Math.round(100 * r.good_rate) + '%'}</td><td class="${r.adjust > 0 ? 'ok' : r.adjust < 0 ? 'bad' : 'muted'}">${r.adjust ? (r.adjust > 0 ? '+' : '−') + Math.abs(r.adjust) : '0'}</td></tr>`).join('') + '</tbody></table>' : '';
+}
+$('learn-run').onclick = async () => { try { renderLearning(await api('/admin/score/learn', { method: 'POST' })); } catch (e) { $('learn-note').textContent = e.message; } };
+function renderOutcome(id, bk) {
+  const ended = bk.end_utc && new Date(bk.end_utc) < new Date(), fu = bk.followup || {}, first = (bk.name || '').split(' ')[0] || 'them';
+  $('bk-outcome').innerHTML = `<h2>How did the call go?${ended ? '' : ' <span class="muted">(the call is still ahead; you can rate it afterwards)</span>'}</h2>
+    <div class="opts">${Object.entries(OUTCOMES).map(([k, v]) => `<button class="btn${bk.outcome === k ? ' on' : ''}" type="button" data-o="${k}">${v}</button>`).join('')}</div>
+    <textarea id="oc-note" maxlength="2000" placeholder="Anything to remember? The follow-up draft uses it (e.g. wants 500 sample EU fintech contacts by Friday)">${esc(bk.outcome_note || '')}</textarea>
+    <p class="status" id="oc-status">${bk.outcome ? 'Saved: ' + esc(OUTCOMES[bk.outcome]) + (bk.outcome_at ? ' · ' + fmt(bk.outcome_at) : '') + '. Pick another to change it.' : 'Pick one to save it.'}</p>
+    <div class="fu" id="oc-fu"></div>`;
+  const showFu = f => { if (!f) { $('oc-fu').innerHTML = ''; return; }
+    if (f.sent_at) { $('oc-fu').innerHTML = `<h3 class="mono muted">Follow-up sent ${fmt(f.sent_at)}</h3><pre class="pv"><b>${esc(f.subject)}</b>\n\n${esc(f.body)}</pre>`; return; }
+    $('oc-fu').innerHTML = `<h3 class="mono muted">Follow-up email to ${esc(bk.email)} · ${f.composer === 'model' ? 'drafted by the model from the brief and your note' : 'rule-based draft'}${f.model_error ? ' (model unavailable: ' + esc(f.model_error) + ')' : ''}</h3>
+      <input type="text" id="fu-subject" maxlength="160" value="${esc(f.subject || '')}"><textarea id="fu-body" style="margin-top:8px">${esc(f.body || '')}</textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn primary" type="button" id="fu-send">Send to ${esc(first)}</button><button class="btn" type="button" id="fu-redraft">draft again</button><span class="status" id="fu-status"></span></div>`;
+    $('fu-send').onclick = async () => { $('fu-status').textContent = 'sending…';
+      try { const r = await api(`/admin/bookings/${id}/followup/send`, { method: 'POST', body: JSON.stringify({ subject: $('fu-subject').value.trim(), body: $('fu-body').value.trim() }) });
+        if (r.ok) { showFu(Object.assign({}, f, { subject: $('fu-subject').value.trim(), body: $('fu-body').value.trim(), sent_at: new Date().toISOString() })); } else $('fu-status').textContent = r.error || 'not sent'; } catch (e) { $('fu-status').textContent = e.message; } };
+    $('fu-redraft').onclick = async () => { $('fu-status').textContent = 'drafting…'; try { showFu((await api(`/admin/bookings/${id}/followup/draft`, { method: 'POST' })).followup); } catch (e) { $('fu-status').textContent = e.message; } }; };
+  showFu(fu.subject ? fu : null);
+  $('bk-outcome').querySelectorAll('button[data-o]').forEach(b => b.onclick = async () => {
+    $('oc-status').textContent = ['good_fit', 'follow_up', 'no_show'].includes(b.dataset.o) && !fu.sent_at ? 'saving and drafting the follow-up (up to half a minute)…' : 'saving…';
+    try { const r = await api(`/admin/bookings/${id}/outcome`, { method: 'POST', body: JSON.stringify({ outcome: b.dataset.o, note: $('oc-note').value.trim() || null }) });
+      renderOutcome(id, Object.assign({}, bk, { outcome: r.outcome, outcome_note: $('oc-note').value.trim(), outcome_at: new Date().toISOString(), followup: r.followup }));
+    } catch (e) { $('oc-status').textContent = e.message; } });
 }
 function renderBrief(id, d) {
   const b = d.brief, a = b.activity || {}, li = xs => `<ul>${xs.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
   const sec = (t, xs) => xs && xs.length ? `<h3>${t}</h3>${li(xs)}` : '';
   $('bk-brief').innerHTML = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="lead ${esc(b.label)}" style="font-size:14px">${esc(b.label)} lead · ${b.score}/100</span>
-      <span class="muted">${a.visits || 0} visits · ${a.questions || 0} questions${a.referrer_host || a.channel ? ' · via ' + esc(a.referrer_host || a.channel) : ''}${a.location ? ' · ' + esc(a.location) : ''}</span>
+      <span class="muted">${a.visits || 0} visit${a.visits === 1 ? '' : 's'} · ${a.questions || 0} question${a.questions === 1 ? '' : 's'}${a.referrer_host || a.channel ? ' · via ' + esc(a.referrer_host || a.channel) : ''}${a.location ? ' · ' + esc(a.location) : ''}</span>
       <span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="br-refresh">refresh brief</button><button class="btn" id="br-mail">email it to me</button>${d.session_id ? '<button class="btn" id="br-convo">open conversation</button>' : ''}</span></div>
     <p class="sum">${esc(b.summary || '')}</p>
     ${sec('Why this score', (b.reasons || []).map(r => (r.points >= 0 ? '+' : '−') + Math.abs(r.points) + '  ' + r.text))}
@@ -338,14 +393,46 @@ function renderBrief(id, d) {
   $('br-refresh').onclick = async () => { $('br-status').textContent = 'rebuilding (up to half a minute)…'; try { renderBrief(id, await api(`/admin/bookings/${id}/brief?refresh=1`)); } catch (e) { $('br-status').textContent = e.message; } };
   $('br-mail').onclick = async () => { try { const r = await api(`/admin/bookings/${id}/brief/email`, { method: 'POST' }); $('br-status').textContent = `Queued to ${r.to}: "${r.subject}"`; } catch (e) { $('br-status').textContent = e.message; } };
   if (d.session_id) $('br-convo').onclick = () => { document.querySelector('nav button[data-pane="convos"]').click(); openConvo(d.session_id); };
+  if (d.booking) renderOutcome(id, d.booking);
 }
 async function openBrief(id) {
-  $('bk-list-wrap').style.display = 'none'; $('bk-view').style.display = ''; $('bk-brief').innerHTML = '<p class="muted">building the brief…</p>';
+  $('bk-list-wrap').style.display = 'none'; $('bk-view').style.display = ''; $('bk-outcome').innerHTML = ''; $('bk-brief').innerHTML = '<p class="muted">building the brief…</p>';
   try { renderBrief(id, await api(`/admin/bookings/${id}/brief`)); } catch (e) { $('bk-brief').innerHTML = `<p class="bad">${esc(e.message)}</p>`; }
 }
 $('bk-back').onclick = loadBookings;
 $('hot-run').onclick = async () => { const b = $('hot-run'); b.disabled = true; try { const r = await api('/admin/leads/alerts/run', { method: 'POST' }); $('hot-note').textContent = `Checked ${r.checked} · hot ${r.hot} · alerts sent ${r.sent}${r.error ? ' · ' + r.error : ''}`; } catch (e) { $('hot-note').textContent = e.message; } finally { b.disabled = false; } };
+async function loadDrafts() {
+  const st = $('gd-status').value, d = await api(`/admin/gaps/drafts?status=${st}&days=${days()}`), s = d.stats || {};
+  $('gd-note').textContent = `Every night the assistant groups the questions it couldn't answer and drafts an answer from the site. ${s.approved || 0} approved · ${s.emailed || 0} people got their answer by email · ${s.came_back || 0} came back${s.booked ? ' · ' + s.booked + ' booked' : ''} (period above).`
+    + (d.followup ? '' : ' Emails to visitors are off (GAP_FOLLOWUP).') + (d.links ? '' : ' Set ADMIN_TOKEN or LINK_SECRET so the emails can carry an unsubscribe link.');
+  if (!d.items.length) { $('gd-list').innerHTML = `<p class="muted">${st === 'draft' ? 'Nothing waiting. New drafts appear after the nightly run, or press "draft new answers now".' : 'None.'}</p>`; return; }
+  $('gd-list').innerHTML = d.items.map(x => {
+    const head = `<div class="row"><span class="chip">asked <b>${x.asked}</b>×</span>${x.last_asked ? `<span class="muted">last ${fmt(x.last_asked)}</span>` : ''}${st === 'draft' ? (x.grounded ? '<span class="chip ok">answered from the site</span>' : '<span class="chip warn">needs your facts</span>') : ''}${x.emailed ? `<span class="chip">emailed <b>${x.emailed}</b></span>` : ''}${x.note ? `<span class="muted">${esc(x.note)}</span>` : ''}</div>
+      <div class="muted" style="font-size:13px;margin-bottom:8px">Visitors wrote: ${x.variants.map(v => '“' + esc(v) + '”').join(' · ')}</div>`;
+    if (st !== 'draft') return `<div class="gd" data-id="${x.id}">${head}<div class="q">${esc(x.question)}</div><div style="white-space:pre-wrap;margin:6px 0">${esc(x.answer)}</div>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.link)}</a>` : ''}${st === 'dismissed' ? '<div class="row" style="margin-top:8px"><button class="btn" data-act="restore">restore</button></div>' : ''}</div>`;
+    const other = x.known - x.can_email;
+    return `<div class="gd" data-id="${x.id}">${head}
+      <label class="f mono muted">question (as the assistant will recognise it)<input type="text" name="q" maxlength="500" value="${esc(x.question)}"></label>
+      <label class="f mono muted">answer${x.composer === 'rules' ? ' · write it yourself (the drafting model was not available)' : ''}<textarea name="a" maxlength="3000">${esc(x.answer)}</textarea></label>
+      ${x.missing ? `<p class="warn" style="margin:0 0 8px;font-size:13px">The site doesn't say: ${esc(x.missing.replace(/[.\s]*$/, '.'))} Fill in every [placeholder] before approving.</p>` : ''}
+      <label class="f mono muted">link shown as the source (optional)<input type="text" name="l" maxlength="500" value="${esc(x.link || '')}"></label>
+      <div class="row"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="em" ${x.can_email ? 'checked' : 'disabled'}> ${x.can_email ? `email the answer to ${x.can_email} ${x.can_email === 1 ? 'person' : 'people'} who asked` : 'nobody who asked can be emailed (no email left, or asked before this went live)'}</label>${other > 0 ? `<span class="muted" style="font-size:12px">(${other} more left an email but asked before the loop went live, too long ago, or opted out)</span>` : ''}</div>
+      <div class="row"><button class="btn primary" data-act="approve">Approve</button><button class="btn" data-act="redraft">draft again</button><button class="btn danger" data-act="dismiss">dismiss</button><span class="status"></span></div></div>`; }).join('');
+  $('gd-list').querySelectorAll('.gd').forEach(el => el.querySelectorAll('button[data-act]').forEach(b => b.onclick = async () => {
+    const id = el.dataset.id, act = b.dataset.act, st = el.querySelector('.status') || $('gd-note'); b.disabled = true;
+    try {
+      if (act === 'approve') { const r = await api(`/admin/gaps/drafts/${id}/approve`, { method: 'POST', body: JSON.stringify({ question: el.querySelector('[name=q]').value.trim(), answer: el.querySelector('[name=a]').value.trim(), link: el.querySelector('[name=l]').value.trim() || null, email_askers: el.querySelector('[name=em]').checked }) }).catch(async e => { throw e; });
+        st.textContent = `Approved: the assistant answers it now.${r.queued ? ` ${r.queued} email${r.queued > 1 ? 's' : ''} go out in about 10 minutes.` : ''}`; setTimeout(() => { loadDrafts(); loadAnswers(); }, 1500); }
+      else if (act === 'redraft') { st.textContent = 'drafting…'; await api(`/admin/gaps/drafts/${id}/redraft`, { method: 'POST' }); loadDrafts(); }
+      else { await api(`/admin/gaps/drafts/${id}/${act}`, { method: 'POST' }); loadDrafts(); }
+    } catch (e) { st.textContent = e.message; b.disabled = false; } }));
+}
+$('gd-status').onchange = loadDrafts;
+$('gd-run').onclick = async () => { const b = $('gd-run'); b.disabled = true; $('gd-note').textContent = 'grouping questions and drafting answers (a few seconds per question)…';
+  try { const r = await api('/admin/gaps/run', { method: 'POST' }); await loadDrafts(); $('gd-note').textContent = `Checked ${r.checked} unanswered turns · ${r.new_drafts} new drafts · ${r.attached} joined existing ones · ${r.covered} already covered by a custom answer · ${r.off_topic} off-topic dismissed${r.waiting ? ' · ' + r.waiting + ' more groups wait for the next run' : ''}${r.error ? ' · ' + r.error : ''}`; } catch (e) { $('gd-note').textContent = e.message; } finally { b.disabled = false; } };
+$('gd-send').onclick = async () => { const b = $('gd-send'); b.disabled = true; try { const r = await api('/admin/gaps/followups/send', { method: 'POST' }); $('gd-note').textContent = `Emails: ${r.sent} sent · ${r.deferred} waiting for the 3-day spacing · ${r.skipped} skipped (only answers approved more than 10 minutes ago go out).`; } catch (e) { $('gd-note').textContent = e.message; } finally { b.disabled = false; } };
 async function loadGaps() {
+  loadDrafts().catch(e => { $('gd-note').textContent = e.message; });
   const g = await api(`/admin/gaps?days=${Math.max(days(), 30)}`);
   $('unanswered').innerHTML = g.unanswered.length ? `<table><thead><tr><th>question</th><th>times</th><th>last</th><th>why</th><th></th></tr></thead><tbody>` + g.unanswered.map(u => `<tr><td>${esc(u.question)}</td><td>${u.count}</td><td class="muted">${fmt(u.last)}</td><td class="muted">${esc(u.reason || '')}</td><td><button class="btn" data-q="${esc(u.question)}">write answer</button></td></tr>`).join('') + '</tbody></table>' : '<p class="muted">Nothing unanswered. Good.</p>';
   $('unanswered').querySelectorAll('button[data-q]').forEach(b => b.onclick = () => { document.querySelector('nav button[data-pane="answers"]').click(); $('caform').question.value = b.dataset.q; $('caform').answer.focus(); });
@@ -373,11 +460,11 @@ $('caform').onsubmit = async e => { e.preventDefault(); const f = e.target; $('c
 
 // ---- email templates
 const TPL_KEYS = ['brand_default', 'host_name', 'brand_map', 'host_subject', 'host_body', 'visitor_booking_enabled', 'visitor_booking_subject', 'visitor_booking_body', 'visitor_handover_enabled', 'visitor_handover_subject', 'visitor_handover_body', 'visitor_nudge_enabled', 'visitor_nudge_subject', 'visitor_nudge_body', 'visitor_confirmed_enabled', 'visitor_confirmed_subject', 'visitor_confirmed_body', 'host_booking_subject', 'host_booking_body',
-  'visitor_rescheduled_enabled', 'visitor_rescheduled_subject', 'visitor_rescheduled_body', 'visitor_cancelled_enabled', 'visitor_cancelled_subject', 'visitor_cancelled_body', 'visitor_reminder_enabled', 'visitor_reminder_subject', 'visitor_reminder_body'];
+  'visitor_rescheduled_enabled', 'visitor_rescheduled_subject', 'visitor_rescheduled_body', 'visitor_cancelled_enabled', 'visitor_cancelled_subject', 'visitor_cancelled_body', 'visitor_reminder_enabled', 'visitor_reminder_subject', 'visitor_reminder_body', 'visitor_gap_enabled', 'visitor_gap_subject', 'visitor_gap_body'];
 let tplDefaults = {};
 function tplValues() { const f = $('tplform'), out = {}; TPL_KEYS.forEach(k => { const el = f.elements[k]; out[k] = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value; }); return out; }
 function tplFill(t) { const f = $('tplform'); TPL_KEYS.forEach(k => { const el = f.elements[k]; if (el.type === 'checkbox') el.checked = /^(true|1|yes|on)$/i.test(t[k] || ''); else el.value = t[k] || ''; }); }
-function showPreviews(p) { for (const k of ['host', 'visitor_booking', 'visitor_handover', 'visitor_nudge', 'visitor_confirmed', 'host_booking', 'visitor_rescheduled', 'visitor_cancelled', 'visitor_reminder']) { if (!p[k]) continue; const x = p[k]; $('pv-' + k).innerHTML = `<b>Subject:</b> ${esc(x.subject)}\n\n${esc(x.body)}`; } }
+function showPreviews(p) { for (const k of ['host', 'visitor_booking', 'visitor_handover', 'visitor_nudge', 'visitor_confirmed', 'host_booking', 'visitor_rescheduled', 'visitor_cancelled', 'visitor_reminder', 'visitor_gap']) { if (!p[k]) continue; const x = p[k]; $('pv-' + k).innerHTML = `<b>Subject:</b> ${esc(x.subject)}\n\n${esc(x.body)}`; } }
 async function loadEmails() {
   const d = await api('/admin/email-templates'); tplDefaults = d.defaults; tplFill(d.templates); showPreviews(d.previews);
   $('vars').innerHTML = d.variables.map(v => `<span class="chip">{${v}}</span>`).join('');

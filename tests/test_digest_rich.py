@@ -105,7 +105,8 @@ def rich_on(monkeypatch):
 def test_data_for_model_has_the_frozen_keys():
     data = digest.data_for_model(METRICS, PREV, GAPS, LEADS, PERIOD, DEFAULTS)
     assert list(data) == ["subject", "period", "brand", "host", "site", "console_url", "footer", "metrics", "most_asked", "unanswered",
-                          "thumbs_down", "leads"]
+                          "thumbs_down", "leads", "results"]
+    assert data["results"] == []   # calls and the knowledge-gap loop; empty when the week has nothing to report
     assert list(data["metrics"]) == ["conversations", "conversations_delta", "questions", "questions_delta", "resolution_rate", "resolution_delta",
                                      "satisfaction", "csat_up", "csat_down", "bookings", "handovers", "enquiries", "median_answer", "errors"]
     assert data["subject"] == "[Champions Group] Weekly digest: 42 conversations, 5 bookings · 29 Sep – 06 Oct 2026"

@@ -56,10 +56,12 @@ def _db_up() -> bool:
 
 
 @pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
-def test_run_sends_once_and_respects_confirmations():
+def test_run_sends_once_and_respects_confirmations(monkeypatch):
     from app.db import conn
 
     tag = f"nudge-test-{uuid.uuid4()}"
+    real_due = nudge.due  # only this test's leads: real leads in the database are never marked as reminded
+    monkeypatch.setattr(nudge, "due", lambda *a, **k: [l for l in real_due(*a, **k) if str(l["email"]).startswith(tag)])
     sent: list[dict] = []
     ids = []
     try:
