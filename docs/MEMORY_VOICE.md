@@ -94,7 +94,7 @@ The user reported that voice "is not able to catch the voice properly". Measured
 * `STT_PROMPT` (product names as context) is **off**: on the benchmark it raised the error rate from 9.8% to 12.3% and
   made Kannada come back translated.
 
-**Measured** (character error rate, lower is better; `tools/stt_bench`, 17 languages x clean / slow start / office
+**Measured** (character error rate, lower is better; 17 languages x clean / slow start / office
 noise, an English browser):
 
 | | old mic button | old voice call | now (server) |
@@ -104,8 +104,8 @@ noise, an English browser):
 | slow start | 69.5% | 26.6% | **8.8%** |
 | noise / silence turned into words | 3 of 3 | 3 of 3 | **0 of 3** |
 
-In a real browser (`scripts/browser_check_voice.mjs`: each clip played as the microphone; the widget's own recorder,
-endpointing and `/stt`): 17 of 17 pass, mean 3.3% over English, Hindi, Telugu, Tamil, Kannada, Bengali, Spanish, Arabic,
+In a real browser (each clip played as the microphone through the widget's own recorder, endpointing and
+`/stt`): 17 of 17 pass, mean 3.3% over English, Hindi, Telugu, Tamil, Kannada, Bengali, Spanish, Arabic,
 Chinese, Japanese, Hindi in office noise, and silence (nothing sent).
 
 **Limits.** Malayalam stays weak (whisper-large-v3 itself; ~50–70% character errors even in the right script); Kannada
@@ -119,7 +119,6 @@ needs the paid tier (or `STT_HINT_RECHECK=false`, one call per utterance).
 * Manually: ask something, press ⋯ → New conversation: the welcome now says "Welcome back" with the last topic. Book a
   call, start a new conversation: the line shows the booking and a "Confirm your call on Zoom" card. Ask "when is my
   call?" in chat: the model answers from memory. ⋯ → Forget me: the greeting returns to the first-visit copy.
-* Speech accuracy: `pytest tests/test_media.py`; `tools/stt_bench` (README there) for the multilingual benchmark;
-  `node scripts/browser_check_voice.mjs http://127.0.0.1:8089 out tools/stt_bench/out/wav` for the in-browser check.
+* Speech accuracy: `pytest tests/test_media.py` (silence, noise, wrong script, language re-check, Groq 429).
 * Voice: press Speak to Deep, tap the language button until it reads HI, speak Hindi: the transcript and the answer are
   Hindi and the status reads "सुन रहा हूँ…"; the reply is spoken with the Hindi voice when the device has one.

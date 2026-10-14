@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     )
     recrawl_cron: str = Field(default="30 2 * * *", alias="RECRAWL_CRON")
     recrawl_tz: str = Field(default="Asia/Kolkata", alias="RECRAWL_TZ")
-    retrieval_min_score: float = Field(default=0.60, alias="RETRIEVAL_MIN_SCORE")  # bge-small scale; see docs/TEST_LOG.md
+    retrieval_min_score: float = Field(default=0.60, alias="RETRIEVAL_MIN_SCORE")  # bge-small scale, between on- and off-topic scores
     retrieval_top_k: int = Field(default=6, alias="RETRIEVAL_TOP_K")
     custom_answer_min_score: float = Field(default=0.86, alias="CUSTOM_ANSWER_MIN_SCORE")  # owner-written answers fire above this
 

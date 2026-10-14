@@ -1,12 +1,15 @@
 # One-command local start: Docker Desktop -> Postgres (pgvector) -> the assistant on http://localhost:8080
-# Usage (from anywhere):   powershell -ExecutionPolicy Bypass -File "C:\Users\Ajay karthik pogula\deependhq-assistant\scripts\run.ps1"
+# Usage (from anywhere):   powershell -ExecutionPolicy Bypass -File <project>\scripts\run.ps1
 # or double-click / run    run.cmd   in the project folder.
 param([int]$Port = 8080)
 $ErrorActionPreference = "Continue"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
-$python = "D:\deependhq-venv\Scripts\python.exe"
-if (-not (Test-Path $python)) { $python = "python" }
+# RUN_PYTHON and FASTEMBED_CACHE_PATH may be set in .env (a virtualenv or model cache outside the project)
+$dotenv = @{}
+if (Test-Path ".env") { Get-Content ".env" | ForEach-Object { if ($_ -match '^\s*(RUN_PYTHON|FASTEMBED_CACHE_PATH)\s*=\s*([^#]*)') { $dotenv[$Matches[1]] = $Matches[2].Trim() } } }
+$python = @($dotenv["RUN_PYTHON"], ".venv\Scripts\python.exe") | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+if (-not $python) { $python = "python" }
 
 # 1. Docker Desktop (per-user install; it stops when you sign out)
 docker info 2>$null | Out-Null
@@ -30,6 +33,6 @@ Write-Host "Postgres ready." -ForegroundColor Green
 # 3. the assistant
 $env:OPENBLAS_NUM_THREADS = "1"
 $env:OMP_NUM_THREADS = "1"
-if (-not $env:FASTEMBED_CACHE_PATH -and (Test-Path "D:\hf-models")) { $env:FASTEMBED_CACHE_PATH = "D:\hf-models" }
+if (-not $env:FASTEMBED_CACHE_PATH -and $dotenv["FASTEMBED_CACHE_PATH"]) { $env:FASTEMBED_CACHE_PATH = $dotenv["FASTEMBED_CACHE_PATH"] }
 Write-Host "Starting the assistant on http://localhost:$Port  (Ctrl+C to stop)" -ForegroundColor Green
 & $python -m uvicorn app.main:app --port $Port

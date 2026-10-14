@@ -1,6 +1,6 @@
 """Zoom Scheduler browser worker: book, reschedule or cancel on the public booking page, no Zoom API credentials.
 
-Runs in the separate jev-ultrafast environment (Python 3.12: `D:\\jev\\venv` on the dev machine, see docs/BROWSER_BOOKING.md)
+Runs in the separate jev-ultrafast environment (Python 3.12, JEV_PYTHON; see docs/BROWSER_BOOKING.md)
 and is called by the app as a subprocess (app/booking/browser_booking.py). One JSON payload in, one JSON line out.
 
     python scripts/zoom_browser_worker.py --task book --payload-file p.json

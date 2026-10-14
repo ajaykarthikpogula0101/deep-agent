@@ -69,11 +69,11 @@ a renamed button); `script` is the deterministic fallback and what runs today un
 
 1. **A Python 3.12 environment with jev** (the app itself stays on 3.11):
    ```
-   uv venv --python 3.12 D:\jev\venv
-   uv pip install --python D:\jev\venv\Scripts\python.exe "jev-ultrafast @ git+https://github.com/browser-use/jev-ultrafast" tzdata
+   uv venv --python 3.12 C:\jev\venv
+   uv pip install --python C:\jev\venv\Scripts\python.exe "jev-ultrafast @ git+https://github.com/browser-use/jev-ultrafast" tzdata
    ```
    On Linux: `/opt/jev/venv` and `google-chrome-stable` installed. The app finds the interpreter through `JEV_PYTHON`
-   (defaults: `D:\jev\venv\Scripts\python.exe`, `/opt/jev/venv/bin/python`).
+   (set it to `C:\jev\venv\Scripts\python.exe` on Windows; the default is `/opt/jev/venv/bin/python`).
 2. **`.env`**
    ```
    BROWSER_BOOKING_ENABLED=true

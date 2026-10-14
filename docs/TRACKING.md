@@ -65,9 +65,6 @@ and makes "no trackers" false. Before go-live:
 
 ## Verifying it locally
 
-```
-python scripts/smoke_tracking.py --boot
-```
-
-Sends a beacon with a spoofed public `X-Forwarded-For` (allowed because `TRUST_PROXY=true`), two chat messages, and
-prints the session row, the origin line, and the admin summary.
+`pytest tests/test_tracking.py` covers the beacon, the origin line and the admin summary. By hand: open
+`http://localhost:8080/site?utm_source=test`, send two messages, then open Console → Conversations; the session shows its
+channel, campaign and (behind a proxy with `TRUST_PROXY=true`) the visitor's city.

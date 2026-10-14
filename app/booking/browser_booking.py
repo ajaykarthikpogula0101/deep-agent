@@ -45,8 +45,8 @@ def driver() -> str:
 
 
 def python_path() -> str:
-    """The jev environment's interpreter: JEV_PYTHON, else the dev-machine default, else this interpreter."""
-    for cand in (settings.jev_python, r"D:\jev\venv\Scripts\python.exe", "/opt/jev/venv/bin/python"):
+    """The jev environment's interpreter: JEV_PYTHON, else the Linux default, else this interpreter."""
+    for cand in (settings.jev_python, "/opt/jev/venv/bin/python"):
         if cand and os.path.exists(cand):
             return cand
     return sys.executable

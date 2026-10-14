@@ -97,7 +97,7 @@ manage_token, cancelled_at, origin, company_line, zoom_error. Every booking also
 
 ## Testing end to end
 
-1. Start Postgres and the server (`docs/TEST_SETUP.md`), open `http://localhost:8080/demo` (signed in as the demo
+1. Start Postgres and the server (README, "Run it locally"), open `http://localhost:8080/demo` (signed in as the demo
    user, whose email is `DEMO_USER_EMAIL`, set to a plus-address of your own Gmail) or `/site`.
 2. Type "I want to book a call". Pick a call type → the date row and time grid appear ("Times shown in …"); taken
    times are greyed and struck through, empty days are greyed.
