@@ -179,3 +179,32 @@ def test_whole_loop_ask_once_rate_on_the_page_draft_and_send(monkeypatch):
             c.execute("DELETE FROM events WHERE kind IN ('outcome_asked', 'call_outcome', 'call_followup_sent') AND detail->>'booking_id' = %s", (str(bid),))
             c.commit()
         outcomes.learn()   # the stored learning summary no longer counts this test's call
+
+
+def test_learning_cannot_make_claims_positive():
+    assert precall.apply_adjust(0, 12, "claimed") == 0 and precall.apply_adjust(0, -12, "claimed") == -5
+    assert precall.apply_adjust(0, 4, "risk") == 0 and precall.apply_adjust(15, -20, "verified") == 0 and precall.apply_adjust(0, 3) == 3
+    s = sig(email_kind="personal", domain="gmail.com", company_typed="Acme Analytics")
+    assert {r["key"]: r["points"] for r in precall.score(s, adjust={"company_named": 9})["reasons"]}["company_named"] == 0
+    # claims on good calls never earn points; on bad calls they lose at most 5
+    L = outcomes.calibrate([({"company_named": 0, "visits": 8}, True)] * 20 + [({"visits": 8}, False)] * 10, min_calls=20)
+    row = next(r for r in L["table"] if r["key"] == "company_named")
+    assert L["adjust"].get("company_named", 0) <= 0 and row["adjust"] == 0
+    bad = outcomes.calibrate([({"company_named": 0}, False)] * 10 + [({"visits": 8}, True)] * 10, min_calls=20)
+    assert bad["adjust"]["company_named"] == -5
+    typo = outcomes.calibrate([({"typo_email": 0}, True)] * 10 + [({"visits": 8}, False)] * 10, min_calls=20)
+    assert typo["would_adjust"].get("typo_email", 0) == 0 and next(r for r in typo["table"] if r["key"] == "typo_email")["adjust"] == 0
+    assert L["classes"]["company_named"] == "claimed" and L["classes"]["business_email"] == "verified"
+    # separation uses the class-aware adjust, as score() applies it
+    sep = outcomes.calibrate([({"company_named": 0}, False)] * 10 + [({"business_email": 15}, True)] * 10, min_calls=20)["separation"]
+    assert sep["rest_after"] == 5.0
+
+
+def test_v2_snapshots_are_rescored_and_the_ask_shows_the_verdict(monkeypatch):
+    assert precall.VERSION == 3
+    monkeypatch.setattr(precall, "gather", lambda *a, **k: sig())
+    v2 = {"version": 2, "reasons": [{"key": "company_verified", "points": 5}, {"key": "visits", "points": 8}]}
+    f = outcomes._features(booking(), v2)
+    assert "company_verified" not in f and f["business_email"] == 15 and f["stated_facts"] == 0
+    brief = {"score": 30, "label": "cold", "verdict": "cold", "at_booking": {"score": 18, "label": "cold", "verdict": "not_enough_data"}}
+    assert "Lead:     Not enough data yet · 18/100 (at booking)" in outcomes.render_ask(booking(), brief)[2]

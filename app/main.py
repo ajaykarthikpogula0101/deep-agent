@@ -1,7 +1,9 @@
 """FastAPI app: /chat (SSE), /track (session origin beacon), /healthz, /admin/*, static chat page + embeddable widget."""
 from __future__ import annotations
 
+import hmac
 import logging
+import time
 import uuid
 from pathlib import Path
 
@@ -21,10 +23,10 @@ from urllib.parse import quote as quote_param
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import conversations, digest, gaps, guidance, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking
+from app import conversations, digest, gaps, guidance, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking, visitors
 from app.booking import availability as avail
 from app.booking import browser_booking
-from app.booking import flow, ics
+from app.booking import email_html, flow, ics
 from app.booking.service import BookingService
 from app.booking.email import send_host_brief, send_test
 from app import chat as chat_mod
@@ -38,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.15.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.15.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -114,8 +116,21 @@ def _startup() -> None:
                            id="outcome_asks", replace_existing=True, misfire_grace_time=1800)
         _scheduler.add_job(outcomes.learn, CronTrigger.from_crontab("40 3 * * *", timezone=settings.host_timezone),
                            id="score_learning", replace_existing=True, misfire_grace_time=6 * 3600)
-    if settings.outreach_enabled:  # starter outreach rules, once (app/outreach.py)
+    if settings.outreach_enabled:  # starter outreach rules, once each (app/outreach.py)
         outreach.seed_if_empty()
+        outreach.seed_v2()
+    p = links.public_problem()
+    if p:
+        log.warning("%s: buttons in emails (booking page, manage, outcome) will not open from a phone", p)
+    elif links.plain_http():
+        log.warning("PUBLIC_BASE_URL is plain http: email link tokens travel unencrypted")
+    if not settings.link_secret:
+        log.warning("LINK_SECRET is not set: email links are signed with a key derived from ADMIN_TOKEN; rotating it breaks every link already sent")
+    if settings.domain_check:
+        try:
+            import dns.resolver  # noqa: F401  (app/enrich.py checks business email domains with it)
+        except ImportError:
+            log.warning("dnspython missing: email domains read as not checked")
     _scheduler.start()
     log.info("recrawl scheduled: '%s' (%s); tracking=%s geo=%s ip_mode=%s retention=%sd",
              settings.recrawl_cron, settings.recrawl_tz, settings.tracking_enabled, ",".join(chain) or "none",
@@ -144,6 +159,7 @@ class ChatIn(BaseModel):
     user_email: str | None = Field(default=None, max_length=200)
     attachments: list[str] = Field(default_factory=list, max_length=5)  # upload ids from POST /upload (this session's)
     beacon: BeaconIn | None = None
+    outreach_event: int | None = Field(default=None, ge=1)  # the pop-up this chat was opened from (first message only)
 
 
 def _visitor(request: Request, hint_name: str | None = None, hint_email: str | None = None) -> dict:
@@ -173,6 +189,8 @@ class OutreachCheckIn(BaseModel):
     referrer: str | None = Field(default=None, max_length=2000)
     visits: int = Field(default=0, ge=0, le=100_000)
     shown: list[int] = Field(default_factory=list, max_length=60)
+    gpc: bool = False                                        # Global Privacy Control or DNT: no visitors row, no lookup
+    tz: str | None = Field(default=None, max_length=64)      # browser timezone (privacy region, country sanity check)
 
 
 class OutreachEventIn(BaseModel):
@@ -192,7 +210,8 @@ class OutreachRuleIn(BaseModel):
 
 
 class OutreachSettingsIn(BaseModel):
-    default_greeting: bool
+    default_greeting: bool | None = None
+    ip_context: bool | None = None   # the console's soft switch for the visitor's network in pop-ups
 
 
 class OutreachTryIn(BaseModel):
@@ -205,6 +224,20 @@ class OutreachTryIn(BaseModel):
     visits: int = Field(default=1, ge=0, le=100_000)
     booking: bool = False
     first_name: str | None = Field(default=None, max_length=60)
+    net_kind: str | None = Field(default=None, max_length=20)
+    org: str | None = Field(default=None, max_length=60)
+    country_code: str | None = Field(default=None, max_length=2)
+    country: str | None = Field(default=None, max_length=60)
+    engaged: str | None = Field(default=None, pattern=r"^(never|chatted|booked)$")
+    approved: bool = False
+
+
+class OrgPatchIn(BaseModel):
+    """Owner edits to one organisation in Outreach → Organisations visiting."""
+    org: str | None = Field(default=None, max_length=60)
+    industry: str | None = Field(default=None, max_length=40)
+    line: str | None = Field(default=None, max_length=170)
+    status: str | None = Field(default=None, pattern=r"^(approved|off|auto)$")
 
 
 class FeedbackIn(BaseModel):
@@ -327,10 +360,18 @@ def outreach_check(body: OutreachCheckIn, request: Request, x_visitor_id: str | 
         raise HTTPException(403, "origin not allowed")
     if not settings.outreach_enabled:
         return {"rule": None, "recheck": {}, "default": True, "enabled": False}
-    if not _outreach_limiter.allow(_client_ip(request)):
+    ip = _client_ip(request)
+    if not _outreach_limiter.allow(ip):
         raise HTTPException(429, "too many requests")
-    vid = (body.visitor_id or x_visitor_id or "").strip()[:64] or None
-    return {**outreach.check(body.model_dump(), vid), "enabled": True}
+    t0 = time.perf_counter()
+    vid = tracking.clean_vid(body.visitor_id or x_visitor_id)
+    payload = body.model_dump()
+    vis = visitors.observe(vid, ip, request.headers.get("user-agent"), payload, request.headers.get("host"))
+    out = {**outreach.check(payload, vid, visitor=vis), "enabled": True}
+    ms = (time.perf_counter() - t0) * 1000
+    if ms > 50:
+        log.debug("outreach check took %.0f ms", ms)
+    return out
 
 
 @app.post("/outreach/event")
@@ -375,14 +416,28 @@ async def chat(body: ChatIn, request: Request, x_session_id: str | None = Header
 
     extra, attached = media.attachments_block(body.attachments, session_id) if body.attachments else ("", [])
     # the memory reads run off the event loop (profile() is ~20 ms of DB work)
-    mem, data, pending = await run_in_threadpool(_memory_parts, x_visitor_id, visitor.get("sub") if visitor.get("signed_in") else None,
-                                                 session_id, len(body.history))
+    mem, data, pending, ocx = await run_in_threadpool(_prompt_parts, x_visitor_id, visitor.get("sub") if visitor.get("signed_in") else None,
+                                                      session_id, len(body.history), body.outreach_event)
     if pending:  # earlier sessions the model has not read yet: their gists are ready a turn or two later
         session_memory.catch_up_async(pending)
     gen = respond(body.message, body.history, body.timezone, session_id, visitor=visitor, extra_context=extra, attachments=attached,
-                  memory=mem, memory_data=data)
+                  memory=mem, memory_data=data, outreach_context=ocx)
     return StreamingResponse(iterate_in_threadpool(gen), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Session-Id": session_id})
+
+
+def _prompt_parts(visitor_id: str | None, user_id: str | None, session_id: str, n_history: int,
+                  outreach_event: int | None = None) -> tuple[str, str, list[str], str]:
+    """_memory_parts() plus the outreach DATA message: the pop-up this chat was opened from and its network guess
+    (app/outreach.chat_context; '' when there is none)."""
+    mem, data, pending = _memory_parts(visitor_id, user_id, session_id, n_history)
+    ocx = ""
+    if settings.outreach_enabled:
+        try:
+            ocx = outreach.data_block(outreach.chat_context(session_id, tracking.clean_vid(visitor_id), outreach_event))
+        except Exception as e:  # pop-up context is optional: never the chat's problem
+            log.warning("outreach chat context failed: %s", e)
+    return mem, data, pending, ocx
 
 
 def _memory_parts(visitor_id: str | None, user_id: str | None, session_id: str, n_history: int) -> tuple[str, str, list[str]]:
@@ -684,43 +739,55 @@ def booking_confirm(body: ConfirmIn, request: Request, x_session_id: str | None 
 
 
 def _booking_or_404(booking_id: int, t: str) -> dict:
+    """The visitor's own booking, by its manage token. Bytes compare: a non-ASCII token is a 404, never a 500."""
     b = store_bookings.get(booking_id)
-    if not b or not t or b.get("manage_token") != t:
+    if not b or not t or len(t) > 128 or not hmac.compare_digest((b.get("manage_token") or "").encode(), t.encode()):
         raise HTTPException(404, "booking not found")
     return b
+
+
+# pages behind a token in the URL: never cached, never sent on as a Referer, never indexed or framed
+_PRIVATE = {"Cache-Control": "no-store, private", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow",
+            "X-Frame-Options": "DENY"}
 
 
 @app.get("/booking/{booking_id}/ics")
 def booking_ics(booking_id: int, t: str = ""):
     b = _booking_or_404(booking_id, t)
     return Response(content=ics.build(b, templates.get_templates().get("host_name") or "Deep"), media_type="text/calendar; charset=utf-8",
-                    headers={"Content-Disposition": f'attachment; filename="deep-call-{booking_id}.ics"'})
+                    headers={"Content-Disposition": f'attachment; filename="deep-call-{booking_id}.ics"', **_PRIVATE})
 
 
 def _manage_page(title: str, body: str) -> HTMLResponse:
+    title = html_escape(title)
     return HTMLResponse(f"<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
                         f"<title>{title}</title></head><body style='margin:0;background:#000;color:#F2F3F5;font-family:-apple-system,Segoe UI,Roboto,sans-serif'>"
                         f"<div style='max-width:520px;margin:48px auto;padding:28px;background:#0F0F10;border:1px solid #1F1F22;border-radius:16px'>"
                         f"<div style='color:#F28C28;font-weight:700;font-size:13px;margin-bottom:12px'>ask deep &gt;_</div><h1 style='font-size:20px'>{title}</h1>{body}"
-                        f"</div></body></html>")
+                        f"</div></body></html>", headers=_PRIVATE)
+
+
+_RED_PILL = "display:inline-block;background:#E5484D;color:#fff;border:0;padding:12px 20px;border-radius:999px;font-size:15px;text-decoration:none;cursor:pointer"
 
 
 @app.get("/booking/{booking_id}/manage")
 def booking_manage(booking_id: int, t: str = ""):
     b = _booking_or_404(booking_id, t)
     v = flow._booking_view(b)
+    what, when = html_escape(v["schedule_name"] or ""), html_escape(v["label_visitor"])
     if b.get("status") == "cancelled":
-        return _manage_page("This booking is cancelled", f"<p>{v['schedule_name']} on {v['label_visitor']} was cancelled.</p>"
+        return _manage_page("This booking is cancelled", f"<p>{what} on {when} was cancelled.</p>"
                             f"<p><a style='color:#F28C28' href='{settings.site_base_url}'>Book a new time in the chat</a></p>")
-    return _manage_page("Your booking", f"<p><b>{v['schedule_name']}</b><br>{v['label_visitor']}<br>{v['duration_min']} min with Deep</p>"
-                        + (f"<p><a style='color:#F28C28' href='{v['join_url']}'>Join Zoom</a></p>" if v.get("join_url") else "")
-                        + f"<p><a style='color:#F28C28' href='{v['ics_url']}'>Add to calendar (.ics)</a></p>"
+    join = email_html.safe_url(v.get("join_url"))
+    tq = quote_param(t)
+    return _manage_page("Your booking", f"<p><b>{what}</b><br>{when}<br>{html_escape(str(v['duration_min']))} min with Deep</p>"
+                        + (f"<p><a style='color:#F28C28' href='{html_escape(join)}'>Join Zoom</a></p>" if join else "")
+                        + f"<p><a style='color:#F28C28' href='/booking/{booking_id}/ics?t={tq}'>Add to calendar (.ics)</a></p>"
                         f"<p style='margin-top:24px'>Need a different time? Open the chat on "
                         f"<a style='color:#F28C28' href='{settings.site_base_url}'>{settings.site_base_url.replace('https://', '')}</a> and say "
                         f"\"reschedule my call\". Or cancel below, then pick a new one in the chat on "
                         f"<a style='color:#F28C28' href='{settings.site_base_url}'>{settings.site_base_url.replace('https://', '')}</a>.</p>"
-                        f"<form method='post' action='/booking/{booking_id}/cancel?t={t}'><button style='background:#E5484D;color:#fff;border:0;"
-                        f"padding:12px 20px;border-radius:999px;font-size:15px;cursor:pointer'>Cancel this booking</button></form>")
+                        f"<p><a href='/booking/{booking_id}/cancel?t={tq}' style='{_RED_PILL}'>Cancel this booking…</a></p>")
 
 
 @app.post("/booking/{booking_id}/reschedule")
@@ -783,15 +850,33 @@ def booking_cancel_from_chat(booking_id: int, request: Request, t: str = "", x_s
             "message": f"Cancelled: {b.get('schedule_name')} on {v['label_visitor']}.", "emails_queued": True}
 
 
+@app.get("/booking/{booking_id}/cancel")
+def booking_cancel_confirm(booking_id: int, t: str = ""):
+    """Are you sure? Opening a link changes nothing (mail scanners, mis-taps, old host emails): only the button POSTs."""
+    b = _booking_or_404(booking_id, t)
+    v = flow._booking_view(b)
+    what, when = html_escape(v["schedule_name"] or ""), html_escape(v["label_visitor"])
+    if b.get("status") == "cancelled":
+        return _manage_page("This booking is cancelled", f"<p>{what} on {when} was cancelled.</p>"
+                            f"<p><a style='color:#F28C28' href='{settings.site_base_url}'>Book a new time in the chat</a></p>")
+    tq = quote_param(t)
+    return _manage_page("Cancel this booking?", f"<p>{what}<br>{when}</p>"
+                        f"<form method='post' action='/booking/{booking_id}/cancel?t={tq}'><button type='submit' style='{_RED_PILL}'>Yes, cancel it</button></form>"
+                        f"<p style='margin-top:18px'><a style='color:#F28C28' href='/booking/{booking_id}/manage?t={tq}'>Keep it</a></p>")
+
+
 @app.post("/booking/{booking_id}/cancel")
 def booking_cancel(booking_id: int, t: str = ""):
     b = _booking_or_404(booking_id, t)
     r = flow.cancel(b, _booking_service)
+    if r.get("already"):  # no second system row in the conversation
+        return _manage_page("This booking was already cancelled",
+                            f"<p><a style='color:#F28C28' href='{settings.site_base_url}'>Pick a new time in the chat</a></p>")
     if b.get("session_id"):
         inbox.log_message(b["session_id"], "assistant", f"Booking cancelled: {b.get('schedule_name')} on {flow._booking_view(b)['label_visitor']}.",
                           outcome="booking")
     return _manage_page("Booking cancelled", "<p>Done. Both you and Deep get an email.</p>"
-                        + (f"<p style='color:#8A8D93'>{r.get('zoom_note')}</p>" if r.get("zoom_note") else "")
+                        + (f"<p style='color:#8A8D93'>{html_escape(r.get('zoom_note'))}</p>" if r.get("zoom_note") else "")
                         + f"<p><a style='color:#F28C28' href='{settings.site_base_url}'>Pick a new time in the chat</a></p>")
 
 
@@ -865,7 +950,14 @@ def admin_memory_forget(session_id: str, visitor: bool = False, x_admin_token: s
     ?visitor=1 clears every session of that device."""
     _require_admin(x_admin_token)
     if visitor:
-        return {"forgotten": session_memory.forget_visitor(session_id)}
+        from app.db import conn
+
+        with conn() as c:
+            r = c.execute("SELECT visitor_id FROM sessions WHERE session_id = %s", (session_id,)).fetchone()
+        forgotten = session_memory.forget_visitor(session_id)
+        if r and r[0]:
+            visitors.erase(r[0])  # the device's page-view row and its pop-up context go too
+        return {"forgotten": forgotten}
     session_memory.forget(session_id)
     return {"forgotten": [session_id]}
 
@@ -966,12 +1058,12 @@ def admin_bookings(days: int = 30, x_admin_token: str | None = Header(default=No
         briefs = {}
     for b in items:  # the lead score on every row; the full brief is one click away
         br = briefs.get(b["id"])
-        b["lead"] = {"score": br.get("score"), "label": br.get("label")} if br else None
+        b["lead"] = {"score": br.get("score"), "label": br.get("label"), "verdict": br.get("verdict")} if br else None
     return {"items": items, "mail": mailer.default.stats()}
 
 
 # ---- pre-call brief (app/precall.py)
-def _booking_or_404(booking_id: int) -> dict:
+def _admin_booking_or_404(booking_id: int) -> dict:
     b = store_bookings.get(booking_id)
     if not b:
         raise HTTPException(404, "booking not found")
@@ -982,9 +1074,9 @@ def _booking_or_404(booking_id: int) -> dict:
 def admin_booking_brief(booking_id: int, refresh: bool = False, x_admin_token: str | None = Header(default=None)):
     """The stored brief (built on first open); refresh=1 rebuilds it from everything known now (one model call)."""
     _require_admin(x_admin_token)
-    b = _booking_or_404(booking_id)
+    b = _admin_booking_or_404(booking_id)
     brief = precall.build_for_booking(b, refresh=refresh)
-    return {"brief": brief, "text": precall.text(brief), "session_id": b.get("session_id"),
+    return {"brief": brief, "text": precall.text(brief), "session_id": b.get("session_id"), "host_url": host_page.link(b),
             "booking": {k: b.get(k) for k in ("id", "name", "email", "status", "start_utc", "end_utc", "schedule_name", "outcome", "outcome_note",
                                               "outcome_at", "followup")}}
 
@@ -992,7 +1084,7 @@ def admin_booking_brief(booking_id: int, refresh: bool = False, x_admin_token: s
 @app.post("/admin/bookings/{booking_id}/brief/email")
 def admin_booking_brief_email(booking_id: int, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
-    return precall.send_brief_now(_booking_or_404(booking_id))
+    return precall.send_brief_now(_admin_booking_or_404(booking_id))
 
 
 @app.get("/admin/leads/scored")
@@ -1034,7 +1126,7 @@ def admin_booking_outcome(booking_id: int, body: OutcomeIn, x_admin_token: str |
 @app.post("/admin/bookings/{booking_id}/followup/draft")
 def admin_followup_draft(booking_id: int, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
-    b = _booking_or_404(booking_id)
+    b = _admin_booking_or_404(booking_id)
     if (b.get("followup") or {}).get("sent_at"):
         raise HTTPException(409, "the follow-up was already sent")
     d = outcomes.draft_followup(b)
@@ -1046,7 +1138,7 @@ def admin_followup_draft(booking_id: int, x_admin_token: str | None = Header(def
 @app.post("/admin/bookings/{booking_id}/followup/send")
 def admin_followup_send(booking_id: int, body: FollowupIn, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
-    return outcomes.send_followup(_booking_or_404(booking_id), body.subject, body.body)
+    return outcomes.send_followup(_admin_booking_or_404(booking_id), body.subject, body.body)
 
 
 @app.get("/admin/score/learning")
@@ -1095,6 +1187,28 @@ def outcome_save(booking_id: int, t: str = "", o: str = Form(...), note: str = F
 def outcome_send(booking_id: int, t: str = "", subject: str = Form(...), body: str = Form(...)):
     b = _outcome_booking(booking_id, t)
     return HTMLResponse(outcomes.page_sent(b, outcomes.send_followup(b, subject, body)))
+
+
+# ---- the host's private booking page (app/host_page.py): plain def, so its reads run in the threadpool
+_HOST_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+
+
+@app.get("/host/booking/sample", response_class=HTMLResponse)
+def host_booking_sample():
+    """The sample page (the [test] host email's button). Declared before the int route, where 'sample' would be a 422."""
+    return HTMLResponse(host_page.render(host_page.sample()), headers=_PRIVATE | {"Content-Security-Policy": _HOST_CSP})
+
+
+@app.get("/host/booking/{booking_id}", response_class=HTMLResponse)
+def host_booking_page(booking_id: int, request: Request, t: str = ""):
+    """Everything Deep needs before and after the call. Strictly read-only: mail scanners open every link."""
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    b = store_bookings.get(booking_id)
+    if not b or not host_page.check(b, t):
+        raise HTTPException(404, "link not valid")
+    log.info("host page opened: booking %s", booking_id)
+    return HTMLResponse(host_page.render(host_page.load(b)), headers=_PRIVATE | {"Content-Security-Policy": _HOST_CSP})
 
 
 # ---- knowledge-gap loop (app/gaps.py)
@@ -1210,7 +1324,10 @@ def admin_outreach(days: int = 30, x_admin_token: str | None = Header(default=No
         r["summary"] = outreach.summary(r["trigger"])
         r["stats"] = st["by_rule"].get(r["id"], {"fired": 0, "opened": 0, "dismissed": 0, "chatted": 0, "booked": 0})
     return {"enabled": settings.outreach_enabled, "default_greeting": outreach.default_greeting_enabled(), "rules": rules,
-            "recent": st["recent"], "days": st["days"], "channels": list(outreach.CHANNELS), "max_rules": outreach.MAX_RULES}
+            "recent": st["recent"], "days": st["days"], "channels": list(outreach.CHANNELS), "max_rules": outreach.MAX_RULES,
+            "ip_context": outreach.ip_context_enabled(), "ip_context_env": settings.outreach_ip_context and settings.tracking_enabled,
+            "visitors": visitors.summary(st["days"]), "variants": st["by_variant"], "candidates": visitors.candidates(),
+            "provider_note": visitors.provider_note()}
 
 
 @app.post("/admin/outreach/rules")
@@ -1246,8 +1363,37 @@ def admin_outreach_delete(rule_id: int, x_admin_token: str | None = Header(defau
 @app.put("/admin/outreach/settings")
 def admin_outreach_settings(body: OutreachSettingsIn, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
-    outreach.set_default_greeting(body.default_greeting)
-    return {"default_greeting": outreach.default_greeting_enabled()}
+    if body.default_greeting is not None:
+        outreach.set_default_greeting(body.default_greeting)
+    if body.ip_context is not None:
+        outreach.set_ip_context(body.ip_context)
+    return {"default_greeting": outreach.default_greeting_enabled(), "ip_context": outreach.ip_context_enabled()}
+
+
+@app.get("/admin/outreach/orgs")
+def admin_outreach_orgs(status: str = "", days: int = 30, x_admin_token: str | None = Header(default=None)):
+    """Organisations visiting: devices, visits, pages and pop-up counts per organisation network (host-only)."""
+    _require_admin(x_admin_token)
+    return visitors.list_orgs(status, days)
+
+
+@app.patch("/admin/outreach/orgs/{key:path}")
+def admin_outreach_org_patch(key: str, body: OrgPatchIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    try:
+        r = visitors.update_org(key, body.model_dump(exclude_unset=True))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not r:
+        raise HTTPException(404, "no such organisation")
+    return r
+
+
+@app.delete("/admin/visitors/{visitor_id}")
+def admin_visitor_erase(visitor_id: str, x_admin_token: str | None = Header(default=None)):
+    """Forget a device's page-view row and the visitor id and context on its pop-up firings."""
+    _require_admin(x_admin_token)
+    return visitors.erase(visitor_id)
 
 
 @app.post("/admin/outreach/try")
@@ -1258,19 +1404,42 @@ def admin_outreach_try(body: OutreachTryIn, x_admin_token: str | None = Header(d
              "upcoming": {"schedule_name": "Discovery Call", "label_visitor": "Thu 15 Oct, 16:30"} if body.booking else None}
     payload = {"path": body.path, "page": body.path, "pages": body.pages, "dwell_s": body.dwell_s, "scroll_pct": body.scroll_pct,
                "referrer": body.referrer, "first_page": body.path, "visits": body.visits}
-    ctx = outreach.context(payload, facts)
+    ctx = outreach.context(payload, facts, _try_visitor(body))
     rules = [r for r in outreach.list_rules() if r["enabled"]]
     rows = [{"id": r["id"], "name": r["name"], **outreach.evaluate(r["trigger"], ctx)} for r in rules]
     hit = next((r for r, row in zip(rules, rows) if row["match"]), None)
-    return {"context": {k: ctx[k] for k in ("path", "pages", "dwell_s", "scroll_pct", "referrer_host", "channel", "returning", "booking")},
-            "fires": outreach.public_message(hit, ctx) if hit else None, "rules": rows, "default": outreach.default_greeting_enabled()}
+    msg = outreach.public_message(hit, ctx) if hit else None
+    variant = msg["_variant"] if msg else None
+    return {"context": {k: ctx[k] for k in ("path", "pages", "dwell_s", "scroll_pct", "referrer_host", "channel", "returning", "booking",
+                                            "engaged", "company", "country")},
+            "fires": outreach.pop_private(msg), "variant": variant, "rules": rows, "default": outreach.default_greeting_enabled()}
+
+
+def _try_visitor(body: OutreachTryIn) -> dict:
+    """A stand-in for visitors.observe() from the try-it form. The visit number stands in for the visits seen on the
+    organisation's network; an approved organisation is named from the first."""
+    from app import network
+
+    kind = (body.net_kind or ("corporate" if body.org else "")).strip().lower()
+    company = None
+    org = network.clean_org(body.org or "")
+    if org:
+        ident = ("org:" + network.org_key(org), org, None)
+        row = {"org": org, "net_kind": kind, "status": "approved" if body.approved else "auto", "industry": "", "line": None}
+        company = visitors.company_context(ident, row, visitors.COMPANY_MIN_VISITS if body.approved else body.visits,
+                                           body.country_code)
+    country = (body.country or "").strip()
+    phrase = ("the " + country if country in visitors.THE_COUNTRIES else country) if visitors.ip_context_on() else ""
+    return {"visits": body.visits, "returning": body.visits > 1, "engaged": body.engaged or "never", "net_kind": kind,
+            "country_code": (body.country_code or "").upper() if phrase else "", "country": phrase, "company": company}
 
 
 @app.get("/admin/email-templates")
 def admin_templates_get(x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
     return {"templates": templates.get_templates(), "defaults": templates.DEFAULTS, "variables": templates.VARIABLES,
-            "previews": templates.previews(), "host_email": settings.host_email, "smtp_configured": bool(settings.smtp_host)}
+            "previews": templates.previews(), "host_email": settings.host_email, "smtp_configured": bool(settings.smtp_host),
+            "public_base_url": links.base_url(), "public_base_url_problem": links.public_problem(), "public_base_url_http": links.plain_http()}
 
 
 @app.put("/admin/email-templates")

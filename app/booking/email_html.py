@@ -60,7 +60,7 @@ def asset_base(booking: dict[str, Any]) -> str:
     own links (the same host the manage link points at)."""
     if settings.public_base_url:
         return settings.public_base_url.rstrip("/")
-    for key in ("manage_url", "ics_url"):
+    for key in ("host_url", "manage_url", "ics_url"):
         u = safe_url(booking.get(key))
         if u:
             p = urlsplit(u)
@@ -207,7 +207,9 @@ def render(booking: dict[str, Any], audience: str, tpl: dict[str, str] | None = 
            brief: str = "", notice: str = "", cta_ok: bool = True) -> str:
     """HTML for audience 'visitor' or 'host'. `booking` is the dict stored by app/booking/flow.py (or SAMPLE_BOOKING).
     Host extras: `brief` is the pre-call brief as text (app/precall.text), `notice` a late update shown above the status
-    ("the visitor has already cancelled"), `cta_ok=False` drops the button (nothing left to view or join)."""
+    ("the visitor has already cancelled"), `cta_ok=False` drops the button (nothing left to view or join).
+    The host's "View booking details" opens booking['host_url'] (/host/booking/{id}, app/host_page.py) and is left out
+    without it; the visitor's opens their manage page."""
     tpl = tpl or templates.get_templates()
     v = templates.build_vars(templates.booking_to_lead(booking), tpl)
     confirmed = booking.get("status") == "confirmed"
@@ -281,14 +283,19 @@ def render(booking: dict[str, Any], audience: str, tpl: dict[str, str] | None = 
         guests_row = _divider() + _person_row(base, "ic-user.png", "", "Guests", lines)
     brief_row = (_divider() + f'<tr><td>{_brief_html(brief)}</td></tr>') if brief and audience == "host" else ""
 
-    # call to action: the booking page; for a visitor who still has to confirm, the prefilled Zoom link
-    manage = safe_url(booking.get("manage_url"))
-    if audience == "visitor" and not confirmed and confirm_url:
-        cta = ("Confirm on Zoom", confirm_url)
-    elif manage:
-        cta = ("View booking details", manage)
+    # call to action. Host: their private booking page (/host/booking/{id}), never the visitor's manage page (it has
+    # a Cancel button). Visitor: the manage page; for a visitor who still has to confirm, the prefilled Zoom link
+    if audience == "host":
+        host = safe_url(booking.get("host_url"))
+        cta = ("View booking details", host) if host else None
     else:
-        cta = None
+        manage = safe_url(booking.get("manage_url"))
+        if not confirmed and confirm_url:
+            cta = ("Confirm on Zoom", confirm_url)
+        elif manage:
+            cta = ("View booking details", manage)
+        else:
+            cta = None
     cta_html = f'<tr><td style="padding-top:30px">{_button(cta[1], cta[0], base)}</td></tr>' if cta and cta_ok else ""
 
     card = (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;background:#FFFFFF;border:1px solid #E1E7F5;border-radius:10px">'
@@ -388,9 +395,27 @@ def _notice_html(notice: str) -> str:
             f'font-family:{FONT};font-size:14px;line-height:21px;font-weight:700;color:#7A4B00">{esc(notice)}</div>')
 
 
+# the evidence tag precall.text appends to every WHY THIS SCORE line (always the system's, never visitor or model text)
+_EV_TAG = re.compile(r"\s\[(checked(: [a-z ]+)?|seen|warning)\]$")
+_EV_COLOR = {"checked": "#257A4D", "seen": TEXT2, "warning": "#B54708"}
+
+
+def _ev_tag(item: str) -> str:
+    """An escaped WHY THIS SCORE bullet with its trailing tag as a small coloured span."""
+    m = _EV_TAG.search(item)
+    if not m:
+        return item
+    color = _EV_COLOR[m.group(1).split(":")[0]]
+    return (item[:m.start()] + f' <span style="font-family:{FONT};font-size:12px;line-height:18px;color:{color};white-space:nowrap">'
+            f'[{m.group(1)}]</span>')
+
+
 def _brief_html(text: str) -> str:
-    """The pre-call brief (app/precall.text): UPPERCASE lines are headings, 'Key:  value' lines a fact table, '• ' bullets."""
+    """The pre-call brief (app/precall.text): UPPERCASE lines are headings, 'Key:  value' lines a fact table, '• ' bullets.
+    Only under WHY THIS SCORE is a bullet's trailing [checked…] / [seen] / [warning] tag styled: elsewhere (what they
+    say, talking points, watch out) the text can come from the visitor or the model, so a tag there stays plain text."""
     out, rows, items = [], [], []
+    heading = ""
 
     def flush():
         if rows:
@@ -411,14 +436,16 @@ def _brief_html(text: str) -> str:
             flush()
         if t.strip().isupper() and len(t.strip()) <= 40:
             flush()
-            out.append(f'<div style="padding:{8 if out else 0}px 0 6px">{_label(t.strip())}</div>')
+            heading = t.strip()
+            out.append(f'<div style="padding:{8 if out else 0}px 0 6px">{_label(heading)}</div>')
         elif m:
             rows.append(f'<tr><td valign="top" style="font-family:{FONT};font-size:13px;line-height:20px;color:{TEXT2};padding:2px 14px 2px 0;white-space:nowrap">{esc(m.group(1))}</td>'
                         f'<td valign="top" style="font-family:{FONT};font-size:14px;line-height:20px;color:{TEXT};padding:2px 0">{esc(m.group(2))}</td></tr>')
         elif t.lstrip().startswith("• "):
             if rows:
                 flush()
-            items.append(esc(t.lstrip()[2:]))
+            item = esc(t.lstrip()[2:])
+            items.append(_ev_tag(item) if heading == "WHY THIS SCORE" else item)
         else:
             flush()
             out.append(f'<p style="margin:0 0 8px;font-family:{FONT};font-size:14px;line-height:21px;color:{TEXT}">{esc(t)}</p>')

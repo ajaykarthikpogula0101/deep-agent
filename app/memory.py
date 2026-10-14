@@ -294,7 +294,10 @@ def prompt_block(p: dict[str, Any], now: datetime | None = None) -> str:
     the visitor typed (name, company, titles, questions) goes to data_block() instead. A first-time visitor gets one only
     when there is a booking fact (made, moved or cancelled in this conversation).
     Never add the network org or kind (sessions.net_*) here or in data_block: it is host-only (app/precall.py). "I see
-    you're at Infosys" is intrusive, and IP attribution can be wrong."""
+    you're at Infosys" is intrusive, and IP attribution can be wrong. profile() never carries it either.
+    The single scoped exception lives in app/outreach.data_block: only after the visitor tapped a pop-up that already
+    showed them the organisation or country name, that name, an industry guess and the pop-up text reach the chat,
+    labelled as an unverified guess. The city, ASN, network kind and IP never do (docs/TRACKING.md)."""
     booking = _booking_lines(p, now)
     if not p.get("returning"):
         if not booking:

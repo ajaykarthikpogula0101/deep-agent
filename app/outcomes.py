@@ -13,7 +13,9 @@ learning      every rule of the lead score (app/precall.py) has a key. With n ra
               each rule's rate among the calls that had it is smoothed toward p (LEARN_SMOOTHING calls at p) and turned
               into a correction: round(LEARN_SCALE * (rate - p)), capped at +/-LEARN_CAP, 0 below LEARN_MIN_PER_RULE calls.
               The corrections apply once SCORE_LEARN_MIN calls are rated (SCORE_LEARNING); before that the table shows
-              what they would be. Good fit and Follow up count as good calls, Not a fit and No-show as not.
+              what they would be. Good fit and Follow up count as good calls, Not a fit and No-show as not. Learning
+              never turns a claim into points: a claimed rule (precall.CLASS) can only go down to precall.CLAIM_FLOOR,
+              and a 0-point warning can only become a penalty.
 results       the week's calls by outcome and the source that brought the most good calls, for the weekly digest.
 """
 from __future__ import annotations
@@ -97,9 +99,24 @@ def render_ask(booking: dict[str, Any], brief: dict[str, Any] | None = None) -> 
             f"email for you and learns which leads turn into good calls.\n\n"
             f"Name:     {v['name']}\nEmail:    {v['email']}\nCompany:  {v['company']}\nCall:     {v['title']}\nWhen:     {v['date']}\n"
             + (f"Lead:     {precall.headline(brief.get('at_booking') or brief)} (at booking)\n" if brief else ""))
+    hu = _host_link(booking)
+    if hu:
+        base += f"Booking page: {hu}\n"
     buttons = [(label, link(int(booking["id"]), key)) for key, label in OUTCOMES.items()]
     text = base + "\n" + "\n".join(f"{label}: {url}" for label, url in buttons) + "\n"
     return subject, templates._tidy(text), templates._tidy(base), buttons
+
+
+def _host_link(b: dict[str, Any]) -> str:
+    """The host's private booking page (app/host_page.py), '' without a manage token or a signing key."""
+    from app import host_page
+
+    return host_page.link(b)
+
+
+def _host_line(b: dict[str, Any]) -> str:
+    hu = _host_link(b)
+    return f"<p class='muted' style='font-size:13px'><a href='{h.escape(hu)}'>Open the full booking page</a></p>" if hu else ""
 
 
 def send_asks(mailer=None) -> dict[str, Any]:
@@ -311,12 +328,17 @@ def calibrate(samples: list[tuple[dict[str, int], bool]], min_calls: int | None 
         nk, ak = len(with_k), sum(with_k)
         rate = (ak + LEARN_SMOOTHING * p) / (nk + LEARN_SMOOTHING) if n else 0.0
         adj = max(-LEARN_CAP, min(LEARN_CAP, round(LEARN_SCALE * (rate - p)))) if nk >= LEARN_MIN_PER_RULE and 0 < good < n else 0
+        cls = precall.CLASS.get(k, "")
+        if cls == "claimed":  # a claim can only lose points, down to the floor: the table shows what score() applies
+            adj = max(precall.CLAIM_FLOOR, min(0, adj))
+        elif cls == "risk" and all(f[k] == 0 for f, _ in samples if k in f):  # a 0-point warning can only become a penalty
+            adj = min(0, adj)
         if adj:
             adjust[k] = adj
         table.append({"key": k, "rule": precall.RULES.get(k, k), "calls": nk, "good": ak, "good_rate": round(ak / nk, 2) if nk else None, "adjust": adj})
 
     def total(f: dict[str, int], adj: dict[str, int]) -> int:
-        return max(0, min(100, 10 + sum(precall.apply_adjust(v, adj.get(k, 0)) for k, v in f.items())))
+        return max(0, min(100, 10 + sum(precall.apply_adjust(v, adj.get(k, 0), precall.CLASS.get(k, "")) for k, v in f.items())))
 
     def mean(xs: list[int]) -> float | None:
         return round(sum(xs) / len(xs), 1) if xs else None
@@ -326,7 +348,7 @@ def calibrate(samples: list[tuple[dict[str, int], bool]], min_calls: int | None 
     active = bool(settings.score_learning) and n >= min_calls and 0 < good < n
     return {"calls": n, "good": good, "good_rate": round(p, 2) if n else None, "min_calls": min_calls, "active": active,
             "adjust": adjust if active else {}, "would_adjust": adjust, "table": table, "separation": sep,
-            "at": datetime.now(timezone.utc).isoformat()}
+            "classes": {k: precall.CLASS.get(k, "observed") for k in keys}, "at": datetime.now(timezone.utc).isoformat()}
 
 
 def learn(save: bool = True) -> dict[str, Any]:
@@ -428,7 +450,8 @@ def week_line(w: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------- 6. the page behind the email buttons
-def _page(title: str, body: str) -> str:
+def _page(title: str, body: str, *, css: str = "", head: str = "") -> str:
+    """The small light page behind email links. `css` is appended to the <style> block, `head` goes before </head>."""
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
             f"<title>{h.escape(title)}</title><style>body{{margin:0;padding:0 14px;background:#F3F4F8;color:#151B32;font:15px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif}}"
             f".card{{max-width:560px;margin:32px auto;padding:26px 28px;background:#fff;border:1px solid #E4E7F2;border-radius:16px;border-top:5px solid #F28C28}}"
@@ -437,7 +460,7 @@ def _page(title: str, body: str) -> str:
             f"padding:12px 14px;cursor:pointer;font-weight:600}}.opts input{{margin-right:8px}}.opts label:has(input:checked){{border-color:#F28C28;background:#FFF5EB}}"
             f"textarea,input[type=text]{{width:100%;box-sizing:border-box;border:1px solid #D9DDEA;border-radius:10px;padding:10px 12px;font:inherit;color:inherit}}"
             f"textarea{{min-height:110px}}button{{background:#F28C28;color:#1A1208;border:0;border-radius:999px;padding:12px 24px;font:inherit;font-weight:700;"
-            f"cursor:pointer;margin-top:14px}}.ok{{color:#257A4D;font-weight:600}}</style></head><body><div class='card'>"
+            f"cursor:pointer;margin-top:14px}}.ok{{color:#257A4D;font-weight:600}}{css}</style>{head}</head><body><div class='card'>"
             f"<div class='mark'>ask <span>deep &gt;_</span></div><h1>{h.escape(title)}</h1>{body}</div></body></html>")
 
 
@@ -454,15 +477,17 @@ def page_ask(b: dict[str, Any], token: str, selected: str | None = None) -> str:
                  f"<form method='post' action='/outcome/{int(b['id'])}?t={h.escape(token)}'><div class='opts'>{opts}</div>"
                  f"<label class='muted' for='note'>Anything to remember? The follow-up draft uses it.</label>"
                  f"<textarea id='note' name='note' maxlength='2000' placeholder='e.g. wants 500 sample EU fintech contacts by Friday; "
-                 f"loop in their CRO'>{h.escape(b.get('outcome_note') or '')}</textarea><button type='submit'>Save</button></form>")
+                 f"loop in their CRO'>{h.escape(b.get('outcome_note') or '')}</textarea><button type='submit'>Save</button></form>"
+                 + _host_line(b))
 
 
 def page_saved(b: dict[str, Any], token: str, draft: dict[str, Any] | None) -> str:
     head = f"<p class='ok'>Saved: {h.escape(OUTCOMES.get(b.get('outcome') or '', ''))}. The lead score learns from it.</p>"
+    foot = _host_line(b)
     if not draft:
-        return _page("Thanks, noted", head + "<p class='muted'>No follow-up email for this one.</p>")
+        return _page("Thanks, noted", head + "<p class='muted'>No follow-up email for this one.</p>" + foot)
     if draft.get("sent_at"):
-        return _page("Thanks, noted", head + f"<p class='muted'>The follow-up was already sent on {h.escape(str(draft['sent_at'])[:16])}.</p>")
+        return _page("Thanks, noted", head + f"<p class='muted'>The follow-up was already sent on {h.escape(str(draft['sent_at'])[:16])}.</p>" + foot)
     first = (b.get("name") or "").split(" ")[0] or "them"
     return _page("Your follow-up is drafted",
                  head + f"<p class='muted'>Edit it if you like, then send. It goes to {h.escape(b.get('email') or '')} and replies come to you.</p>"
@@ -470,7 +495,7 @@ def page_saved(b: dict[str, Any], token: str, draft: dict[str, Any] | None) -> s
                  f"<input type='text' name='subject' maxlength='160' value='{h.escape(draft.get('subject') or '')}' required>"
                  f"<textarea name='body' style='min-height:260px;margin-top:10px' required>{h.escape(draft.get('body') or '')}</textarea>"
                  f"<button type='submit'>Send to {h.escape(first)}</button></form>"
-                 f"<p class='muted' style='font-size:13px'>Not now? It stays in Console → Bookings.</p>")
+                 f"<p class='muted' style='font-size:13px'>Not now? It stays in Console → Bookings.</p>" + foot)
 
 
 def page_sent(b: dict[str, Any], res: dict[str, Any]) -> str:

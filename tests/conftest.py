@@ -64,3 +64,12 @@ def _no_learned_score(monkeypatch):
     from app import outcomes
 
     monkeypatch.setattr(outcomes, "adjustments", lambda: {})
+
+
+@pytest.fixture(autouse=True)
+def _no_dns(monkeypatch):
+    """The DNS check of email domains (app/enrich.py) never reaches the network in tests: dns_status reads 'error' and
+    ensure_checked does nothing. Unit tests inject resolve=, and the DB tests stub dns_status and turn it back on."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "domain_check", False)

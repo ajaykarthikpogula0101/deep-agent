@@ -51,6 +51,8 @@
   .status { color:var(--muted); font-size:13px }
   .lead { display:inline-block; border-radius:999px; padding:1px 9px; font-size:12px; font-weight:600; border:1px solid var(--line-strong); white-space:nowrap }
   .lead.hot { background:var(--beam); border-color:var(--beam); color:var(--on-beam) } .lead.warm { color:var(--beam-text); border-color:var(--beam-text) } .lead.cold { color:var(--muted) }
+  .lead.not_enough_data { color:var(--muted); border-style:dashed } .lead.not_a_lead { color:var(--muted) }
+  .ev { font-size:11px; margin-left:6px; white-space:nowrap } .ev.verified { color:var(--scan) } .ev.observed { color:var(--muted) } .ev.risk { color:var(--beam-text) }
   .brief h3 { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--beam-text); margin:16px 0 6px; font-weight:600 }
   .brief ul { margin:0; padding-left:20px } .brief li { margin:0 0 4px } .brief .sum { font-size:16px; margin:10px 0 0; max-width:820px }
   .pv { white-space:pre-wrap; font:13px/1.5 "IBM Plex Mono", monospace; margin:0; color:var(--text) } .pv b { color:var(--scan) }
@@ -80,7 +82,7 @@
 </header>
 <nav>
   <button data-pane="overview" class="on">Overview</button><button data-pane="convos">Conversations</button><button data-pane="bookings">Bookings</button><button data-pane="gaps">Gaps</button>
-  <button data-pane="sessions">Sessions</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="emails">Emails</button><button data-pane="outreach">Outreach</button>
+  <button data-pane="sessions">Sessions</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="emails">Emails</button><button data-pane="outreach">Outreach <span class="chip" id="or-badge" hidden style="padding:0 7px;font-size:11px"></span></button>
 </nav>
 <main>
   <section class="pane on" id="overview">
@@ -144,7 +146,7 @@
     <div class="card">
       <h2>Variables you can use in any subject or body</h2>
       <div class="chips" id="vars"></div>
-      <p class="muted" style="margin:10px 0 0;font-size:13px"><b>{brand}</b> comes from the brand map below: the first keyword found in the call type's name wins, otherwise the default brand. Empty fields fall back to the built-in text. Previews on the right use a sample booking and update as you type.</p>
+      <p class="muted" style="margin:10px 0 0;font-size:13px"><b>{brand}</b> comes from the brand map below: the first keyword found in the call type's name wins, otherwise the default brand. <b>{host_url}</b> is the host's private booking page: filled in host emails only, empty in visitor emails. Empty fields fall back to the built-in text. Previews on the right use a sample booking and update as you type.</p>
     </div>
     <div class="grid2">
       <div>
@@ -210,6 +212,7 @@
         <div class="card"><h2>Preview · host new booking (chat) <button class="btn" type="button" data-test="host_booking" style="float:right">send test</button></h2><pre class="pv" id="pv-host_booking"></pre></div>
         <div class="card"><h2>Preview · visitor answer to their question <button class="btn" type="button" data-test="visitor_gap" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_gap"></pre></div>
         <p class="status" id="teststatus"></p>
+        <div id="public-url-note"></div>
       </div>
     </div>
   </section>
@@ -219,6 +222,15 @@
       <p class="muted" style="margin:0 0 10px;font-size:13px">Rules are checked in priority order (lowest number first) when a page loads, and again when a time-on-page or scroll threshold a rule waits for is reached. One rule bubble per page view; a visitor who closes a rule bubble or opens the chat is left alone for the rest of the visit. Each rule fires at most once per cooldown per device. Counts are for the period selected above.</p>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="or-default"> show the generic "Hi! I'm Deep" greeting when no rule matches <span class="status" id="or-status"></span></label>
     </div>
+    <div class="card">
+      <h2>Visitor context · returning visitors who never chatted</h2>
+      <p class="muted" style="margin:0 0 10px;font-size:13px">A browser is recognised by its device id only, never by IP. The IP only looks up the organisation or country of the current network; it is not stored. A company is named only after two visits from its network, or once you approve it below. Nothing happens for GPC/DNT browsers or (by default) EU/UK visitors.</p>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="or-ipctx"> use the visitor's network (organisation or country) in pop-ups <span class="status" id="or-ipctx-status"></span></label>
+      <p class="muted" id="or-ipctx-note" hidden style="margin:6px 0 0;font-size:12px">Off on the server: OUTREACH_IP_CONTEXT or TRACKING_ENABLED is false.</p>
+      <p class="muted" id="or-visitors" style="margin:8px 0 0;font-size:13px"></p>
+      <p class="warn" id="or-provider" hidden style="margin:6px 0 0;font-size:13px"></p>
+    </div>
+    <p class="muted" id="or-variants" style="margin:0 0 6px;font-size:12px"></p>
     <div class="wrap"><table id="ortable"><thead><tr><th>on</th><th>#</th><th>rule</th><th>when</th><th>says</th><th>shown</th><th>opened</th><th>chatted</th><th>booked</th><th></th></tr></thead><tbody></tbody></table></div>
     <div class="grid2" style="margin-top:18px">
       <form id="orform" class="card" style="display:flex;flex-direction:column;gap:10px">
@@ -241,13 +253,15 @@
           <label class="mono muted">came from (referrer contains)<input name="referrer" style="width:100%" placeholder="linkedin"></label>
           <label class="mono muted">channel (comma list)<input name="channel" style="width:100%" placeholder="search, social, ai, email, paid, referral, direct"></label>
           <label class="mono muted">utm_source equals<input name="utm_source" style="width:100%" placeholder="newsletter"></label>
+          <label class="mono muted">chatted or booked before<select name="engaged" style="width:100%"><option value="any">anyone</option><option value="never">never chatted or booked</option><option value="chatted">chatted before</option><option value="booked">booked before</option></select></label>
+          <label class="mono muted">network country (comma list)<input name="countries" style="width:100%" placeholder="IN, US  (empty = any)"></label>
         </div>
         <h2>Then say</h2>
         <label class="mono muted">title (bold line)<input name="title" maxlength="80" style="width:100%" placeholder="Deep into LakeB2B?"></label>
         <label class="mono muted">message<textarea name="text" maxlength="300" required style="min-height:70px" placeholder="Want a 30-minute walkthrough of LakeB2B's data with Deep? I can book it right here."></textarea></label>
         <label class="mono muted">quick replies · one per line · booking phrasings open the booking card<textarea name="replies" style="min-height:70px" placeholder="Book a LakeB2B walkthrough&#10;What does LakeB2B do?"></textarea></label>
         <label class="mono muted">first line inside the chat once opened (optional)<input name="intro" maxlength="300" style="width:100%" placeholder="defaults to the message"></label>
-        <p class="muted" style="margin:0;font-size:12px">Variables: {first_name} {booking} {schedule} {topic} {visits} {page_title}. Empty values disappear cleanly.</p>
+        <p class="muted" style="margin:0;font-size:12px">Variables: {first_name} {booking} {schedule} {topic} {visits} {page_title} {company} {industry} {company_line} {country}. Empty values disappear cleanly. A rule using {company} or {country} only fires when it is known; quick replies cannot use them, and such a rule must not say how we know.</p>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn primary" type="submit">Save rule</button><button class="btn" type="button" id="ornew">New rule</button><span class="status" id="orstatus"></span></div>
       </form>
       <div>
@@ -262,12 +276,25 @@
             <label class="mono muted">visit number<input name="visits" type="number" value="1" style="width:100%"></label>
             <label class="mono muted">first name<input name="first_name" placeholder="Ada" style="width:100%"></label>
             <label style="display:flex;gap:8px;align-items:center;align-self:end"><input type="checkbox" name="booking"> has an upcoming call</label>
+            <label class="mono muted">chatted or booked before<select name="engaged" style="width:100%"><option value="never">never</option><option value="chatted">chatted before</option><option value="booked">booked before</option></select></label>
+            <label class="mono muted">network kind<select name="net_kind" style="width:100%"><option value="">none</option><option value="corporate">company</option><option value="education">university</option><option value="government">government</option><option value="unknown">unknown</option><option value="consumer">home / mobile</option></select></label>
+            <label class="mono muted">organisation of the network<input name="org" placeholder="Acme Analytics" style="width:100%"></label>
+            <label style="display:flex;gap:8px;align-items:center;align-self:end"><input type="checkbox" name="approved"> organisation approved</label>
+            <label class="mono muted">network country code<input name="country_code" placeholder="IN" maxlength="2" style="width:100%"></label>
+            <label class="mono muted">network country<input name="country" placeholder="India" style="width:100%"></label>
           </div>
           <div><button class="btn" type="submit">Check</button></div>
           <div id="ortry-out" class="muted"></div>
         </form>
         <div class="card"><h2>Recent firings</h2><div class="wrap" id="or-recent"></div></div>
       </div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <h2>Organisations visiting · the networks your visitors came from (host-only: visitors never see this list)</h2>
+      <p class="muted" style="margin:0 0 10px;font-size:13px">Devices, visits and pages of browsers whose last organisation network was this one, and what its pop-up did. A company network is named in pop-ups after two visits; universities, government and unknown networks wait here as candidates until you approve them. An IP guess can be wrong (guest wifi, partners' offices): switch any organisation off.</p>
+      <div class="chips" id="org-filter" style="margin-bottom:10px"></div>
+      <div class="wrap" id="org-list"></div>
+      <span class="status" id="org-status"></span>
     </div>
   </section>
 </main>
@@ -361,7 +388,16 @@ async function loadMemory(sid) {
 }
 $('back').onclick = loadConvos;
 // ---- bookings + pre-call brief (app/precall.py)
-const leadChip = l => l && l.label ? `<span class="lead ${esc(l.label)}">${esc(l.label)} · ${l.score}</span>` : '<span class="muted">—</span>';
+// the verdict (app/precall.verdict) replaces the label for staff/test bookings and for low scores with nothing checked
+const VERDICT_WORD = { not_enough_data: 'not enough data', not_a_lead: 'not a lead' };
+const VERDICT_TEXT = { hot: 'Hot lead', warm: 'Warm lead', cold: 'Cold lead', not_enough_data: 'Not enough data yet', not_a_lead: 'Not a lead (staff or test)' };
+const LEAD_CLS = new Set(['hot', 'warm', 'cold', 'not_enough_data', 'not_a_lead']);
+const leadCls = l => LEAD_CLS.has(l.verdict) ? l.verdict : LEAD_CLS.has(l.label) ? l.label : 'cold';
+const leadChip = l => l && l.label ? `<span class="lead ${leadCls(l)}">${esc(VERDICT_WORD[l.verdict] || l.label)} · ${esc(l.score)}</span>` : '<span class="muted">—</span>';
+// evidence tags on "why this score": the class only picks from these objects, every value is escaped
+const TAG = { verified: 'checked', observed: 'seen', risk: 'warning' };
+const TAGCLS = { verified: 'verified', observed: 'observed', risk: 'risk' };
+const KIND = { verified: 'checked', observed: 'seen', claimed: 'their word', risk: 'warning' };
 const OUTCOMES = { good_fit: 'Good fit', follow_up: 'Follow up', not_fit: 'Not a fit', no_show: 'No-show' };
 const outChip = b => b.outcome ? `<span class="out ${esc(b.outcome)}">${esc(OUTCOMES[b.outcome] || b.outcome)}${b.followup && b.followup.sent_at ? ' · followed up' : ''}</span>`
   : (b.status !== 'cancelled' && b.end_utc && new Date(b.end_utc) < new Date() ? '<span class="out rate">rate it</span>' : '<span class="muted">—</span>');
@@ -374,7 +410,7 @@ async function loadBookings() {
   $('bk-list').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => openBrief(tr.dataset.id));
   $('hot-note').textContent = `Hot is ${h.threshold}+. A hot lead gets one alert email to the host (hourly, at most once per 14 days per email).`;
   $('hot-list').innerHTML = h.items.length ? `<table><thead><tr><th>lead</th><th>name</th><th>company</th><th>visits</th><th>questions</th><th>why</th><th>last seen</th></tr></thead><tbody>` +
-    h.items.map(x => `<tr class="click" data-sid="${esc(x.session_id)}"><td>${leadChip(x)}</td><td>${esc(x.name || '')}<div class="muted" style="font-size:12px">${esc(x.email)}</div></td><td class="ell">${esc(String(x.company || '').split(' · ')[0])}</td><td>${x.visits}</td><td>${x.questions}</td><td class="muted ell" title="${esc(x.reasons.map(r => r.text).join('; '))}">${esc(x.reasons.filter(r => r.points).map(r => r.text).join('; '))}</td><td class="muted">${fmt(x.last_seen)}</td></tr>`).join('') + '</tbody></table>'
+    h.items.map(x => `<tr class="click" data-sid="${esc(x.session_id)}"><td>${leadChip(x)}</td><td>${esc(x.name || '')}<div class="muted" style="font-size:12px">${esc(x.email)}</div></td><td class="ell">${esc(String(x.company || '').split(' · ')[0])}</td><td>${x.visits}</td><td>${x.questions}</td><td class="muted ell" title="${esc(x.reasons.filter(r => r.cls !== 'claimed').map(r => r.text).join('; '))}">${esc(x.reasons.filter(r => r.points && r.cls !== 'claimed').map(r => r.text).join('; '))}</td><td class="muted">${fmt(x.last_seen)}</td></tr>`).join('') + '</tbody></table>'
     : '<p class="muted">Nobody in this period left an email without booking.</p>';
   $('hot-list').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { document.querySelector('nav button[data-pane="convos"]').click(); openConvo(tr.dataset.sid); });
   renderLearning(await api('/admin/score/learning'));
@@ -386,7 +422,8 @@ function renderLearning(L) {
       : `${L.calls} of ${L.min_calls} rated calls so far (${L.good} good). The changes below show what the score would learn; they apply from ${L.min_calls} calls.`)
     + (s.good_before != null && s.rest_before != null ? ` Good calls scored ${s.good_before} on average vs ${s.rest_before} for the rest` + (L.active || Object.keys(L.would_adjust || {}).length ? `; with the learned weights ${s.good_after} vs ${s.rest_after}.` : '.') : '');
   const rows = (L.table || []).filter(r => r.calls);
-  $('learn-table').innerHTML = rows.length ? `<table><thead><tr><th>rule</th><th>calls with it</th><th>good calls</th><th>points change</th></tr></thead><tbody>` + rows.map(r => `<tr><td>${esc(r.rule)}</td><td>${r.calls}</td><td>${r.good_rate == null ? '—' : Math.round(100 * r.good_rate) + '%'}</td><td class="${r.adjust > 0 ? 'ok' : r.adjust < 0 ? 'bad' : 'muted'}">${r.adjust ? (r.adjust > 0 ? '+' : '−') + Math.abs(r.adjust) : '0'}</td></tr>`).join('') + '</tbody></table>' : '';
+  const cls = L.classes || {};
+  $('learn-table').innerHTML = rows.length ? `<table><thead><tr><th>rule</th><th>kind</th><th>calls with it</th><th>good calls</th><th>points change</th></tr></thead><tbody>` + rows.map(r => `<tr><td>${esc(r.rule)}</td><td class="muted">${esc(KIND[cls[r.key]] || 'seen')}</td><td>${r.calls}</td><td>${r.good_rate == null ? '—' : Math.round(100 * r.good_rate) + '%'}</td><td class="${r.adjust > 0 ? 'ok' : r.adjust < 0 ? 'bad' : 'muted'}">${r.adjust ? (r.adjust > 0 ? '+' : '−') + Math.abs(r.adjust) : '0'}</td></tr>`).join('') + '</tbody></table><p class="muted" style="font-size:12px">Claims can only lose points (down to −5); checked and seen facts move within their sign.</p>' : '';
 }
 $('learn-run').onclick = async () => { try { renderLearning(await api('/admin/score/learn', { method: 'POST' })); } catch (e) { $('learn-note').textContent = e.message; } };
 function renderOutcome(id, bk) {
@@ -415,22 +452,35 @@ function renderOutcome(id, bk) {
 function renderBrief(id, d) {
   const b = d.brief, a = b.activity || {}, li = xs => `<ul>${xs.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
   const sec = (t, xs) => xs && xs.length ? `<h3>${t}</h3>${li(xs)}` : '';
-  $('bk-brief').innerHTML = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="lead ${esc(b.label)}" style="font-size:14px">${esc(b.label)} lead · ${b.score}/100</span>
+  const secHtml = (t, items) => items && items.length ? `<h3>${t}</h3><ul>${items.map(x => `<li>${x}</li>`).join('')}</ul>` : '';
+  const reasons = b.reasons || [], ev = b.evidence;
+  const why = reasons.filter(r => r.cls !== 'claimed').map(r => esc((r.points >= 0 ? '+' : '−') + Math.abs(r.points) + '  ' + r.text)
+    + (r.cls ? `<span class="ev ${TAGCLS[r.cls] || 'observed'}">${esc(TAG[r.cls] || 'seen')}${r.proof ? ': ' + esc(r.proof) : ''}</span>` : ''));
+  const evLine = ev ? `<p class="muted" style="font-size:13px;margin:6px 0 0">Evidence: ${esc(ev.verified)} pts checked · ${esc(ev.observed)} pts seen${ev.claims ? ' · ' + esc(ev.claims) + ' claim' + (ev.claims === 1 ? '' : 's') + ' not scored' : ''}${(ev.missing || []).length ? ' · missing: ' + esc(ev.missing.join(', ')) : ''}</p>` : '';
+  $('bk-brief').innerHTML = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="lead ${leadCls(b)}" style="font-size:14px">${esc(VERDICT_TEXT[b.verdict] || b.label + ' lead')} · ${esc(b.score)}/100</span>
       <span class="muted">${a.visits || 0} visit${a.visits === 1 ? '' : 's'} · ${a.questions || 0} question${a.questions === 1 ? '' : 's'}${a.referrer_host || a.channel ? ' · via ' + esc(a.referrer_host || a.channel) : ''}${a.location ? ' · ' + esc(a.location) : ''}</span>
-      <span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="br-refresh">refresh brief</button><button class="btn" id="br-mail">email it to me</button>${d.session_id ? '<button class="btn" id="br-convo">open conversation</button>' : ''}</span></div>
-    <p class="sum">${esc(b.summary || '')}</p>
-    ${sec('Why this score', (b.reasons || []).map(r => (r.points >= 0 ? '+' : '−') + Math.abs(r.points) + '  ' + r.text))}
+      <span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="br-refresh">refresh brief</button><button class="btn" id="br-mail">email it to me</button>${d.session_id ? '<button class="btn" id="br-convo">open conversation</button>' : ''}${d.host_url ? `<button class="btn" id="br-copy">copy host link</button><a class="btn" style="display:inline-flex;align-items:center;color:inherit;text-decoration:none" href="${esc(d.host_url)}" target="_blank" rel="noopener noreferrer">open host page</a>` : ''}</span></div>
+    ${evLine}<p class="sum">${esc(b.summary || '')}</p>
+    ${secHtml('Why this score', why)}${sec('What they say (not scored)', reasons.filter(r => r.cls === 'claimed').map(r => r.text))}
     ${sec('What they asked', (b.asked || []).map(q => '“' + q + '”'))}${sec('Talking points', b.talking_points)}${sec('Questions to ask', b.questions_to_ask)}${sec('Watch out', b.watch_outs)}
     ${a.pages && a.pages.length ? `<h3>Pages they opened the chat on</h3><div class="chips">${a.pages.map(p => `<span class="chip">${esc(p)}</span>`).join('')}</div>` : ''}
     <p class="status" id="br-status">${b.composer === 'model' ? 'Written by the model from the facts above' : 'Rule-based brief' + (b.model_error ? ' (model unavailable: ' + esc(b.model_error) + ')' : '')} · built ${fmt(b.built_at)}</p>`;
   $('br-refresh').onclick = async () => { $('br-status').textContent = 'rebuilding (up to half a minute)…'; try { renderBrief(id, await api(`/admin/bookings/${id}/brief?refresh=1`)); } catch (e) { $('br-status').textContent = e.message; } };
   $('br-mail').onclick = async () => { try { const r = await api(`/admin/bookings/${id}/brief/email`, { method: 'POST' }); $('br-status').textContent = `Queued to ${r.to}: "${r.subject}"`; } catch (e) { $('br-status').textContent = e.message; } };
   if (d.session_id) $('br-convo').onclick = () => { document.querySelector('nav button[data-pane="convos"]').click(); openConvo(d.session_id); };
+  // the clipboard needs https or localhost; the prompt is the fallback
+  if (d.host_url) $('br-copy').onclick = () => { navigator.clipboard.writeText(d.host_url).then(() => { $('br-status').textContent = 'Copied the private booking page link: anyone with it can open this booking.'; }).catch(() => window.prompt('Copy the link', d.host_url)); };
   if (d.booking) renderOutcome(id, d.booking);
 }
 async function openBrief(id) {
   $('bk-list-wrap').style.display = 'none'; $('bk-view').style.display = ''; $('bk-outcome').innerHTML = ''; $('bk-brief').innerHTML = '<p class="muted">building the brief…</p>';
   try { renderBrief(id, await api(`/admin/bookings/${id}/brief`)); } catch (e) { $('bk-brief').innerHTML = `<p class="bad">${esc(e.message)}</p>`; }
+}
+// #booking=42 (the host page's "Open in console"): open that booking once the token works; the hash is cleared only once it opened
+function openHashBooking() {
+  const m = location.hash.match(/^#booking=(\d+)$/); if (!m) return;
+  document.querySelector('nav button[data-pane="bookings"]').click();
+  openBrief(m[1]).then(() => { if (!$('bk-brief').querySelector('.bad')) history.replaceState(null, '', location.pathname + location.search); });
 }
 $('bk-back').onclick = loadBookings;
 $('hot-run').onclick = async () => { const b = $('hot-run'); b.disabled = true; try { const r = await api('/admin/leads/alerts/run', { method: 'POST' }); $('hot-note').textContent = `Checked ${r.checked} · hot ${r.hot} · alerts sent ${r.sent}${r.error ? ' · ' + r.error : ''}`; } catch (e) { $('hot-note').textContent = e.message; } finally { b.disabled = false; } };
@@ -509,6 +559,9 @@ async function loadEmails() {
   const d = await api('/admin/email-templates'); tplDefaults = d.defaults; tplFill(d.templates); showPreviews(d.previews);
   $('vars').innerHTML = d.variables.map(v => `<span class="chip">{${v}}</span>`).join('');
   $('teststatus').textContent = d.smtp_configured ? `Test emails go to ${d.host_email}.` : 'SMTP is not configured; emails are logged only.';
+  $('public-url-note').innerHTML = d.public_base_url_problem
+    ? `<p class="bad">${esc(d.public_base_url_problem)}. Buttons in emails point at ${esc(d.public_base_url)} and won't open from a phone. Set PUBLIC_BASE_URL to the deployed https address.</p>`
+    : d.public_base_url_http ? `<p class="muted">PUBLIC_BASE_URL (${esc(d.public_base_url)}) is plain http: email links open, but their tokens travel unencrypted.</p>` : '';
 }
 let pvTimer = null;
 $('tplform').addEventListener('input', () => { clearTimeout(pvTimer); pvTimer = setTimeout(async () => { try { const d = await api('/admin/email-templates/preview', { method: 'POST', body: JSON.stringify({ templates: tplValues() }) }); showPreviews(d.previews); } catch {} }, 400); });
@@ -520,10 +573,10 @@ document.querySelectorAll('button[data-test]').forEach(b => b.onclick = async ()
   try { const d = await api('/admin/email-templates/test', { method: 'POST', body: JSON.stringify({ kind: b.dataset.test }) }); $('teststatus').textContent = d.ok ? `Sent to ${d.to}: "${d.subject}"` : ('Not sent: ' + (d.error || 'SMTP problem, see server log')); } catch (err) { $('teststatus').textContent = err.message; } finally { b.disabled = false; } });
 
 // ---- proactive outreach rules
-const OR_T = ['visitor', 'booking', 'page', 'pages_min', 'pages_match', 'dwell_s', 'scroll_pct', 'referrer', 'channel', 'utm_source'];
+const OR_T = ['visitor', 'booking', 'page', 'pages_min', 'pages_match', 'dwell_s', 'scroll_pct', 'referrer', 'channel', 'utm_source', 'engaged', 'countries'];
 let orRules = [];
 function orFill(r) { const f = $('orform'); f.elements.id.value = r ? r.id : ''; f.elements.name.value = r ? r.name : ''; f.elements.priority.value = r ? r.priority : 10; f.elements.cooldown_hours.value = r ? r.cooldown_hours : 24;
-  OR_T.forEach(k => { const v = r ? r.trigger[k] : null; f.elements[k].value = (v === null || v === undefined || v === 0 || v === '') ? ((k === 'visitor' || k === 'booking') ? 'any' : '') : v; });
+  OR_T.forEach(k => { const v = r ? r.trigger[k] : null; f.elements[k].value = (v === null || v === undefined || v === 0 || v === '') ? ((k === 'visitor' || k === 'booking' || k === 'engaged') ? 'any' : '') : v; });
   f.elements.title.value = r ? (r.message.title || '') : ''; f.elements.text.value = r ? (r.message.text || '') : ''; f.elements.intro.value = r ? (r.message.intro || '') : ''; f.elements.replies.value = r ? (r.message.replies || []).join('\n') : '';
   $('orform-h').textContent = r ? `Edit rule · ${r.name}` : 'Add a rule'; }
 function orValues() { const f = $('orform'); const trigger = {}; OR_T.forEach(k => trigger[k] = f.elements[k].value.trim());
@@ -531,6 +584,12 @@ function orValues() { const f = $('orform'); const trigger = {}; OR_T.forEach(k 
     message: { title: f.elements.title.value.trim(), text: f.elements.text.value.trim(), intro: f.elements.intro.value.trim(), replies: f.elements.replies.value.split('\n').map(s => s.trim()).filter(Boolean) } }; }
 async function loadOutreach() {
   const d = await api(`/admin/outreach?days=${days()}`); orRules = d.rules; $('or-default').checked = d.default_greeting;
+  $('or-ipctx').checked = !!d.ip_context && !!d.ip_context_env; $('or-ipctx').disabled = !d.ip_context_env; $('or-ipctx-note').hidden = !!d.ip_context_env;
+  const v = d.visitors || {}; $('or-visitors').textContent = `${v.devices || 0} devices · ${v.returning_never_engaged || 0} came back without chatting · ${v.on_org_networks || 0} on organisation networks (${d.days} d)`;
+  $('or-provider').hidden = !d.provider_note; $('or-provider').textContent = d.provider_note || '';
+  $('or-badge').hidden = !d.candidates; $('or-badge').textContent = d.candidates ? `${d.candidates} candidate${d.candidates > 1 ? 's' : ''}` : '';
+  const vs = Object.entries(d.variants || {}); $('or-variants').textContent = vs.length ? 'pop-ups by variant: ' + vs.map(([k, x]) => `${k} ${x.fired} (opened ${x.opened}, chatted ${x.chatted}, booked ${x.booked})`).join(' · ') : '';
+  loadOrgs().catch(e => { $('org-status').textContent = e.message; });
   const tb = $('ortable').querySelector('tbody');
   tb.innerHTML = d.rules.map(r => `<tr><td><input type="checkbox" data-on="${r.id}" ${r.enabled ? 'checked' : ''}></td><td class="muted">${r.priority}</td><td><b>${esc(r.name)}</b><div class="muted" style="font-size:12px">cooldown ${r.cooldown_hours} h</div></td><td>${esc(r.summary || 'everyone')}</td>
     <td style="max-width:420px">${r.message.title ? '<b>' + esc(r.message.title) + '</b> ' : ''}${esc(r.message.text)}<div class="muted" style="font-size:12px">${(r.message.replies || []).map(esc).join(' · ')}</div></td>
@@ -541,6 +600,49 @@ async function loadOutreach() {
   $('or-recent').innerHTML = d.recent.length ? `<table><thead><tr><th>when</th><th>rule</th><th>page</th><th>result</th></tr></thead><tbody>` + d.recent.map(e => `<tr${e.session_id ? ` class="click" data-sid="${esc(e.session_id)}"` : ''}><td>${fmt(e.ts)}</td><td>${esc(e.rule || 'deleted rule')}</td><td class="ell muted">${esc(e.page || '')}</td><td>${e.opened ? '<span class="ok">opened the chat</span>' : e.dismissed ? '<span class="muted">closed</span>' : '<span class="muted">shown</span>'}</td></tr>`).join('') + '</tbody></table>' : '<p class="muted">No firings in this period.</p>';
   $('or-recent').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { document.querySelector('nav button[data-pane="convos"]').click(); openConvo(tr.dataset.sid); });
 }
+$('or-ipctx').onchange = async () => { try { const d = await api('/admin/outreach/settings', { method: 'PUT', body: JSON.stringify({ ip_context: $('or-ipctx').checked }) }); $('or-ipctx').checked = d.ip_context; $('or-ipctx-status').textContent = 'saved · live within 15 s'; } catch (e) { $('or-ipctx-status').textContent = e.message; } };
+// ---- organisations visiting (app/visitors.py); every cell goes through esc(), keys in URLs through encodeURIComponent
+let orgStatus = '', orgItems = [];
+const ORG_STATUS = { auto: 'auto', candidate: 'candidate · needs approval', approved: 'approved', off: 'off' };
+async function loadOrgs() {
+  const d = await api(`/admin/outreach/orgs?status=${encodeURIComponent(orgStatus)}&days=${days()}`); orgItems = d.items || []; const c = d.counts || {};
+  $('org-filter').innerHTML = [['', 'All'], ['candidate', `Candidates ${c.candidate || 0}`], ['approved', 'Approved'], ['off', 'Off']]
+    .map(([k, l]) => `<button type="button" class="chip" data-st="${esc(k)}" style="cursor:pointer${orgStatus === k ? ';border-color:var(--scan)' : ''}">${esc(l)}</button>`).join('');
+  $('org-filter').querySelectorAll('button[data-st]').forEach(b => b.onclick = () => { orgStatus = b.dataset.st; loadOrgs().catch(e => { $('org-status').textContent = e.message; }); });
+  $('org-list').innerHTML = orgItems.length ? '<table><thead><tr><th>organisation</th><th>devices</th><th>visits</th><th>engaged</th><th>top pages</th><th>industry</th><th>pop-up line</th><th>shown</th><th>opened</th><th>chatted</th><th>booked</th><th></th></tr></thead><tbody>'
+    + orgItems.map((o, i) => { const s = o.stats || {}; const k = encodeURIComponent(o.key);
+      const chip = ` <span class="chip" style="padding:0 7px;font-size:11px">${esc(NET_CHIP[o.net_kind] || o.net_kind || '')}</span>`;
+      const acts = [o.status === 'candidate' ? `<button class="btn" data-org="${esc(k)}" data-act="approved">Use as company</button>` : (o.status !== 'approved' ? `<button class="btn" data-org="${esc(k)}" data-act="approved">Approve</button>` : ''),
+        `<button class="btn" data-i="${i}" data-act="edit">Edit</button>`, o.status !== 'off' ? `<button class="btn danger" data-org="${esc(k)}" data-act="off">Turn off</button>` : '',
+        o.status !== 'auto' ? `<button class="btn" data-org="${esc(k)}" data-act="auto">Reset to auto</button>` : ''].filter(Boolean).join(' ');
+      return `<tr data-row="${i}"><td><b>${esc(o.org)}</b>${chip}<div class="muted" style="font-size:12px">${esc(o.domain || '')}${o.domain ? ' · ' : ''}${esc(ORG_STATUS[o.status] || o.status)}</div></td>
+        <td>${o.devices}</td><td>${o.visits}</td><td class="ok">${o.engaged || ''}</td><td class="muted ell">${(o.pages || []).map(esc).join(', ')}</td><td>${esc(o.industry || '')}</td>
+        <td style="max-width:320px">${esc(String(o.preview || '').split('{company}').join(o.org))}${o.line ? ' <span class="muted" style="font-size:11px">(your line)</span>' : ''}</td>
+        <td>${s.shown || 0}</td><td>${s.opened || 0}</td><td class="ok">${s.chatted || ''}</td><td class="ok">${s.booked || ''}</td><td style="white-space:nowrap">${acts}</td></tr>`; }).join('') + '</tbody></table>'
+    : '<p class="muted">No organisation networks in this period.</p>';
+  $('org-list').querySelectorAll('button[data-org]').forEach(b => b.onclick = () => patchOrg(b.dataset.org, { status: b.dataset.act }));
+  $('org-list').querySelectorAll('button[data-act="edit"]').forEach(b => b.onclick = () => editOrg(+b.dataset.i));
+}
+async function patchOrg(encKey, body) {
+  $('org-status').textContent = 'saving…';
+  try { const r = await fetch(`/admin/outreach/orgs/${encKey}`, { method: 'PATCH', headers: H(), body: JSON.stringify(body) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || ('error ' + r.status)); }
+    $('org-status').textContent = 'saved · live within a minute'; loadOutreach(); } catch (e) { $('org-status').textContent = e.message; }
+}
+function editOrg(i) {
+  const o = orgItems[i]; const tr = $('org-list').querySelector(`tr[data-row="${i}"]`); if (!o || !tr) return;
+  const old = $('org-list').querySelector('tr.org-edit'); if (old) old.remove();
+  const ed = document.createElement('tr'); ed.className = 'org-edit';
+  ed.innerHTML = `<td colspan="12"><form style="display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:8px;align-items:end">
+    <label class="mono muted">name<input name="org" maxlength="60" style="width:100%"></label>
+    <label class="mono muted">industry<input name="industry" maxlength="40" style="width:100%" placeholder="software"></label>
+    <label class="mono muted">your pop-up line (must contain {company}; empty = the template)<input name="line" maxlength="170" style="width:100%"></label>
+    <div style="white-space:nowrap"><button class="btn primary" type="submit">Save</button> <button class="btn" type="button" data-cancel>Cancel</button></div></form></td>`;
+  tr.after(ed); const f = ed.querySelector('form');
+  f.elements.org.value = o.org || ''; f.elements.industry.value = o.industry || ''; f.elements.line.value = o.line || '';  // .value, never markup
+  ed.querySelector('[data-cancel]').onclick = () => ed.remove();
+  f.onsubmit = e => { e.preventDefault(); patchOrg(encodeURIComponent(o.key), { org: f.elements.org.value.trim(), industry: f.elements.industry.value.trim(), line: f.elements.line.value.trim() || null }); };
+}
 $('or-default').onchange = async () => { try { await api('/admin/outreach/settings', { method: 'PUT', body: JSON.stringify({ default_greeting: $('or-default').checked }) }); $('or-status').textContent = 'saved · live within 15 s'; } catch (e) { $('or-status').textContent = e.message; } };
 $('orform').onsubmit = async e => { e.preventDefault(); const id = $('orform').elements.id.value; $('orstatus').textContent = 'saving…';
   try { const r = await fetch(id ? `/admin/outreach/rules/${id}` : '/admin/outreach/rules', { method: id ? 'PATCH' : 'POST', headers: H(), body: JSON.stringify(orValues()) });
@@ -548,9 +650,10 @@ $('orform').onsubmit = async e => { e.preventDefault(); const id = $('orform').e
     $('orstatus').textContent = 'saved · live within 15 s'; orFill(null); loadOutreach(); } catch (err) { $('orstatus').textContent = err.message; } };
 $('ornew').onclick = () => { orFill(null); $('orstatus').textContent = ''; };
 $('ortry').onsubmit = async e => { e.preventDefault(); const f = e.target;
-  const body = { path: f.path.value.trim() || '/', pages: f.pages.value.split(',').map(s => s.trim()).filter(Boolean), dwell_s: +f.dwell_s.value || 0, scroll_pct: +f.scroll_pct.value || 0, referrer: f.referrer.value.trim() || null, visits: +f.visits.value || 1, booking: f.booking.checked, first_name: f.first_name.value.trim() || null };
+  const body = { path: f.path.value.trim() || '/', pages: f.pages.value.split(',').map(s => s.trim()).filter(Boolean), dwell_s: +f.dwell_s.value || 0, scroll_pct: +f.scroll_pct.value || 0, referrer: f.referrer.value.trim() || null, visits: +f.visits.value || 1, booking: f.booking.checked, first_name: f.first_name.value.trim() || null,
+    engaged: f.engaged.value || null, net_kind: f.net_kind.value || null, org: f.org.value.trim() || null, approved: f.approved.checked, country_code: f.country_code.value.trim().toUpperCase() || null, country: f.country.value.trim() || null };
   try { const d = await api('/admin/outreach/try', { method: 'POST', body: JSON.stringify(body) });
-    $('ortry-out').innerHTML = (d.fires ? `<b class="ok">"${esc(d.fires.name)}" fires</b><div class="m" style="max-width:100%;margin-top:8px">${d.fires.title ? '<b>' + esc(d.fires.title) + '</b><br>' : ''}${esc(d.fires.text)}<div class="muted" style="margin-top:6px;font-size:12px">${d.fires.replies.map(r => esc(r.label)).join(' · ')}</div></div>` : `<b>No rule fires</b> · ${d.default ? 'the generic greeting shows' : 'nothing shows (generic greeting is off)'}`)
+    $('ortry-out').innerHTML = (d.fires ? `<b class="ok">"${esc(d.fires.name)}" fires</b> <span class="muted">(${esc(d.variant || 'plain')} variant)</span><div class="m" style="max-width:100%;margin-top:8px">${d.fires.title ? '<b>' + esc(d.fires.title) + '</b><br>' : ''}${esc(d.fires.text)}<div class="muted" style="margin-top:6px;font-size:12px">${d.fires.replies.map(r => esc(r.label)).join(' · ')}</div></div>` : `<b>No rule fires</b> · ${d.default ? 'the generic greeting shows' : 'nothing shows (generic greeting is off)'}`)
       + '<div class="muted" style="font-size:12px;margin-top:8px">' + (d.rules.map(r => `${esc(r.name)}: ${r.match ? '<span class="ok">matches</span>' : r.wait ? 'waits for ' + Object.entries(r.wait).map(([k, v]) => k === 'dwell_s' ? v + ' s on the page' : v + '% scroll').join(' and ') : 'no'}`).join(' · ') || 'no enabled rules') + '</div>';
   } catch (err) { $('ortry-out').textContent = err.message; } };
 
@@ -558,8 +661,10 @@ async function load() {
   const token = $('token').value.trim(); if (!token) { $('status').textContent = 'enter the admin token'; return; }
   try { sessionStorage.setItem('dh_admin', token); } catch {}
   $('status').textContent = 'loading…';
+  let err = null;
   try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadAnswers(), loadEmails(), loadOutreach()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
-  catch (e) { $('status').textContent = e.message; }
+  catch (e) { err = e; $('status').textContent = e.message; }
+  if (!err || !/wrong token/.test(err.message)) openHashBooking();  // a failing unrelated pane must not block the deep link
 }
 $('go').onclick = load; $('days').onchange = load; $('token').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
 if ($('token').value) load();

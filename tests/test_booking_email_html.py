@@ -48,7 +48,10 @@ def test_pending_host_email_is_a_request_with_the_true_follow_up(monkeypatch):
     assert "New booking request" in h and "Awaiting Zoom Confirmation" in h and "Your booking is confirmed" not in h
     assert "The visitor is still required to confirm the booking on Zoom." in h and "24 hours" in h
     assert "scheduler.zoom.us" not in h                     # the visitor's prefilled link is theirs, not the host's
-    assert f'href="{PENDING["manage_url"]}"' in h and "Notes: B2B data for EU fintech" in h
+    assert "View booking details" not in h and "Notes: B2B data for EU fintech" in h   # no host_url: no button
+    assert PENDING["manage_url"] not in h                    # never the visitor's page (it has a Cancel button)
+    u = "https://assistant.deependhq.com/host/booking/42?t=hosttoken"
+    assert f'href="{u}"' in html(dict(PENDING, host_url=u), "host") and "View booking details" in html(dict(PENDING, host_url=u), "host")
     assert f"to {settings.host_email}" in h
     monkeypatch.setattr(settings, "nudge_enabled", False)
     assert "24 hours" not in html(PENDING, "host")          # no reminder promised when reminders are off
@@ -184,3 +187,46 @@ def test_host_email_refreshes_a_pending_origin_line(monkeypatch):
                 c.execute("DELETE FROM bookings WHERE id = %s", (bid,))
             c.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))
             c.commit()
+
+
+def test_host_email_button_opens_the_host_page_and_visitor_keeps_manage():
+    u = "https://assistant.deependhq.com/host/booking/42?t=hosttoken"
+    h = html(dict(CONFIRMED, host_url=u), "host")
+    assert f'href="{u}"' in h and "View booking details" in h and CONFIRMED["manage_url"] not in h
+    assert "View booking details" not in html(CONFIRMED, "host")      # SAMPLE_BOOKING carries no host_url
+    v = html(dict(CONFIRMED, host_url=u))                             # the visitor's button stays their manage page
+    assert f'href="{CONFIRMED["manage_url"]}"' in v and u not in v
+    assert "host_url" not in templates.SAMPLE_BOOKING
+
+
+def test_booking_emails_carry_the_host_link(monkeypatch):
+    from app.booking import email as mail
+
+    monkeypatch.setattr(settings, "link_secret", "s")
+    monkeypatch.setattr(settings, "public_base_url", "https://assistant.example.com")
+    monkeypatch.setattr(mail, "_refresh_origin", lambda b: b.__setitem__("origin", "Bengaluru"))
+    sent = []
+    m = mailer_mod.Mailer(sender=lambda to, subject, body, **k: sent.append((to, subject, body, k)) or True, sync=True)
+    b = dict(templates.SAMPLE_BOOKING, manage_token="Tok")
+    mail.send_booking_emails(b, mailer=m)
+    host = next(s for s in sent if s[0] == settings.host_email)
+    visitor = next(s for s in sent if s[0] == b["email"])
+    guests = [s for s in sent if s[0] == "charles@babbage.org"]
+    assert "/host/booking/42?t=" in host[3]["html"] and "View booking details" in host[3]["html"]
+    assert "Booking page: https://assistant.example.com/host/booking/42?t=" in host[2] and "Where:    Bengaluru" in host[2]
+    assert "/booking/42/manage" in visitor[3]["html"] and "/host/booking" not in visitor[3]["html"] + visitor[2]
+    assert guests and all("/host/booking" not in g[3]["html"] + g[2] for g in guests)
+    assert "host_url" not in b                                         # attach() never mutates the booking
+
+    for send in (mail.send_reschedule_emails, mail.send_cancel_emails):
+        sent.clear()
+        send(dict(b, old_label_visitor="Tue 06 Oct, 10:00 (America/New_York)"), mailer=m)
+        host = next(s for s in sent if s[0] == settings.host_email)
+        visitor = next(s for s in sent if s[0] == b["email"])
+        assert "Open booking page" in host[3]["html"] and "/host/booking/42?t=" in host[3]["html"] and "Booking page: https://" in host[2]
+        assert "Open booking page" not in visitor[3]["html"] and "/host/booking" not in visitor[3]["html"] + visitor[2]
+
+    sent.clear()
+    mail.send_booking_emails(dict(templates.SAMPLE_BOOKING), mailer=m)    # no manage token: no link at all
+    host = next(s for s in sent if s[0] == settings.host_email)
+    assert "View booking details" not in host[3]["html"] and "Booking page:" not in host[2]

@@ -19,3 +19,4 @@ respx==0.22.0
 PyJWT[crypto]==2.10.1
 python-multipart==0.0.20
 pypdf==5.1.0
+dnspython==2.6.1

@@ -77,6 +77,9 @@ CREATE TABLE IF NOT EXISTS companies (
     data        JSONB NOT NULL DEFAULT '{{}}'::jsonb,
     fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- DNS proof of an email domain (app/enrich.py): mx | a | none | nxdomain | error. Separate from companies, so the 30-day
+-- homepage cache filter never hides a DNS result. Domains only, no personal data.
+CREATE TABLE IF NOT EXISTS domain_dns (domain TEXT PRIMARY KEY, status TEXT NOT NULL, checked_at TIMESTAMPTZ NOT NULL DEFAULT now());
 
 -- In-chat bookings (app/booking/flow.py): one row per confirmed (or Zoom-pending) booking made in the widget.
 CREATE TABLE IF NOT EXISTS bookings (
@@ -160,6 +163,7 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMPTZ;  -- Mess
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS title TEXT;                 -- conversation title (app/titles.py)
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS title_source TEXT;          -- 'auto' | 'user'
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS title_turns INT;            -- visitor turns when the auto title was made
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS verified_email TEXT;       -- the email a verified sign-in token carried (tracking.attach_user); never an unverified hint
 -- the network behind the IP (app/network.py); never an IP or a hostname
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS asn INT;
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS net_org TEXT;
@@ -252,6 +256,47 @@ CREATE TABLE IF NOT EXISTS outreach_events (
     dismissed_at    TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS outreach_events_rule_idx ON outreach_events(rule_id, visitor_id, fired_at DESC);
+-- Returning visitors who may never chat (app/visitors.py): one row per device id, and the organisations whose
+-- networks they came from. No IP, city, ASN or org column on visitors, by design.
+CREATE TABLE IF NOT EXISTS visitors (
+    visitor_id      TEXT PRIMARY KEY,               -- localStorage dh_vid; never linked by IP; no IP column by design
+    first_seen      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    visits          INT NOT NULL DEFAULT 1,         -- +1 after OUTREACH_VISIT_GAP_MIN without a check
+    pages           JSONB NOT NULL DEFAULT '[]'::jsonb,  -- first 30 distinct site paths (outreach.path_of: no query string)
+    first_page      TEXT,                           -- first visit; a path
+    referrer_host   TEXT,
+    channel         TEXT,
+    utm_source      TEXT,
+    engaged         TEXT,                           -- NULL (never) | chatted | booked
+    net_kind        TEXT,                           -- of the last network seen
+    country_code    TEXT,
+    company_key     TEXT,                           -- org_networks.key of the last organisation network seen (host-side only)
+    company_visits  INT NOT NULL DEFAULT 0,         -- consecutive visits seen on that organisation network
+    net_at          TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS visitors_last_seen_idx ON visitors(last_seen);
+CREATE INDEX IF NOT EXISTS visitors_company_idx ON visitors(company_key, last_seen DESC) WHERE company_key IS NOT NULL;
+CREATE TABLE IF NOT EXISTS org_networks (
+    key             TEXT PRIMARY KEY,               -- visitors.org_identity(): a registrable domain the org owns, else 'org:' + org_key
+    org             TEXT NOT NULL,                  -- display name (network.clean_org); the owner may rename it; this is the company variable
+    domain          TEXT,                           -- only a domain that belongs to the organisation, never the carrier's
+    net_kind        TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'auto',   -- auto | candidate (needs approval) | approved | off
+    industry        TEXT NOT NULL DEFAULT '',
+    industry_source TEXT,                           -- homepage | owner
+    line            TEXT,                           -- optional owner-written pop-up line; replaces the template
+    first_seen      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    reviewed_at     TIMESTAMPTZ,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS org_networks_status_idx ON org_networks(status, last_seen DESC);
+ALTER TABLE outreach_events ADD COLUMN IF NOT EXISTS variant TEXT;    -- company | location | plain
+ALTER TABLE outreach_events ADD COLUMN IF NOT EXISTS org_key TEXT;
+ALTER TABLE outreach_events ADD COLUMN IF NOT EXISTS context JSONB NOT NULL DEFAULT '{{}}'::jsonb;  -- org, industry, kind, country, popup; never an IP, city or ASN
+CREATE INDEX IF NOT EXISTS outreach_events_session_idx ON outreach_events(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS outreach_events_visitor_idx ON outreach_events(visitor_id, fired_at DESC);
 CREATE TABLE IF NOT EXISTS custom_answers (
     id          BIGSERIAL PRIMARY KEY,
     question    TEXT NOT NULL,

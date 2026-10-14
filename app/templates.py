@@ -15,6 +15,7 @@ Variables (unknown ones render as empty, never as an error):
   {origin}        where the visitor came from (city, channel)  {note}       internal note (host only)
   {company}       the visitor's company from their email domain (app/enrich.py); empty for personal addresses
   {host_name} {host_email} {site}
+  {host_url}      host emails only: the host's private booking page (app/host_page.py); empty in visitor emails
 
 Templates live in the `settings` table under keys `tpl:<name>`; missing keys fall back to DEFAULTS below.
 """
@@ -143,7 +144,8 @@ DEFAULTS: dict[str, str] = {
         "Zoom:     {join_url}\n"
         "{meeting_line}\n"
         "Notes:    {reason}\n"
-        "Where:    {origin}\n\n"
+        "Where:    {origin}\n"
+        "Booking page: {host_url}\n\n"
         "The calendar invite is attached.\n"
     ),
     "visitor_nudge_enabled": "true",
@@ -195,7 +197,7 @@ METHOD_LINE = {"scheduler": "booked on the Zoom Scheduler", "meeting": "Zoom mee
 VARIABLES = ["brand", "title", "duration", "kind", "name", "first_name", "email", "reason", "date", "date_visitor", "visitor_tz",
              "host_tz", "link", "next_step", "origin", "note", "company", "host_name", "host_email", "site",
              "headline", "join_url", "meeting_id", "passcode", "meeting_line", "ics_url", "manage_url", "manage_line", "method_line",
-             "old_date", "old_date_visitor", "booking_link", "attendees",
+             "old_date", "old_date_visitor", "booking_link", "attendees", "host_url",
              "answers", "question_short", "asked_date", "chat_link", "optout_line"]   # the last five: the gap follow-up only
 
 _VAR = re.compile(r"\{([a-z_]+)\}")
@@ -285,6 +287,7 @@ def build_vars(lead: dict[str, Any], tpl: dict[str, str] | None = None) -> dict[
         "old_date": lead.get("old_label_host") or "", "old_date_visitor": lead.get("old_label_visitor") or "",
         "booking_link": settings.zoom_booking_base,
         "attendees": ", ".join(f"{g.get('name')} <{g.get('email')}>" for g in (lead.get("attendees") or []) if g.get("email")),
+        "host_url": lead.get("host_url") or "",   # host emails only: the private booking page (app/host_page.py)
     }
     v["meeting_line"] = (f"Meeting ID {v['meeting_id']}" + (f" · Passcode {v['passcode']}" if v["passcode"] else "")) if v["meeting_id"] else ""
     v["manage_line"] = f"Need to change it? Cancel or reschedule here: {v['manage_url']}" if v["manage_url"] else ""
@@ -485,6 +488,9 @@ SAMPLE_BOOKING: dict[str, Any] = {
 }
 
 
+SAMPLE_HOST_URL = "https://assistant.deependhq.com/host/booking/sample"   # console preview of the host booking email only
+
+
 def preview(kind: str, overrides: dict[str, str] | None = None) -> dict[str, str]:
     """Sample lead rendered with the saved templates plus any unsaved edits from the console."""
     tpl = get_templates()
@@ -493,7 +499,7 @@ def preview(kind: str, overrides: dict[str, str] | None = None) -> dict[str, str
             tpl[k] = (v or "").strip() or DEFAULTS[k]
     lead = dict(SAMPLE_LEAD)
     if kind == "host_booking":
-        s, b = render_booking_host(SAMPLE_BOOKING, tpl)
+        s, b = render_booking_host(dict(SAMPLE_BOOKING, host_url=SAMPLE_HOST_URL), tpl)
         return {"subject": s, "body": b}
     if kind == "visitor_confirmed":
         r = render_booking_visitor(SAMPLE_BOOKING, tpl)

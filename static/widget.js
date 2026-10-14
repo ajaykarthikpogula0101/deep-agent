@@ -21,6 +21,9 @@
  * bubble: at page load, and again when a time-on-page or scroll threshold a rule is waiting for is reached. If no
  * rule fires, the generic greeting below shows as before (the console can switch that off). At most one rule
  * bubble per page view; a dismissed rule bubble or an opened chat ends outreach for the session.
+ * The server counts visits per device itself (a new visit after 30 minutes without a check) and, for a returning visitor
+ * who never chatted, may tailor the bubble to the organisation or country of the current network. It is sent the
+ * browser timezone and the Global Privacy Control / Do Not Track signal; with either GPC or DNT nothing is recorded.
  */
 (function () {
   var script = document.currentScript;
@@ -60,7 +63,9 @@
     if (!loading) loading = import(ORIGIN + '/static/deep-assistant.js' + (VER ? '?v=' + encodeURIComponent(VER) : '')).catch(function (e) { loading = null; throw e; });
     return loading;
   }
-  function mount(open, greeting) {
+  // eventId: the outreach firing this open came from; the chat sends it with its first message so the server can attach
+  // that pop-up's context (the organisation or country it named, labelled as a guess) to the conversation
+  function mount(open, greeting, eventId) {
     return load().then(function () {
       var el = document.querySelector('deep-assistant');
       if (!el) {
@@ -75,6 +80,7 @@
         if (ds.shortcut) el.setAttribute('shortcut', ds.shortcut);
         if (ds.privacy) el.setAttribute('privacy-url', ds.privacy);
         if (greeting) el.setAttribute('greeting', greeting);
+        if (eventId) el.setAttribute('outreach-event', String(eventId));
         document.body.appendChild(el);
       }
       if (open) el.setAttribute('open', '');
@@ -104,7 +110,7 @@
   btn.addEventListener('click', function () {
     btn.disabled = true; btn.style.opacity = '.6';
     var g = current;
-    mount(true, g ? g.intro : null).then(function (el) { if (g) markOpened(g, el); }).catch(function () { btn.disabled = false; btn.style.opacity = ''; });
+    mount(true, g ? g.intro : null, g ? g.eventId : null).then(function (el) { if (g) markOpened(g, el); }).catch(function () { btn.disabled = false; btn.style.opacity = ''; });
   });
   document.body.appendChild(btn);
   var badge = btn.querySelector('.dh-pro-badge');
@@ -197,7 +203,7 @@
       '<div>' + (g.title ? '<div class="dh-pro-title">' + esc(g.title) + '</div>' : '') + '<div class="dh-pro-q">' + esc(g.question) + '</div>' +
       '<div class="dh-pro-meta"><span class="dh-pro-name">' + esc(PROACTIVE.botName) + '</span> • <span class="dh-pro-time">just now</span></div></div>' +
       '<button class="dh-pro-x" type="button" aria-label="Dismiss">×</button>';
-    var openFromBubble = function () { bubble.style.pointerEvents = 'none'; mount(true, g.intro).then(function (el) { markOpened(g, el); }).catch(function () { bubble.style.pointerEvents = ''; }); };
+    var openFromBubble = function () { bubble.style.pointerEvents = 'none'; mount(true, g.intro, g.eventId).then(function (el) { markOpened(g, el); }).catch(function () { bubble.style.pointerEvents = ''; }); };
     bubble.addEventListener('click', function (e) { if (e.target.closest('.dh-pro-x')) return; openFromBubble(); });
     bubble.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFromBubble(); } });
     bubble.querySelector('.dh-pro-x').addEventListener('click', function (e) { e.stopPropagation(); if (g.eventId) sendEvent(g.eventId, 'dismissed'); dismiss(g.eventId ? 2 : 1); });
@@ -208,7 +214,7 @@
       b.style.animationDelay = (120 + i * 90) + 'ms';
       b.addEventListener('click', function () {
         wrap && wrap.querySelectorAll('button, .dh-pro-bubble').forEach(function (x) { x.style.pointerEvents = 'none'; });
-        mount(true, g.intro).then(function (el) { markOpened(g, el); if ((r.book || BOOK_RE.test(r.label)) && el.startBooking) el.startBooking(null, r.label); else el.ask(r.label); }).catch(function () {});
+        mount(true, g.intro, g.eventId).then(function (el) { markOpened(g, el); if ((r.book || BOOK_RE.test(r.label)) && el.startBooking) el.startBooking(null, r.label); else el.ask(r.label); }).catch(function () {});
       });
       wrap.appendChild(b);
     });
@@ -239,9 +245,13 @@
   addEventListener('scroll', function () { var p = scrollPct(); if (p > scrollMax) { scrollMax = p; if (oWait.scroll_pct && p >= oWait.scroll_pct) outreachCheck('scroll'); } }, { passive: true });
 
   var oWait = {}, oShown = [], oFired = false, oTimer = null, oDefault = true, oBusy = false, oLast = null;
+  // Global Privacy Control / Do Not Track: the server keeps no page-view row and looks nothing up for this browser
+  var GPC = !!(navigator.globalPrivacyControl || navigator.doNotTrack === '1');
+  var TZ = ''; try { TZ = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').slice(0, 64); } catch (e) {}
   function activity() {
     return { visitor_id: VID, page: location.href.slice(0, 2000), path: PATH, title: (document.title || '').slice(0, 200), first_page: act.first,
-             pages: act.pages, dwell_s: dwellS(), scroll_pct: Math.max(scrollMax, scrollPct()), referrer: act.ref, visits: visits, shown: oShown };
+             pages: act.pages, dwell_s: dwellS(), scroll_pct: Math.max(scrollMax, scrollPct()), referrer: act.ref, visits: visits, shown: oShown,
+             gpc: GPC, tz: TZ };
   }
   function outreachCheck(reason) {
     if (!PROACTIVE.enabled || oFired || oBusy || dismissLevel() >= 2 || document.querySelector('deep-assistant') || typeof fetch !== 'function') return;

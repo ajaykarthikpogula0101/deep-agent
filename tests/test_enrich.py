@@ -79,3 +79,106 @@ def test_company_appears_in_the_host_brief_only_when_known():
     lead["company"] = ""
     _, body = render_host(lead)
     assert "Company:" not in body
+
+
+# ---------------------------------------------------------------- DNS proof of the email domain (domain_dns)
+class Resolver:
+    """An injected resolve(domain, qtype, nameservers, lifetime): answers from a table per resolver set, records calls."""
+    def __init__(self, answers, fallback=None):
+        self.answers, self.fallback, self.calls = answers, fallback, []
+
+    def __call__(self, domain, qtype, ns, lifetime):
+        self.calls.append((qtype, ns, lifetime, time.monotonic()))
+        table = self.answers if ns is None else self.fallback
+        v = table.get(qtype, []) if isinstance(table, dict) else table
+        if isinstance(v, BaseException) or (isinstance(v, type) and issubclass(v, BaseException)):
+            raise v
+        return v
+
+
+def test_dns_status_and_domain_proof(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "domain_check_fallback_ns", "1.1.1.1,8.8.8.8")
+    soon = lambda: time.monotonic() + 3  # noqa: E731
+    assert enrich.dns_status("acme.com", soon(), Resolver({"MX": ["mx1.acme.com"]})) == "mx"
+    r = Resolver({"MX": [], "A": ["1.2.3.4"]})
+    assert enrich.dns_status("acme.com", soon(), r) == "a" and [c[0] for c in r.calls] == ["MX", "A"]   # no AAAA once A answers
+    assert enrich.dns_status("acme.com", soon(), Resolver({"MX": [], "A": [], "AAAA": ["::1"]})) == "a"
+    assert enrich.dns_status("acme.com", soon(), Resolver({"MX": [], "A": [], "AAAA": []})) == "none"
+    assert enrich.dns_status("nope.example", soon(), Resolver({"MX": enrich.NoSuchDomain("nope.example")})) == "nxdomain"
+    assert enrich.dns_status("acme.com", soon(), Resolver({"MX": ["."]})) == "none"          # null MX (RFC 7505)
+    r = Resolver({"MX": TimeoutError("system resolver timed out")}, fallback={"MX": ["mx.acme.com"]})
+    assert enrich.dns_status("acme.com", soon(), r) == "mx" and [c[1] for c in r.calls] == [None, ["1.1.1.1", "8.8.8.8"]]
+    both = Resolver({"MX": TimeoutError("x")}, fallback={"MX": ValueError("label too long")})
+    assert enrich.dns_status("acme.com", soon(), both) == "error" and len(both.calls) == 2
+    late = Resolver({"MX": ["mx.acme.com"]})
+    assert enrich.dns_status("acme.com", time.monotonic() - 1, late) == "error" and late.calls == []
+    deadline = time.monotonic() + 1.0
+    r = Resolver({"MX": TimeoutError("x")}, fallback={"MX": [], "A": []})
+    enrich.dns_status("acme.com", deadline, r)
+    assert r.calls and all(life <= min(enrich.DNS_QUERY_TIMEOUT, deadline - at) + 1e-6 for _, _, life, at in r.calls)
+    monkeypatch.setattr(settings, "domain_check", False)                                     # off: no query at all
+    monkeypatch.setattr(enrich, "_dns_resolve", lambda *a: (_ for _ in ()).throw(AssertionError("queried")))
+    assert enrich.dns_status("acme.com", soon()) == "error"
+
+    now = datetime.now(timezone.utc)
+    assert enrich.domain_proof("homepage", None, None, None) == "web" and enrich.domain_proof("test", None, "nxdomain", now) == "web"
+    assert enrich.domain_proof("unreachable", "403 text/html", None, None) == "a"   # a server answered with an HTTP status
+    assert enrich.domain_proof("unreachable", "[Errno 11001] getaddrinfo failed", "mx", now) == "mx"
+    assert enrich.domain_proof(None, None, "nxdomain", now - timedelta(days=1)) == "dead"
+    assert enrich.domain_proof(None, None, "none", now - timedelta(days=1)) == "dead"
+    assert enrich.domain_proof(None, None, "nxdomain", now - timedelta(days=5)) == "unknown"   # checked again after 3 days
+    assert enrich.domain_proof(None, None, "mx", now - timedelta(days=40)) == "unknown"
+    assert enrich.domain_proof(None, None, "error", now) == "unknown" and enrich.domain_proof(None, None, None, None) == "unknown"
+
+
+def _db_up() -> bool:
+    from tests.test_reminders import _db_up as up
+
+    return up()
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_ensure_checked_uses_domain_dns(monkeypatch):
+    import json
+    from uuid import uuid4
+
+    from app import precall
+    from app.config import settings
+    from app.db import conn
+
+    d = f"test-{uuid4().hex[:8]}.example"
+    monkeypatch.setattr(settings, "domain_check", True)
+    calls = []
+    monkeypatch.setattr(enrich, "dns_status", lambda domain, deadline=None, resolve=None: calls.append(domain) or "mx")
+    try:
+        assert enrich.ensure_checked([d, "gmail.com", "gmial.com", "mailinator.com"], time.monotonic() + 2) == {d: "mx"}
+        assert enrich.ensure_checked([d], time.monotonic() + 2) == {} and calls == [d]       # fresh: no second lookup
+        with conn() as c:
+            assert c.execute("SELECT status FROM domain_dns WHERE domain = %s", (d,)).fetchone()[0] == "mx"
+            assert c.execute("SELECT count(*) FROM companies WHERE domain = %s", (d,)).fetchone()[0] == 0   # companies untouched
+            # a homepage row past the 30-day cache does not hide the DNS result (the stale-cache regression)
+            c.execute("INSERT INTO companies(domain, data, fetched_at) VALUES (%s, %s::jsonb, now() - interval '40 days')",
+                      (d, json.dumps({"source": "homepage", "company": "X"})))
+            c.commit()
+        assert precall.gather(f"ada@{d}")["domain_proof"] == "mx"
+        with conn() as c:   # an 'error' row is retried only after DNS_RETRY_MIN
+            c.execute("UPDATE domain_dns SET status = 'error', checked_at = now() WHERE domain = %s", (d,))
+            c.commit()
+        assert enrich.ensure_checked([d], time.monotonic() + 2) == {} and calls == [d]
+        monkeypatch.setattr(enrich, "DNS_RETRY_MIN", 0)
+        assert enrich.ensure_checked([d], time.monotonic() + 2) == {d: "mx"} and calls == [d, d]
+        assert enrich.ensure_checked([d], time.monotonic() - 1) == {}                         # past the deadline: nothing
+        monkeypatch.setattr(settings, "domain_check", False)
+        with conn() as c:
+            c.execute("DELETE FROM domain_dns WHERE domain = %s", (d,))
+            c.commit()
+        assert enrich.ensure_checked([d], time.monotonic() + 2) == {} and len(calls) == 2      # off: nothing checked or written
+    finally:
+        with conn() as c:
+            c.execute("DELETE FROM domain_dns WHERE domain = %s", (d,))
+            c.execute("DELETE FROM companies WHERE domain = %s", (d,))
+            c.commit()

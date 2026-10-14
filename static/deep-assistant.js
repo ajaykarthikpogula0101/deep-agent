@@ -24,7 +24,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.15.1';
+const VERSION = '2026.10.15.2';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -402,7 +402,7 @@ const RESCHED_RE = /\b(reschedule|re-schedule|move|change|shift|postpone|push)\b
 const CANCEL_RE = /\b(cancel|call off|drop|delete|remove)\b/i;
 
 class DeepAssistant extends HTMLElement {
-  static get observedAttributes() { return ['api', 'token', 'theme', 'mode', 'open', 'title', 'subtitle', 'suggestions', 'user-name', 'user-email', 'tabs', 'shortcut', 'privacy-url', 'greeting', 'page-context']; }
+  static get observedAttributes() { return ['api', 'token', 'theme', 'mode', 'open', 'title', 'subtitle', 'suggestions', 'user-name', 'user-email', 'tabs', 'shortcut', 'privacy-url', 'greeting', 'page-context', 'outreach-event']; }
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -429,6 +429,7 @@ class DeepAssistant extends HTMLElement {
   newChat() {
     if (this._busy) this._stop(); this.stopVoice();
     this._sid = uuid(); store.set(this._key('sid'), this._sid);
+    this.removeAttribute('outreach-event'); this._outreachSent = false;  // a fresh conversation carries no pop-up context
     this._transcript = []; this._history = []; this._attachments = []; this._nudged = false; this._renderAttachments();
     this._restore(); this._track(); this.showView('chat');
     if (this.api) this._loadMe().then(() => this._refreshWelcome());  // return-visitor memory for the new conversation
@@ -1573,8 +1574,10 @@ class DeepAssistant extends HTMLElement {
     try {
       const beacon = this._tracked() ? undefined : this._beaconData();  // the /track fields until the server has them
       const r = await fetch(this._url('/chat'), { method: 'POST', signal: this._controller.signal, headers: this._headers(),
-        body: JSON.stringify({ message: text || 'Please look at the attached file.', history: this._history, timezone: this.tz, attachments: files.map((a) => a.id), user_name: me.signed_in ? undefined : (me.name || undefined), user_email: me.signed_in ? undefined : (me.email || undefined), beacon }) });
+        body: JSON.stringify({ message: text || 'Please look at the attached file.', history: this._history, timezone: this.tz, attachments: files.map((a) => a.id), user_name: me.signed_in ? undefined : (me.name || undefined), user_email: me.signed_in ? undefined : (me.email || undefined), beacon,
+                               outreach_event: (!this._outreachSent && +this.getAttribute('outreach-event')) || undefined }) });
       if (!r.ok) { fail(this._errorText(r.status)); this._emit('error', { error: 'http_' + r.status }); return; }
+      this._outreachSent = true;  // the server stamped the pop-up into this session; later turns find it there
       if (beacon) store.set(this._key('tracked'), sid);  // the server stored it before the stream started
       if (!this._online) { this._online = true; }
       const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';

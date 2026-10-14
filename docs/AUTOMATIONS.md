@@ -169,37 +169,63 @@ questions they typed (greetings and booking commands such as "book a call" left 
 on, channel and referrer, location (from the IP), questions the assistant could not answer, messages left for Deep,
 earlier bookings and cancellations, the company read off their email domain (section 7), their booking note and guests.
 
-**The score** (`score`, 0–100, fixed rules so every point is explained; base 10, no caps per group). Every rule
-belongs to one of four groups, shown in the brief as `Profile:  Fit 4 · Intent 12 · Engagement 0 · Risk −13 (2 flags)`:
+**The score** (`score`, 0–100, fixed rules so every point is explained; base 10, no caps per group; rules version 3,
+updated 2026-10-15). Points come only from two kinds of evidence: **checked** (compared against something the visitor
+cannot simply type) and **seen** (something the system watched them do). What they only typed (company, role, budget,
+volumes, dates, guest addresses) is a **claim**: 0 points, listed under "What they say (not scored)". A suspicious claim
+costs at most 5. Every rule belongs to one of four groups, shown in the brief as
+`Profile:  Fit 4 · Intent 12 · Engagement 0 · Risk −8 (2 flags)`, and has an evidence class (`precall.CLASS`):
 
-| Group | Signal | Points |
-|---|---|---|
-| risk (checked first) | staff or test address (`SCORE_INTERNAL_DOMAINS`, `SCORE_INTERNAL_EMAILS`, `HOST_EMAIL` with any +tag); a staff booking with an outside business guest is flagged instead | −50 |
-| | test booking (note, name or company like "test booking", or 5+ bookings from the address) | −30 |
-| | competitor address, booker or guest (`SCORE_COMPETITOR_DOMAINS`) · throwaway inbox (mailinator, yopmail, ...) | −20 · −20 |
-| | domain one typo off a free-mail provider (gmial.com): scored as personal email, flagged | 0 |
-| fit | company email / university email (.edu, .ac.xx, or the homepage says university or college) / personal email | +15 / +3 / 0 |
-| | typed company matches the email domain or homepage · typed a company with a personal email (unverified) | +5 · +3 |
-| | network matches the typed company / the email domain / another company's network (docs/TRACKING.md, `NET_SCORE`) | +10 / +5 / +3 |
-| | guests: company emails +8, +2 each more; free-mail guests +4, +1 each more (max 15; the booker and staff not counted) · a personal-email booker brings a company-email guest | up to +15 · +5 |
-| | target country (`SCORE_TARGET_COUNTRIES`, off by default) · 1–4 earlier calls that already took place | +5 · +5 |
-| intent | call type (`SCORE_CALL_TYPES`: demo 10, GTM 8, discovery 0; unknown slugs by keyword, or 5 for 30+ minutes) | 0–10 |
-| | asked about pricing, a trial or sample data, contracts and terms, implementation and timelines | +20 for the first topic, +5 each more (max 30) |
-| | described the data they need (only when no buying topic) | +5 |
-| | booking note: 2+ specifics (data, numbers, region or industry, timeline, buying words) / 1 specific or 8+ words | +10 / +5 |
-| | call within 3 days / within a week · asked for a person · campaign / search · a key page (`SCORE_KEY_PAGES`) | +5 / +2 · +5 · +5 / +3 · +5 |
-| engagement | questions typed: 6+ / 3–5 / 1–2 · visits: 3+ / 2 · 5+ minutes on the site | +15 / +10 / +4 · +15 / +8 · +3 |
-| risk | personal email claiming a well-known brand nothing confirms (not when the network or a guest's domain does) | −10 |
-| | placeholder company (xyz, n/a, -) · no real name · name and personal email differ | −5 · −5 · −3 |
-| | call 3+ weeks out · cancelled before · missed a call before · moved this call | −3 · −10 · −10 · −3 |
-| | asked about jobs · reads like a vendor pitch | −25 · −15 |
-| | 0-point notes the learner can move: typed company differs from the email's, another upcoming call, typed instructions to the assistant, network kinds | 0 |
+| Group | Signal | Evidence | Points |
+|---|---|---|---|
+| risk (checked first) | staff or test address (`SCORE_INTERNAL_DOMAINS`, `SCORE_INTERNAL_EMAILS`, `HOST_EMAIL` with any +tag); a staff booking with an outside business guest is flagged instead | warning | −50 |
+| | test booking (note, name or company like "test booking", or 5+ bookings from the address) | warning | −30 |
+| | competitor address, booker or guest (`SCORE_COMPETITOR_DOMAINS`) · throwaway inbox (mailinator, yopmail, ...) | warning | −20 · −20 |
+| | domain one typo off a free-mail provider (gmial.com): scored as personal email, flagged | warning | 0 |
+| fit | company email whose domain was checked: website read, MX record, or the domain resolves (an HTTP error from the homepage counts) / university email / personal email | checked / checked / seen | +15 / +3 / 0 |
+| | company email whose domain does not exist or takes no mail (NXDOMAIN, no MX and no address, null MX), flagged · company email not checked yet | warning · their word | −15 · 0 |
+| | typed company matches a checked email domain (the same evidence as the email: shown, not counted twice) · any other typed company | checked · their word | 0 · 0 |
+| | network matches the typed company / the email domain / another company's network (docs/TRACKING.md, `NET_SCORE`) | checked / checked / seen | +10 / +5 / +3 |
+| | signed in with this very email (a verified token: `sessions.verified_email`, never a hint email) | checked | +5 |
+| | Deep rated an earlier call Good fit or Follow up (rated before this booking was made) | checked | +10 |
+| | guests added to the call: 1 / 2 / 3+ (the booker and staff not counted) · a guest's company address with a checked domain (personal or staff booker) | seen · their word | +4 / +6 / +8 · 0 |
+| | target country (`SCORE_TARGET_COUNTRIES`, off by default) · 1–4 earlier confirmed calls whose time had passed (pending Zoom never) | seen | +5 · +5 |
+| intent | call type (`SCORE_CALL_TYPES`: demo 10, GTM 8, discovery 0; unknown slugs by keyword, or 5 for 30+ minutes) | seen | 0–10 |
+| | asked about pricing, a trial or sample data, contracts and terms, implementation (a bare "budget" or "timeline" is not a topic) | seen | +20 for the first topic, +5 each more (max 30) |
+| | described the data they need (only when no buying topic; a stated volume like "10k" alone does not count) | seen | +5 |
+| | booking note: 2+ needs (data, region or industry, buying words) / 1 need or 8+ words | seen | +10 / +5 |
+| | what they say about themselves: role, budget, volume, timeline, team size, tools (chat memory) and the amounts, dates and budgets in their note | their word | 0 |
+| | call within 3 days / within a week · asked for a person · campaign / search · a key page (`SCORE_KEY_PAGES`) | seen | +5 / +2 · +5 · +5 / +3 · +5 |
+| engagement | questions typed: 6+ / 3–5 / 1–2 · visits: 3+ / 2 · 5+ minutes on the site | seen | +15 / +10 / +4 · +15 / +8 · +3 |
+| risk | personal email claiming a well-known brand nothing confirms (not when the network or a guest's checked domain does) | warning | −5 |
+| | placeholder company (xyz, n/a, -) · no real name · name and personal email differ | warning | −5 · −5 · −3 |
+| | call 3+ weeks out · cancelled before · missed a call before · Deep rated an earlier call Not a fit · moved this call | warning | −3 · −10 · −10 · −5 · −3 |
+| | asked about jobs · reads like a vendor pitch | warning | −25 · −15 |
+| | 0-point notes the learner can only make negative: typed company differs from the email's, another upcoming call, typed instructions to the assistant, a browser shared with other people | warning | 0 |
 
-Risk rules that need a look (brand claim, placeholder, name, internal, competitor, ...) also add a **flag**: flags lead
-the brief's WATCH OUT section, and the model may add one caution of its own. A company the visitor only typed is shown
-as "says they are from X", never as fact; a business email's company is "from their website" only when the homepage was
-actually read. Each brief keeps `at_booking`, the score as it was when they booked; refreshes never overwrite it.
-Hot is 60+ (`HOT_LEAD_SCORE`), warm 35+, else cold.
+**Shared browsers.** When a session on the same browser (visitor id) carries another person's email (booking, lead or
+sign-in, +tags ignored), only this person's own sessions count: the booking's and those tied to their email. Visits,
+questions, pages and the network of the other person never move this one's score.
+
+**Email domain check** (`DOMAIN_CHECK`, `DOMAIN_CHECK_FALLBACK_NS`; `enrich.ensure_checked`, table `domain_dns`): a DNS
+MX / A / AAAA lookup of a business email's domain, needed only when the homepage fetch did not already prove it
+(mail-only, down or slow sites). It runs on worker threads only: alongside the IP lookup wait before the "New booking"
+email (4 s budget, overlapping), on every brief rebuild (day before, console refresh), and for hot-lead candidates within
+±15 of the line. The system resolver goes first, then the fallback resolvers while time remains; they see the domain,
+never the address. MX or A proof lasts 30 days, a dead result 3 days, a failed check is retried after 10 minutes.
+Without `dnspython` every check reads "not checked" (0 points, a startup warning).
+
+**Verdict.** The brief's headline is the label (Hot / Warm / Cold lead), except **Not a lead (staff or test)** and **Not
+enough data yet**: a score under 35 with no checked points, no engagement and no hand-over request. Each brief carries
+`evidence` (`Evidence: 15 pts checked · 58 pts seen · 1 claim not scored · missing: IP network lookup`) and `verdict`;
+every "Why this score" line ends with its tag: `[checked: website / mail server / domain]`, `[seen]` or `[warning]`.
+"Checked", never "verified": a real company domain proves the company exists, not that this person works there.
+
+Risk rules that need a look (brand claim, placeholder, name, internal, competitor, dead domain, ...) also add a **flag**:
+flags lead the brief's WATCH OUT section, and the model may add one caution of its own. A company the visitor only typed
+is shown as "says they are from X", never as fact; a business email's company is "from their website" only when the
+homepage was actually read. Each brief keeps `at_booking`, the score as it was when they booked; refreshes never
+overwrite it. Hot is 60+ (`HOT_LEAD_SCORE`), warm 35+, else cold.
 
 **The written part** (`compose`): one model call (`PRECALL_MODEL`, default `CHAT_MODEL`; `PRECALL_MODEL_TIMEOUT` 25 s)
 turns the facts into a 2–3 sentence summary, interests, talking points, questions to ask and watch-outs. The prompt
@@ -298,7 +324,9 @@ rate among the calls that had it is smoothed toward p (as if 5 more calls at p) 
 `40 × (rate − p)` points, capped at ±20, and 0 for a rule seen in fewer than 3 calls. The corrections apply to every
 score once `SCORE_LEARN_MIN` (20) calls are rated (`SCORE_LEARNING`); before that Console → Bookings shows what they
 would be. Each reason in a brief keeps its original points (`base`) next to the learned ones, so the change is visible.
-A correction never flips a rule's sign (a bonus bottoms out at 0, a penalty tops out at 0). Learning reads each call's
+A correction never flips a rule's sign (a bonus bottoms out at 0, a penalty tops out at 0), a claim (their word) can
+only lose points, down to −5, and a 0-point warning can only become a penalty; the table shows the change the score
+really applies, with each rule's kind (checked, seen, their word, warning). Learning reads each call's
 score at booking (`brief.at_booking`) when it was made by the current rules (`precall.VERSION`), else scores it again;
 staff and test bookings (`internal`, `test_traffic`) are left out.
 The card also shows how far apart good calls and the rest score, before and after learning.
@@ -309,6 +337,52 @@ calls, and the knowledge-gap loop (drafts waiting, approved, emailed, came back,
 Endpoints: `POST /admin/bookings/{id}/outcome`, `POST /admin/bookings/{id}/followup/draft|send`,
 `GET /admin/score/learning`, `POST /admin/score/learn`, `POST /admin/outcomes/ask/run`, `GET|POST /outcome/{id}`,
 `POST /outcome/{id}/send`.
+
+## 15. The host's booking page (added 2026-10-15)
+
+"View booking details" in Deep's emails opens a private, phone-friendly page made for the host:
+`/host/booking/{id}?t=<signed token>` (`app/host_page.py`). It used to open the visitor's own manage page, which has a
+Cancel button.
+
+**Which emails link it**: the "New booking" email (the button and a `Booking page:` line), the "moved" and "cancelled"
+host emails, the day-before brief, Console → "email it to me", and "How did the call go?" (plus a small link on the
+outcome page). Visitor and guest emails never carry it. Console → Bookings → open a booking has **copy host link** and
+**open host page**; the page's **Open in console** lands on that booking (`/admin#booking={id}`, after the token).
+
+**What it shows**, in phone order: status (Confirmed, Awaiting Zoom confirmation, Cancelled, Moved), the lead score;
+Join Zoom / Email them / Open in console (for Zoom Scheduler bookings, which never give us a join link, it says the link
+is in the invite on Deep's calendar); both times and how soon; WATCH OUT; who they are and how far the company is
+trusted (from their website, from the email domain, or only typed); guests and their note; where they came from and
+the network; the brief (score tiles, the evidence line, why this score with each line's checked / seen / warning tag,
+what they say (not scored), what they asked, talking points, questions); the outcome buttons
+once the call has ended; the whole chat (first 200 messages); earlier visits ("same browser" or "same email
+(unverified)") and earlier bookings. A booking without a stored brief shows a live rules score, labelled as such.
+
+**Read-only on GET**: mail scanners open every link, so opening the page builds no brief, calls no model, updates no
+memory or origin and logs no event (only a server log line, without the token). The outcome buttons go to the existing
+`/outcome` page, where saving still needs a press. The route is a plain `def` (threadpool), rate-limited per IP.
+
+**The token is bound to the booking row**: an HMAC (`LINK_SECRET`, else derived from `ADMIN_TOKEN`) over the kind
+`host_booking`, the booking id and that row's `manage_token`. A rebuilt database that reuses an id does not open, the
+manage token itself is never shown or sent, and there is no expiry (Deep needs the page again after the call).
+
+**What it never shows**: IP addresses, user agents, lat/lon, the visitor's manage token or manage/.ics/cancel URLs,
+the visitor's prefilled Zoom hand-off link, Zoom Scheduler reschedule/cancel links, or upload URLs (attachments show as
+`[file: name]`). Free text (chat, notes, the typed company, the model-written brief) is escaped and never turned into a
+link. Headers: `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex`, `X-Frame-Options:
+DENY` and a CSP with no scripts at all.
+
+**Revocation**: every link at once by rotating `LINK_SECRET`; one link by rotating that row's `manage_token` (which
+also changes the visitor's manage link).
+
+**Before go-live**: `PUBLIC_BASE_URL` must be the public https address (with `http://localhost:8080` no email button
+opens on a phone; the startup log and a red note in Console → Emails say so), set an explicit `LINK_SECRET`, and point
+`HOST_EMAIL` at Deep's real inbox. Console → Emails → Send test "host_booking" links `/host/booking/sample`.
+
+The visitor's manage page now cancels in two steps: its Cancel opens "Cancel this booking?" (`GET
+/booking/{id}/cancel`), and only that page's button cancels, so an old host email or a mis-tap cannot cancel a call.
+
+Endpoints: `GET /host/booking/{id}?t=`, `GET /host/booking/sample`, `GET /booking/{id}/cancel?t=` (confirm page).
 
 ## Operations
 

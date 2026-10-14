@@ -175,23 +175,24 @@ def send_booking_emails(booking: dict[str, Any], mailer=None, with_brief: bool =
                        reply_to=settings.host_email, kind="booking_visitor", ref=booking.get("id"))
 
     def host(brief: dict | None) -> None:
-        from app import precall
+        from app import host_page, precall
 
         _refresh_origin(booking)
-        s, b = templates.render_booking_host(booking, tpl)
+        hb = host_page.attach(booking)  # after the refresh, so the host copy carries the fresh Where line
+        s, b = templates.render_booking_host(hb, tpl)
         if brief:
             s += f" · {precall.headline(brief)}" if brief.get("label") in ("hot", "warm") else ""
             b = b.rstrip("\n") + "\n\n" + precall.text(brief)
-        notice, cta_ok = "", True
+        notice = ""
         if with_brief:  # the brief took a while: say so if the visitor moved or cancelled meanwhile (their email went out first)
             now = _current(booking)
-            if now and now.get("status") == "cancelled":
-                notice, cta_ok = "Update: the visitor has already cancelled this call.", False
+            if now and now.get("status") == "cancelled":  # the button stays: the booking page shows the Cancelled state
+                notice = "Update: the visitor has already cancelled this call."
                 s, b = s + " (since cancelled)", notice + "\n\n" + b
             elif now and now.get("rescheduled_at"):
                 notice = "Update: the visitor has since moved this call; the time below is the original one."
                 s, b = s + " (since moved)", notice + "\n\n" + b
-        html = _booking_html(booking, "host", tpl, (s, b), brief=precall.text(brief) if brief else "", notice=notice, cta_ok=cta_ok)
+        html = _booking_html(hb, "host", tpl, (s, b), brief=precall.text(brief) if brief else "", notice=notice)
         mailer.enqueue(settings.host_email, s, b, html=html, attachments=att,
                        reply_to=booking.get("email"), kind="booking_host", ref=booking.get("id"))
 
@@ -223,10 +224,15 @@ def send_reschedule_emails(booking: dict[str, Any], mailer=None) -> None:
     if r and booking.get("email"):
         mailer.enqueue(booking["email"], r[0], r[1], html=templates.html_wrap(r[0], r[1], cta), attachments=att,
                        reply_to=settings.host_email, kind="reschedule_visitor", ref=booking.get("id"))
+    from app import host_page
+
+    hu = host_page.link(booking)
     body_h = (f"The visitor moved their call.\n\nName:   {v['name']}\nEmail:  {v['email']}\nCall:   {v['title']}\nWas:    {was}\nNow:    {v['date']}\n"
-              + ("Status: held, waiting for the visitor to confirm on Zoom\n" if pending else "Status: rescheduled on Zoom Scheduler\n"))
+              + ("Status: held, waiting for the visitor to confirm on Zoom\n" if pending else "Status: rescheduled on Zoom Scheduler\n")
+              + (f"Booking page: {hu}\n" if hu else ""))
+    actions = [a for a in (("Open booking page", hu), ("Join Zoom", booking.get("join_url") if not pending else "")) if a[1]]
     mailer.enqueue(settings.host_email, f"[{v['brand']}] Moved: {v['name']} · {v['title']} · {v['date']}", body_h,
-                   html=templates.html_wrap(subject, body_h, cta if not pending else None, audience="host"), attachments=att, reply_to=booking.get("email"),
+                   html=templates.html_wrap(subject, body_h, None, audience="host", actions=actions), attachments=att, reply_to=booking.get("email"),
                    kind="reschedule_host", ref=booking.get("id"))
     send_attendee_emails(dict(booking, old_label_visitor=was), "moved", mailer, att)
 
@@ -248,14 +254,19 @@ def send_cancel_emails(booking: dict[str, Any], mailer=None) -> None:
     mailer = mailer or m.default
     tpl = templates.get_templates()
     v = templates.build_vars(templates.booking_to_lead(booking), tpl)
+    from app import host_page
+
+    hu = host_page.link(booking)
     subject = f"Cancelled: {v['title']} on {v['date_visitor']}"
     body_h = (f"Cancelled by the visitor.\n\nName:   {v['name']}\nEmail:  {v['email']}\nCall:   {v['title']}\nWas:    {v['date']}\n"
-              + (f"Note:   {booking['zoom_note']}\n" if booking.get("zoom_note") else ""))
+              + (f"Note:   {booking['zoom_note']}\n" if booking.get("zoom_note") else "")
+              + (f"Booking page: {hu}\n" if hu else ""))
     r = templates.render_booking_visitor(dict(booking, status="cancelled", booking_status="cancelled"), tpl)  # editable "visitor_cancelled"
     if r and booking.get("email"):
         mailer.enqueue(booking["email"], r[0], r[1], html=templates.html_wrap(r[0], r[1], ("Book a new time", settings.site_base_url)),
                        reply_to=settings.host_email, kind="cancel_visitor", ref=booking.get("id"))
-    mailer.enqueue(settings.host_email, f"[{v['brand']}] {subject} · {v['name']}", body_h, html=templates.html_wrap(subject, body_h, None, audience="host"),
+    mailer.enqueue(settings.host_email, f"[{v['brand']}] {subject} · {v['name']}", body_h,
+                   html=templates.html_wrap(subject, body_h, None, audience="host", actions=[("Open booking page", hu)] if hu else None),
                    reply_to=booking.get("email"), kind="cancel_host", ref=booking.get("id"))
     send_attendee_emails(booking, "cancelled", mailer)
 
@@ -280,9 +291,12 @@ def send_reminder_email(booking: dict[str, Any], mailer=None) -> bool:
 
 def send_test(kind: str) -> dict:
     """Console → Emails → 'Send test': the sample lead rendered with the current templates, to the host inbox."""
-    if kind == "host_booking":
-        subject, body = templates.render_booking_host(templates.SAMPLE_BOOKING)
-        html = _booking_html(templates.SAMPLE_BOOKING, "host", templates.get_templates(), (subject, body))
+    if kind == "host_booking":  # the button opens /host/booking/sample on this deployment
+        from app import host_page
+
+        sample = dict(templates.SAMPLE_BOOKING, host_url=host_page.sample_link())
+        subject, body = templates.render_booking_host(sample)
+        html = _booking_html(sample, "host", templates.get_templates(), (subject, body))
         return {"ok": _send(settings.host_email, "[test] " + subject, body, html=html),
                 "to": settings.host_email, "subject": subject}
     if kind in ("visitor_confirmed", "visitor_rescheduled", "visitor_cancelled", "visitor_reminder"):

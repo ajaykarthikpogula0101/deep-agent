@@ -13,7 +13,10 @@ Flow
   book_slot     -> the lead carries session_id and a one-line origin summary for the host brief
   daily         -> purge(): IPs and user agents older than TRACK_RETENTION_DAYS are nulled, and so is the city unless
                    the network is an organisation's; country and network owner stay;
-                   backfill_orphans() repairs any session a write path missed
+                   backfill_orphans() repairs any session a write path missed; visitors.purge() drops idle
+                   visitors / unreviewed org_networks rows and scrubs old outreach_events
+  page views    -> app/visitors.py reads this ip_net cache only (cached_geo) and warms it off the request
+                   (geolocate(purpose='visitor'), capped by OUTREACH_GEO_DAILY_CAP); it never stores the IP
 
 The visitor id is a random UUID the widget keeps in the site's own localStorage (first party, no cookie), so
 returning visitors are recognised across sessions. Nothing here fingerprints the browser.
@@ -188,10 +191,12 @@ _state_lock = threading.Lock()
 _cooldown: dict[str, float] = {}           # provider -> time.time() until which it is skipped
 _errors: dict[str, int] = {}               # provider -> consecutive errors
 _quota: dict[tuple[str, str], int] = {}    # (provider, UTC date) -> outbound lookups today
+_vquota: dict[str, int] = {}               # UTC date -> page-view (purpose='visitor') lookups today, OUTREACH_GEO_DAILY_CAP
 _mmdb: dict[str, Any] = {}                 # opened GeoLite2 readers, or {"missing": reason}
 _rdns_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rdns")
 _ASN_RE = re.compile(r"^AS(\d+)\s*(.*)$", re.I)
-_GEO_STR = ("country", "country_code", "region", "city", "isp", "geo_tz", "as_org", "org", "net_domain", "type", "rdns_domain")
+_GEO_STR = ("country", "country_code", "region", "city", "isp", "geo_tz", "as_org", "org", "net_domain", "type", "rdns_domain",
+            "org_domain")
 
 
 def _asn(text: Any) -> tuple[int | None, str | None]:
@@ -224,8 +229,8 @@ def _rdns_fields(host: str | None) -> dict[str, Any]:
 def normalise_geo(provider: str, data: Mapping[str, Any]) -> dict[str, Any]:
     """Map a provider payload onto our columns. Unknown or failed lookups come back with status='failed'.
     Network keys: asn, as_org (AS owner), org (netblock holder when the provider has one; org_scope says which),
-    net_domain, type (provider-given kind), flags {mobile, proxy, hosting}, rdns_domain/rdns_dynamic. Never an IP
-    or a hostname."""
+    net_domain, type (provider-given kind), flags {mobile, proxy, hosting}, rdns_domain/rdns_dynamic, and for ipapiis
+    org_domain (company.domain, the netblock holder's own domain). Never an IP or a hostname."""
     g: dict[str, Any] = {"country": None, "country_code": None, "region": None, "city": None,
                          "lat": None, "lon": None, "isp": None, "geo_tz": None, "status": "failed",
                          "asn": None, "as_org": None, "org": None, "org_scope": None, "net_domain": None, "type": None,
@@ -268,7 +273,7 @@ def normalise_geo(provider: str, data: Mapping[str, Any]) -> dict[str, Any]:
                      geo_tz=loc.get("timezone"), isp=a.get("org") or co.get("name"), status="ok",
                      asn=_asn(a.get("asn"))[0], as_org=a.get("org"), net_domain=a.get("domain"),
                      org=co.get("name"), org_scope="netblock" if co.get("name") else None,
-                     type=co.get("type") or a.get("type"),
+                     type=co.get("type") or a.get("type"), org_domain=co.get("domain") or None,
                      flags={"mobile": _flag(data.get("is_mobile")),
                             "proxy": _any_flag(data.get("is_vpn"), data.get("is_proxy"), data.get("is_tor")),
                             "hosting": _flag(data.get("is_datacenter"))})
@@ -278,7 +283,7 @@ def normalise_geo(provider: str, data: Mapping[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError, AttributeError):
         pass
     for k in _GEO_STR:
-        if g[k] is not None:
+        if g.get(k) is not None:  # org_domain: ipapiis only (the company's own domain, never the carrier's)
             g[k] = str(g[k])[:120]
     if g["type"]:
         g["type"] = g["type"].lower()
@@ -442,8 +447,41 @@ def _dev_tag(geo: Mapping[str, Any], dev: bool) -> dict[str, Any]:
     return g
 
 
-def geolocate(ip: str) -> dict[str, Any]:
-    """Cached per /24 (/48): private/loopback addresses are never sent anywhere, and the cache holds no IP."""
+_FRESH_SQL = """SELECT data, (status = 'ok' AND fetched_at > now() - make_interval(days => %s))
+                        OR (status = 'failed' AND retry_after > now())
+               FROM ip_net WHERE net = %s"""
+
+
+def cached_geo(ip: str, c: Any) -> dict[str, Any] | None:
+    """The cached lookup for this address's /24 (/48) on the given connection, or None on a miss or a stale row.
+    Never fetches (the page-view path, app/visitors.py). A private address is {'status': 'private'} unless GEOIP_DEV_IP
+    stands in for it."""
+    dev = False
+    if not is_public(ip):
+        alt = _dev_ip(ip)
+        if not alt:
+            return {"status": "private"} if _valid_ip(ip) else None
+        ip, dev = alt, True
+    row = c.execute(_FRESH_SQL, (GEO_CACHE_DAYS, mask_ip(ip))).fetchone()
+    return _dev_tag(row[0], dev) if row and row[1] else None
+
+
+def _take_visitor_slot() -> bool:
+    """One of OUTREACH_GEO_DAILY_CAP page-view lookups today (in-process, per UTC day); False when the cap is reached."""
+    with _state_lock:
+        today = datetime.now(timezone.utc).date().isoformat()
+        for k in [k for k in _vquota if k != today]:
+            del _vquota[k]
+        if _vquota.get(today, 0) >= settings.outreach_geo_daily_cap:
+            return False
+        _vquota[today] = _vquota.get(today, 0) + 1
+        return True
+
+
+def geolocate(ip: str, purpose: str = "session") -> dict[str, Any]:
+    """Cached per /24 (/48): private/loopback addresses are never sent anywhere, and the cache holds no IP.
+    purpose='visitor' (a page view, app/visitors.py) also needs one of OUTREACH_GEO_DAILY_CAP slots on a miss; over the
+    cap it fails with reason 'quota' WITHOUT caching, so a later chat or booking lookup of the same /24 still runs."""
     dev = False
     if not is_public(ip):
         alt = _dev_ip(ip)
@@ -452,12 +490,11 @@ def geolocate(ip: str) -> dict[str, Any]:
         ip, dev = alt, True
     net = mask_ip(ip)
     with conn() as c:
-        row = c.execute(
-            """SELECT data, (status = 'ok' AND fetched_at > now() - make_interval(days => %s))
-                            OR (status = 'failed' AND retry_after > now())
-               FROM ip_net WHERE net = %s""", (GEO_CACHE_DAYS, net)).fetchone()
+        row = c.execute(_FRESH_SQL, (GEO_CACHE_DAYS, net)).fetchone()
     if row and row[1]:
         return _dev_tag(row[0], dev)
+    if purpose == "visitor" and not _take_visitor_slot():
+        return _failed("visitor", "quota")
     geo = _fetch_geo(ip)
     if geo.get("status") in ("ok", "failed"):  # 'disabled' (GEOIP_PROVIDER=none) is not cached
         with conn() as c:
@@ -680,18 +717,23 @@ def attach_visitor(session_id: str | None, visitor_id: str | None) -> None:
 
 
 def attach_user(session_id: str | None, user: Mapping[str, Any] | None) -> None:
-    """Signed-in visitor (verified token): remember who the session belongs to. Never raises."""
+    """Signed-in visitor (verified token): remember who the session belongs to. Never raises.
+    verified_email is only written from a token that carried a verified email (user['verified']), never from a hint
+    email, and a later unverified sign-in never clears or replaces it: the lead score's signed_in_email proof."""
     if not valid_sid(session_id) or not user or not user.get("sub"):
         return
+    email = (user.get("email") or "")[:200] or None
+    verified = email if user.get("verified") and email else None
     try:
         with conn() as c:
             c.execute(
-                """INSERT INTO sessions(session_id, user_id, user_name, user_email, channel, geo_status)
-                   VALUES (%s, %s, %s, %s, 'direct', 'unknown')
+                """INSERT INTO sessions(session_id, user_id, user_name, user_email, verified_email, channel, geo_status)
+                   VALUES (%s, %s, %s, %s, %s, 'direct', 'unknown')
                    ON CONFLICT (session_id) DO UPDATE SET user_id = EXCLUDED.user_id,
                        user_name = COALESCE(EXCLUDED.user_name, sessions.user_name),
-                       user_email = COALESCE(EXCLUDED.user_email, sessions.user_email)""",
-                (session_id, str(user["sub"])[:200], (user.get("name") or "")[:120] or None, (user.get("email") or "")[:200] or None),
+                       user_email = COALESCE(EXCLUDED.user_email, sessions.user_email),
+                       verified_email = COALESCE(EXCLUDED.verified_email, sessions.verified_email)""",
+                (session_id, str(user["sub"])[:200], (user.get("name") or "")[:120] or None, email, verified),
             )
             c.commit()
     except Exception as e:
@@ -881,8 +923,13 @@ def purge(session_ids: list[str] | None = None) -> dict[str, int]:
             d = c.execute("DELETE FROM ip_geo").rowcount  # legacy per-IP cache, no longer written
         c.commit()
     log.info("tracking purge: %s sessions scrubbed, %s places dropped, %s geo cache rows dropped", a, e, b + d)
-    return {"sessions_scrubbed": int(a), "places_scrubbed": int(e), "geo_cache_dropped": int(b + d),
-            "orphans_backfilled": backfill_orphans() if session_ids is None else 0}
+    out = {"sessions_scrubbed": int(a), "places_scrubbed": int(e), "geo_cache_dropped": int(b + d),
+           "orphans_backfilled": backfill_orphans() if session_ids is None else 0}
+    if session_ids is None:
+        from app import visitors  # lazy: visitors imports tracking
+
+        out.update(visitors.purge())
+    return out
 
 
 def backfill_orphans() -> int:

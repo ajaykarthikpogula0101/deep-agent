@@ -7,6 +7,11 @@ the lead (leads.company / leads.enrichment), in the host brief as {company}, in 
 
 lookup() never raises and never holds a booking for more than LOOKUP_BUDGET seconds: when the homepage is slow
 the fetch finishes on its own thread and the cache fills for next time.
+
+domain_proof() says what proves a business email's domain is real (the lead score's "checked" evidence): a homepage
+read ('web'), a server that answered the homepage fetch with an HTTP status ('a'), or a DNS MX / A record kept in the
+domain_dns table ('mx', 'a'); 'dead' for NXDOMAIN or no MX and no address, else 'unknown'. ensure_checked() runs the
+DNS check (dnspython) on worker threads only (app/precall.py), never on a request the visitor waits on.
 """
 from __future__ import annotations
 
@@ -16,7 +21,7 @@ import logging
 import re
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -271,3 +276,144 @@ def lookup(email: str | None, budget: float = LOOKUP_BUDGET) -> dict[str, Any]:
         return dict(result)
     log.info("enrichment for %s still running after %.1fs; cached for next time", domain, budget)
     return {"domain": domain, "kind": "business", "company": from_domain(domain), "source": "pending"}
+
+
+def lookup_domain(domain: str | None) -> dict[str, Any]:
+    """The domain half of lookup(), for background threads only (app/visitors.py: an organisation's homepage for its
+    industry): {} when enrichment is off, the domain is empty or free mail; else the cache, or a direct fetch on the
+    calling thread that then fills the cache. Never raises."""
+    domain = (domain or "").strip().lower()
+    if not domain or not settings.enrich_enabled or is_free_mail(domain):
+        return {}
+    hit = _cache_get(domain)
+    if hit:
+        return hit
+    try:
+        data = fetch_homepage(domain)
+    except Exception as e:  # fetch_homepage already catches httpx errors
+        data = {"company": from_domain(domain), "source": "error", "error": str(e)[:120]}
+    data.update({"domain": domain, "kind": "business"})
+    _cache_put(domain, data)
+    return data
+
+
+# ---------------------------------------------------------------- DNS proof of a business email's domain
+# Its own table (domain_dns), so the 30-day homepage cache filter never hides a result. Only the domain is ever queried
+# or stored, never the address or a person. Worker threads only: never on a request the visitor waits on.
+DNS_QUERY_TIMEOUT = 1.5   # seconds per query, and never past the caller's deadline
+DNS_RETRY_MIN = 10        # an 'error' row is retried after this many minutes
+DNS_OK_DAYS = 30          # mx / a stay proof this long
+DNS_DEAD_DAYS = 3         # nxdomain / none count as dead this long, then are checked again
+_MIN_LEFT = 0.3           # a resolver set is only tried with at least this much time left
+_HTTP_STATUS = re.compile(r"^\d{3}\b")
+
+
+class NoSuchDomain(Exception):
+    """The domain does not exist (NXDOMAIN)."""
+
+
+def _dns_resolve(domain: str, qtype: str, nameservers: list[str] | None, lifetime: float) -> list[str]:
+    """One query: the MX exchange hosts (trailing '.' stripped, so a null MX reads '') or the addresses; [] for no answer."""
+    import dns.resolver
+
+    r = dns.resolver.Resolver(configure=nameservers is None)
+    if nameservers:
+        r.nameservers = nameservers
+    r.timeout = r.lifetime = lifetime
+    try:
+        ans = r.resolve(domain, qtype, raise_on_no_answer=False, search=False)
+    except dns.resolver.NXDOMAIN as e:
+        raise NoSuchDomain(domain) from e
+    if qtype == "MX":
+        return [x.exchange.to_text().rstrip(".") for x in ans]
+    return [x.to_text() for x in ans]
+
+
+def dns_status(domain: str, deadline: float | None = None, resolve: Callable[..., list[str]] | None = None) -> str:
+    """'mx' | 'a' | 'none' | 'nxdomain' | 'error' for a domain. `deadline` is a time.monotonic() value; every query's
+    lifetime is capped by it. The system resolver first, then DOMAIN_CHECK_FALLBACK_NS while time remains. Never raises."""
+    if resolve is None:
+        if not settings.domain_check:
+            return "error"
+        resolve = _dns_resolve
+    deadline = time.monotonic() + 4.0 if deadline is None else deadline
+    fallback = [x.strip() for x in (settings.domain_check_fallback_ns or "").split(",") if x.strip()]
+    for ns in [None] + ([fallback] if fallback else []):
+        if deadline - time.monotonic() < _MIN_LEFT:
+            break
+
+        def ask(qtype: str) -> list[str]:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise TimeoutError("domain check deadline passed")
+            return resolve(domain, qtype, ns, min(DNS_QUERY_TIMEOUT, left))
+
+        try:
+            mx = ask("MX")
+            if mx:
+                return "none" if all(h in ("", ".") for h in mx) else "mx"
+            return "a" if ask("A") or ask("AAAA") else "none"
+        except NoSuchDomain:
+            return "nxdomain"
+        except Exception as e:  # DNSException, ValueError for over-long labels, ImportError without dnspython
+            log.debug("dns check of %s via %s failed: %s", domain, ns or "system resolver", e)
+    return "error"
+
+
+def _recent(at: Any, days: float) -> bool:
+    from datetime import datetime, timedelta, timezone
+
+    return isinstance(at, datetime) and datetime.now(timezone.utc) - at < timedelta(days=days)
+
+
+def domain_proof(source: str | None, error: str | None, status: str | None, checked_at: Any) -> str:
+    """'web' | 'mx' | 'a' | 'dead' | 'unknown': what proves the domain is real. A homepage read is 'web'; a homepage
+    fetch that got an HTTP status back means a server answered ('a'); else the DNS result while it is fresh."""
+    if source in ("homepage", "test"):
+        return "web"
+    if source == "unreachable" and _HTTP_STATUS.match(error or ""):
+        return "a"
+    if status in ("mx", "a") and _recent(checked_at, DNS_OK_DAYS):
+        return status
+    if status in ("nxdomain", "none") and _recent(checked_at, DNS_DEAD_DAYS):
+        return "dead"
+    return "unknown"
+
+
+PROOF_SQL = """SELECT x.d, n.status, n.checked_at, c.data->>'source', c.data->>'error',
+                      extract(epoch FROM now() - n.checked_at) / 60
+               FROM unnest(%s::text[]) AS x(d)
+               LEFT JOIN domain_dns n ON n.domain = x.d
+               LEFT JOIN companies c ON c.domain = x.d AND c.fetched_at > now() - interval '30 days'"""
+
+
+def ensure_checked(domains: list[str], deadline: float) -> dict[str, str]:
+    """Check the domains that nothing proves yet (no homepage, no fresh DNS result), in turn until `deadline`
+    (time.monotonic()), and store each result. Free, disposable and typo domains are skipped. {domain: status} for the
+    domains checked now. Never raises; does nothing with DOMAIN_CHECK off."""
+    out: dict[str, str] = {}
+    ds = list(dict.fromkeys(d for d in (x.strip().lower() for x in domains or []) if d))
+    ds = [d for d in ds if not is_free_mail(d) and not is_disposable(d) and not typo_of_free_mail(d)]
+    if not ds or not settings.domain_check:
+        return out
+    try:
+        from app.db import conn
+
+        with conn() as c:
+            rows = c.execute(PROOF_SQL, (ds,)).fetchall()
+        for d, status, at, source, error, age_min in rows:
+            if domain_proof(source, error, status, at) != "unknown":
+                continue
+            if status == "error" and age_min is not None and float(age_min) < DNS_RETRY_MIN:
+                continue
+            if time.monotonic() >= deadline:
+                break
+            st = dns_status(d, deadline)
+            out[d] = st
+            with conn() as c:
+                c.execute("""INSERT INTO domain_dns(domain, status, checked_at) VALUES (%s, %s, now())
+                             ON CONFLICT (domain) DO UPDATE SET status = EXCLUDED.status, checked_at = now()""", (d, st))
+                c.commit()
+    except Exception as e:
+        log.warning("domain check failed for %s: %s", ", ".join(ds), e)
+    return out

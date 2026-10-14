@@ -127,7 +127,9 @@ class Settings(BaseSettings):
                                                   "clearbit.com,6sense.com,leadiq.com,datanyze.com,kaspr.io", alias="SCORE_COMPETITOR_DOMAINS")
     score_target_countries: str = Field(default="", alias="SCORE_TARGET_COUNTRIES")  # ISO2 from sessions.country_code, e.g. US,GB; empty = rule off
     score_brands: str = Field(default="", alias="SCORE_BRANDS")  # extra brand names for the brand-claim check
-    score_key_pages: str = Field(default="/pricing,/plans,/contact,/request-demo,/demo", alias="SCORE_KEY_PAGES")  # path prefixes
+    score_key_pages: str = Field(default="/pricing,/plans,/contact,/request-demo,/company/lake-b2b", alias="SCORE_KEY_PAGES")  # path prefixes on deependhq.com, not the assistant host
+    domain_check: bool = Field(default=True, alias="DOMAIN_CHECK")  # DNS MX/A check of business email domains, worker threads only; tests turn it off
+    domain_check_fallback_ns: str = Field(default="1.1.1.1,8.8.8.8", alias="DOMAIN_CHECK_FALLBACK_NS")  # tried once after the system resolver fails, while time remains; empty = system resolver only; they see the domain only, never the address
     link_secret: str = Field(default="", alias="LINK_SECRET")  # signs one-tap email links; empty = derived from ADMIN_TOKEN
     enrich_enabled: bool = Field(default=True, alias="ENRICH_ENABLED")
     suggestions_days: int = Field(default=30, alias="SUGGESTIONS_DAYS")
@@ -146,6 +148,18 @@ class Settings(BaseSettings):
     memory_stale_days: int = Field(default=90, alias="MEMORY_STALE_DAYS")             # need/buying facts older than this: "may be out of date"
     memory_retention_days: int = Field(default=365, alias="MEMORY_RETENTION_DAYS")    # session_memory rows older than this are purged (tombstones kept)
     outreach_enabled: bool = Field(default=True, alias="OUTREACH_ENABLED")  # proactive outreach rules (docs/OUTREACH.md)
+    # returning visitors who never chatted and their network (docs/OUTREACH.md "Returning visitors and their network")
+    outreach_visitors: bool = Field(default=True, alias="OUTREACH_VISITORS")  # a visitors row per device for page views without a chat; needs TRACKING_ENABLED
+    outreach_visit_gap_min: int = Field(default=30, alias="OUTREACH_VISIT_GAP_MIN")  # minutes without a check before the next one counts as a new visit
+    outreach_ip_context: bool = Field(default=True, alias="OUTREACH_IP_CONTEXT")  # hard switch; the console also has a soft switch (settings key outreach:ip_context)
+    outreach_company_kinds: str = Field(default="corporate", alias="OUTREACH_COMPANY_KINDS")  # kinds named without approval; education/government/unknown become console candidates
+    outreach_country: bool = Field(default=True, alias="OUTREACH_COUNTRY")  # {country} in pop-ups
+    outreach_no_personalise_countries: str = Field(
+        default="AT,BE,BG,HR,CY,CZ,DK,EE,FI,FR,DE,GR,HU,IE,IT,LV,LT,LU,MT,NL,PL,PT,RO,SK,SI,ES,SE,IS,LI,NO,GB,CH",
+        alias="OUTREACH_NO_PERSONALISE_COUNTRIES")  # no IP context there; while non-empty, a browser tz under Europe/ skips the visitors row and the lookup entirely. Clear it only with a consent banner.
+    outreach_honor_gpc: bool = Field(default=True, alias="OUTREACH_HONOR_GPC")  # Global Privacy Control / DNT: no visitors row, no lookup, no IP context
+    outreach_geo_daily_cap: int = Field(default=150, alias="OUTREACH_GEO_DAILY_CAP")  # page-view lookups per UTC day (in-process); they also count against GEOIP_DAILY_CAP
+    outreach_dismiss_quiet_days: int = Field(default=14, alias="OUTREACH_DISMISS_QUIET_DAYS")  # after closing any 'never chatted' pop-up
     # Answer cards (docs/UI_CARDS.md): one optional openui-lang block per answer, rendered by static/deep-ui.js
     ui_cards_enabled: bool = Field(default=True, alias="UI_CARDS_ENABLED")
     ui_cards_max_chars: int = Field(default=4000, alias="UI_CARDS_MAX_CHARS")      # per-turn cap on the block

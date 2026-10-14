@@ -13,7 +13,8 @@ and what brought them here", and it puts a one-line origin into the host brief f
 | Booking confirm, hand-over, reschedule, cancel | creates the row if missing: visitor id, IP (then geo), user agent | same row |
 | A lead is saved | `leads.session_id`, `sessions.leads += 1` (creating the row if needed), origin line in the host brief email | `leads` row, email |
 | Every 10 minutes | lookups still `pending` or `failed` from the last 2 days are retried (`retry_pending`) | same row |
-| Daily 03:10 host time (and at startup) | IP and user agent nulled on rows older than `TRACK_RETENTION_DAYS`, and city/region/coordinates too unless the network is a company, university, government or cloud one (keep-list below); `ip_net` rows older than 30 days and the legacy `ip_geo` table dropped; orphan sessions backfilled | purge |
+| Page views without a chat (`/outreach/check`, docs/OUTREACH.md) | device id, first page path, referrer host, channel, utm_source, up to 30 distinct site paths, a server visit count, chatted/booked, and the kind, country and organisation key of the current network. **Never the IP, city or ASN** | `visitors` row (one per device id), `org_networks` |
+| Daily 03:10 host time (and at startup) | IP and user agent nulled on rows older than `TRACK_RETENTION_DAYS`, and city/region/coordinates too unless the network is a company, university, government or cloud one (keep-list below); `ip_net` rows older than 30 days and the legacy `ip_geo` table dropped; orphan sessions backfilled; `visitors` rows idle longer than `TRACK_RETENTION_DAYS` and unreviewed `org_networks` rows deleted; older `outreach_events` lose their visitor id and context | purge |
 
 **One write path.** Every writer goes through `tracking.ensure_session()`, one upsert where the first value wins
 for the visitor id, page, referrer, UTM and timezone. An IP only fills a row that never had one, so a row purged
@@ -65,6 +66,10 @@ random: it identifies the browser profile, nothing else, and it carries no finge
 | `TRACK_RETENTION_DAYS` | `90` | after this the IP and user agent are nulled; the geo/channel aggregate stays |
 | `TRUST_PROXY` | `true` | honour `CF-Connecting-IP`, `X-Real-IP`, `X-Forwarded-For`, and only from a peer in `TRUSTED_PROXIES`; `X-Forwarded-For` is walked right to left past trusted hops. Set `false` only when the app faces the internet directly |
 | `ADMIN_TOKEN` | | required for `/admin/*`; empty disables them |
+| `OUTREACH_VISITORS` | `true` | a `visitors` row per browser for page views without a chat (needs `TRACKING_ENABLED`) |
+| `OUTREACH_GEO_DAILY_CAP` | `150` | network lookups for page views per UTC day (in-process). They also count against `GEOIP_DAILY_CAP`, which keeps the rest for chat and booking lookups; a page view over this cap is not cached as a failure, so a later chat lookup of the same /24 still runs |
+| `OUTREACH_HONOR_GPC` | `true` | with Global Privacy Control or Do Not Track: no `visitors` row, no lookup, no IP context |
+| `OUTREACH_NO_PERSONALISE_COUNTRIES` | EEA + GB + CH | no IP context for these countries; while the list is non-empty a browser timezone under `Europe/` skips the `visitors` row and the lookup entirely, before any processing. Clear it only with a consent banner |
 
 Results are cached per /24 (IPv4) or /48 (IPv6) in `ip_net` for 30 days (failures for `GEOIP_FAIL_RETRY_MIN`), so the
 provider sees each network once. The cache key is the masked network and the cached data never holds an IP or a
@@ -105,12 +110,39 @@ they typed; only on corporate, unknown, education or government networks, so "Re
 `email` (it belongs to their business email domain), `mismatch`, `other_company`, or just the kind.
 
 **Lead score** (`NET_SCORE`): +10 when the network matches the typed company and the email is not a business one,
-+5 when it matches their business email domain (corroboration; the email already earned +15), +3 for an unrelated
++5 when it matches their business email domain (corroboration; a checked email domain already earned +15), +3 for an unrelated
 company network with no typed company and a personal email. Mismatch, home/mobile, VPN/relay/cloud/cowork and
 university/government networks are noted at 0 points: big-company staff often browse through security proxies or
 Private Relay, so the network never costs points. The brief facts also carry a "Company check" line when a typed
 company is backed by neither the email nor the network, and a note when the browser timezone and the IP location are
-2+ hours apart. Network org and kind are host-only: they never reach the visitor-facing prompt.
+2+ hours apart. Network org and kind are host-only: they never reach the visitor-facing prompt, with one scoped
+exception (below).
+
+## Returning visitors without a chat (app/visitors.py)
+
+`/outreach/check` (the greeting loader, docs/OUTREACH.md) keeps one `visitors` row per device id (`dh_vid`): first
+page path, referrer host, channel, utm_source, up to 30 distinct site paths (no query string), a visit count kept on
+the server (a new visit after `OUTREACH_VISIT_GAP_MIN` minutes without a check), whether the device chatted or booked,
+and the kind, country code and organisation key of the last network seen. **No IP, city or ASN is stored for
+visitors**, and an IP never links rows: it only looks up the network through the `ip_net` /24 cache (read-only on the
+request; a miss is looked up in the background, capped by `OUTREACH_GEO_DAILY_CAP`). `org_networks` holds one row per
+organisation network seen (display name, its own domain, kind, the owner's status, industry and pop-up line). Pages of
+the assistant's own host (`/demo`, `/site`) are not recorded unless the database is local.
+
+Nothing is recorded for bots, for browsers sending Global Privacy Control or DNT (`OUTREACH_HONOR_GPC`), and, while
+`OUTREACH_NO_PERSONALISE_COUNTRIES` is non-empty (default: the EEA plus GB and CH), for browsers whose timezone is under
+`Europe/`. A cached lookup in one of those countries also gives no context.
+
+Retention: `visitors` rows idle for `TRACK_RETENTION_DAYS` and unreviewed `org_networks` rows not seen for as long are
+deleted; `outreach_events` older than that lose their visitor id and context. `DELETE /admin/visitors/{visitor_id}`
+and the console's "forget this visitor" (memory, `?visitor=1`) delete the device's row and scrub its events.
+
+**The scoped exception to "network is host-only".** A returning visitor who never chatted may see a pop-up that names
+the organisation of their current network ("Exploring B2B data for Acme?") or its country. Only if they tap it does
+the chat get that name, an industry guess and the pop-up text, in a user-role DATA message labelled as an automatic
+guess (`app/outreach.data_block`). The city, ASN, network kind and IP never reach the visitor or the model, and nothing
+remembered from another network is ever shown (`app/memory.py` docstring). The pre-call brief notes when a typed
+company merely echoes such a pop-up (`network_company_prompted`, 0 points).
 
 **Purge keep-list:** after `TRACK_RETENTION_DAYS`, city, region and coordinates survive only for `corporate`,
 `education`, `government` and `hosting` networks; `consumer` and `unknown` (mostly residential) lose them. Country and
@@ -132,6 +164,12 @@ and makes "no trackers" false. Before go-live:
    geo while storing no full IP. Keep retention short. Under GDPR an IP address is personal data; a masked one is much
    easier to justify on legitimate interest.
 4. `/admin` must sit behind HTTPS and a strong `ADMIN_TOKEN`; it exposes IPs.
+5. Page views without a chat (above) need their own line in the privacy notice before go-live. Suggested wording:
+   "When you browse deependhq.com, the site assistant notes which of its pages you open on this browser and looks up
+   the organisation and country your internet connection belongs to (via <named providers>; the IP address itself is
+   not kept for this) so it can offer relevant help on a later visit. If you open the chat from such a suggestion, our
+   AI provider sees that guess. Global Privacy Control is honoured." Clearing `OUTREACH_NO_PERSONALISE_COUNTRIES`
+   without a consent banner is a legal decision, not a technical one.
 
 ## Verifying it locally
 

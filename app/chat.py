@@ -86,7 +86,7 @@ def visitor_typed(email: str, messages: list[dict], known_email: str | None = No
     for m in messages:
         if m.get("role") != "user" or not isinstance(m.get("content"), str):
             continue
-        if m["content"].startswith(("Retrieved page content", "Visitor memory (DATA")):
+        if m["content"].startswith(("Retrieved page content", "Visitor memory (DATA", "Visit context (DATA")):
             continue
         if needle in m["content"].lower():
             return True
@@ -134,13 +134,15 @@ def respond(
     attachments: list[dict] | None = None,
     memory: str = "",
     memory_data: str = "",
+    outreach_context: str = "",
 ) -> Iterator[str]:
     """Synchronous generator of SSE strings (run in a threadpool by FastAPI).
 
     Wraps _respond with the conversation inbox: the visitor turn and the assistant turn are stored with the
     outcome, sources and latency, and a final {"type":"meta","message_id":...} lets the page attach feedback.
     `visitor` is the signed-in identity from app/identity.describe() when the widget runs inside an app.
-    `memory` is the system section of app/memory.prompt_block(); `memory_data` the user-role DATA message of data_block()."""
+    `memory` is the system section of app/memory.prompt_block(); `memory_data` the user-role DATA message of data_block();
+    `outreach_context` the DATA message of app/outreach.data_block() (the pop-up they tapped and its network guess)."""
     message = (message or "").strip()[: settings.max_message_chars]
     if attachments and not message:
         message = "Please look at the attached file" + ("s." if len(attachments) > 1 else ".")
@@ -150,7 +152,8 @@ def respond(
     text, outcome, reason, sources, finished = "", "answered", None, [], False
     card = None
     try:
-        for chunk in _respond(message, history, visitor_tz, session_id, service, client, visitor, extra_context, memory, memory_data):
+        for chunk in _respond(message, history, visitor_tz, session_id, service, client, visitor, extra_context, memory, memory_data,
+                              outreach_context):
             try:
                 ev = json.loads(chunk[6:])
             except ValueError:
@@ -210,6 +213,7 @@ def _respond(
     extra_context: str = "",
     memory: str = "",
     memory_data: str = "",
+    outreach_context: str = "",
 ) -> Iterator[str]:
     visitor = visitor or {}
     if not message:
@@ -303,6 +307,10 @@ def _respond(
         from app.memory import MEMORY_RULES
 
         system += "\n" + MEMORY_RULES
+    if outreach_context:  # the pop-up they tapped named their network's organisation or country: a labelled guess
+        from app.outreach import OUTREACH_RULES
+
+        system += "\n" + OUTREACH_RULES
     if visitor.get("signed_in") and (visitor.get("name") or visitor.get("email")):
         system += prompts.signed_in_note(visitor.get("name"), visitor.get("email"), bool(visitor.get("verified")))
     choices = None
@@ -316,6 +324,7 @@ def _respond(
         system += ui_cards.prompt_section()   # appended LAST: rules 1-11, owner guidance, language, memory, signed-in notes all precede it and win
     messages = [{"role": "system", "content": system},
                 *([{"role": "user", "content": memory_data}] if memory_data else []),
+                *([{"role": "user", "content": outreach_context}] if outreach_context else []),
                 context_msg, *_history(history), {"role": "user", "content": message}]
     tools = TOOLS if booking else None
 
