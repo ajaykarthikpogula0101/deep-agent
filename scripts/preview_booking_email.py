@@ -2,8 +2,8 @@
 
     python scripts/preview_booking_email.py [out_dir]          # default: email_preview/
 
-Writes visitor/host x confirmed/pending, using the real renderer and the editable text templates. Images load from
-PUBLIC_BASE_URL, or from the sample booking's own host (http://localhost:8080 here, so run the app to see them).
+Writes visitor/host x confirmed/pending, using the real renderer and the editable text templates. Real emails carry
+their images inline; the preview loads them from PUBLIC_BASE_URL or http://localhost:8080 (run the app to see them).
 To send the real thing to the host inbox instead: Console → Emails → Send test.
 """
 from __future__ import annotations
@@ -39,7 +39,7 @@ def main() -> None:
     for state, booking in (("confirmed", CONFIRMED), ("pending", PENDING)):
         for audience in ("visitor", "host"):
             path = out / f"{audience}_{state}.html"
-            path.write_text(email_html.render(booking, audience, tpl, now=now), encoding="utf-8")
+            path.write_text(email_html.render(booking, audience, tpl, now=now, images="url"), encoding="utf-8")
             print(path)
 
 
