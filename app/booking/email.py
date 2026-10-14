@@ -149,8 +149,7 @@ def send_booking_emails(booking: dict[str, Any], mailer=None, with_brief: bool =
     att = [("invite.ics", invite, "text/calendar")]
     v = templates.render_booking_visitor(booking, tpl)
     if v and booking.get("email"):
-        cta = ("Join Zoom", booking["join_url"]) if booking.get("join_url") else (("Confirm on Zoom", booking["handoff_url"]) if booking.get("handoff_url") else None)
-        mailer.enqueue(booking["email"], v[0], v[1], html=templates.html_wrap(v[0], v[1], cta), attachments=att,
+        mailer.enqueue(booking["email"], v[0], v[1], html=_booking_html(booking, "visitor", tpl, v), attachments=att,
                        reply_to=settings.host_email, kind="booking_visitor", ref=booking.get("id"))
 
     def host(brief: dict | None) -> None:
@@ -160,14 +159,17 @@ def send_booking_emails(booking: dict[str, Any], mailer=None, with_brief: bool =
         if brief:
             s += f" · {precall.headline(brief)}" if brief.get("label") in ("hot", "warm") else ""
             b = b.rstrip("\n") + "\n\n" + precall.text(brief)
-        cta_h = ("Join Zoom", booking["join_url"]) if booking.get("join_url") else None
+        notice, cta_ok = "", True
         if with_brief:  # the brief took a while: say so if the visitor moved or cancelled meanwhile (their email went out first)
             now = _current(booking)
             if now and now.get("status") == "cancelled":
-                s, b, cta_h = s + " (since cancelled)", "Update: the visitor has already cancelled this call.\n\n" + b, None
+                notice, cta_ok = "Update: the visitor has already cancelled this call.", False
+                s, b = s + " (since cancelled)", notice + "\n\n" + b
             elif now and now.get("rescheduled_at"):
-                s, b = s + " (since moved)", "Update: the visitor has since moved this call; the time below is the original one.\n\n" + b
-        mailer.enqueue(settings.host_email, s, b, html=templates.html_wrap(s, b, cta_h, audience="host"), attachments=att,
+                notice = "Update: the visitor has since moved this call; the time below is the original one."
+                s, b = s + " (since moved)", notice + "\n\n" + b
+        html = _booking_html(booking, "host", tpl, (s, b), brief=precall.text(brief) if brief else "", notice=notice, cta_ok=cta_ok)
+        mailer.enqueue(settings.host_email, s, b, html=html, attachments=att,
                        reply_to=booking.get("email"), kind="booking_host", ref=booking.get("id"))
 
     if with_brief:
@@ -204,6 +206,17 @@ def send_reschedule_emails(booking: dict[str, Any], mailer=None) -> None:
                    html=templates.html_wrap(subject, body_h, cta if not pending else None, audience="host"), attachments=att, reply_to=booking.get("email"),
                    kind="reschedule_host", ref=booking.get("id"))
     send_attendee_emails(dict(booking, old_label_visitor=was), "moved", mailer, att)
+
+
+def _booking_html(booking: dict[str, Any], audience: str, tpl: dict[str, str], text: tuple[str, str], **extra: Any) -> str:
+    """The branded booking email (app/booking/email_html.py); the simple card if it ever fails, so the mail still goes out."""
+    from app.booking import email_html
+
+    try:
+        return email_html.render(booking, audience, tpl, **extra)
+    except Exception as e:
+        log.error("booking email html failed, sending the simple version: %s", e)
+        return templates.html_wrap(text[0], text[1], None, audience=audience)
 
 
 def send_cancel_emails(booking: dict[str, Any], mailer=None) -> None:
@@ -246,7 +259,8 @@ def send_test(kind: str) -> dict:
     """Console → Emails → 'Send test': the sample lead rendered with the current templates, to the host inbox."""
     if kind == "host_booking":
         subject, body = templates.render_booking_host(templates.SAMPLE_BOOKING)
-        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=templates.html_wrap(subject, body, ("Join Zoom", templates.SAMPLE_BOOKING["join_url"]), audience="host")),
+        html = _booking_html(templates.SAMPLE_BOOKING, "host", templates.get_templates(), (subject, body))
+        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=html),
                 "to": settings.host_email, "subject": subject}
     if kind in ("visitor_confirmed", "visitor_rescheduled", "visitor_cancelled", "visitor_reminder"):
         sample = templates.SAMPLE_BOOKING if kind == "visitor_confirmed" else templates.sample_booking_for(kind.split("_", 1)[1])
@@ -254,8 +268,12 @@ def send_test(kind: str) -> dict:
         if not r:
             return {"ok": False, "error": "that visitor email is disabled"}
         subject, body = r
-        cta = ("Book a new time", settings.site_base_url) if kind == "visitor_cancelled" else ("Join Zoom", templates.SAMPLE_BOOKING["join_url"])
-        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=templates.html_wrap(subject, body, cta)),
+        if kind == "visitor_confirmed":
+            html = _booking_html(sample, "visitor", templates.get_templates(), (subject, body))
+        else:
+            cta = ("Book a new time", settings.site_base_url) if kind == "visitor_cancelled" else ("Join Zoom", templates.SAMPLE_BOOKING["join_url"])
+            html = templates.html_wrap(subject, body, cta)
+        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=html),
                 "to": settings.host_email, "subject": subject}
     if kind == "host":
         subject, body = render_brief(templates.SAMPLE_LEAD)

@@ -86,3 +86,22 @@ notes as before.
 `{attendees}` lists the extra guests as "Name <email>, …" (empty when there are none; the "Guests:" line then
 disappears). Each guest receives a short built-in note per event: invited, moved, cancelled, day-before reminder
 (`app/booking/email.py: attendee_notice`), sent with the same layout and replies going to the host.
+
+## Added 2026-10-14: branded HTML for the two in-chat booking emails
+
+* `visitor_confirmed_*` and `host_booking_*` now carry the Champions Group design (navy hero, status pill, event card,
+  attendee/company rows, one button) built by `app/booking/email_html.py`. The **text part is unchanged**: still the
+  editable template above, so Console → Emails edits keep working. The moved / cancelled / reminder / guest emails keep the simple card.
+* The host copy keeps everything main added: extra guests get a Guests row, the PRE-CALL BRIEF renders as its own
+  section (UPPERCASE headings, fact rows, bullets), and a late "since cancelled / since moved" update shows above the status
+  (no button once cancelled).
+* The copy follows the real booking status, never the other way round:
+
+  | | `confirmed` (Zoom created the meeting) | `pending_zoom` (time held, visitor must confirm on Zoom) |
+  |---|---|---|
+  | Visitor | "Your booking is confirmed", Join meeting link, button "View booking details" (manage page) | "Confirm your booking on Zoom", no meeting link, button "Confirm on Zoom" (prefilled link) |
+  | Host | "New booking confirmed", Join meeting link, button "View booking details" | "New booking request", "still required to confirm on Zoom" (+ the 24 h reminder line only while reminders are on) |
+* Icons and the hero background are PNGs in `static/email/` (rebuild: `python scripts/build_email_assets.py`), loaded
+  from `PUBLIC_BASE_URL`, so that must be a public https URL in production or the images will not load (the email still
+  reads: solid colours, real text, empty alt on decorative icons).
+* Local look without SMTP: `python scripts/preview_booking_email.py` writes the four variants to `email_preview/`.
