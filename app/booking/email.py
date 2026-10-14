@@ -84,13 +84,22 @@ def send_booking_emails(booking: dict[str, Any], mailer=None) -> None:
     att = [("invite.ics", invite, "text/calendar")]
     v = templates.render_booking_visitor(booking, tpl)
     if v and booking.get("email"):
-        cta = ("Join Zoom", booking["join_url"]) if booking.get("join_url") else (("Confirm on Zoom", booking["handoff_url"]) if booking.get("handoff_url") else None)
-        mailer.enqueue(booking["email"], v[0], v[1], html=templates.html_wrap(v[0], v[1], cta), attachments=att,
+        mailer.enqueue(booking["email"], v[0], v[1], html=_booking_html(booking, "visitor", tpl, v), attachments=att,
                        reply_to=settings.host_email, kind="booking_visitor", ref=booking.get("id"))
     s, b = templates.render_booking_host(booking, tpl)
-    cta_h = ("Join Zoom", booking["join_url"]) if booking.get("join_url") else None
-    mailer.enqueue(settings.host_email, s, b, html=templates.html_wrap(s, b, cta_h), attachments=att, reply_to=booking.get("email"),
+    mailer.enqueue(settings.host_email, s, b, html=_booking_html(booking, "host", tpl, (s, b)), attachments=att, reply_to=booking.get("email"),
                    kind="booking_host", ref=booking.get("id"))
+
+
+def _booking_html(booking: dict[str, Any], audience: str, tpl: dict[str, str], text: tuple[str, str]) -> str:
+    """The branded booking email (app/booking/email_html.py); the simple card if it ever fails, so the mail still goes out."""
+    from app.booking import email_html
+
+    try:
+        return email_html.render(booking, audience, tpl)
+    except Exception as e:
+        log.error("booking email html failed, sending the simple version: %s", e)
+        return templates.html_wrap(text[0], text[1], None)
 
 
 def send_cancel_emails(booking: dict[str, Any], mailer=None) -> None:
@@ -114,14 +123,16 @@ def send_test(kind: str) -> dict:
     """Console → Emails → 'Send test': the sample lead rendered with the current templates, to the host inbox."""
     if kind == "host_booking":
         subject, body = templates.render_booking_host(templates.SAMPLE_BOOKING)
-        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=templates.html_wrap(subject, body, ("Join Zoom", templates.SAMPLE_BOOKING["join_url"]))),
+        html = _booking_html(templates.SAMPLE_BOOKING, "host", templates.get_templates(), (subject, body))
+        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=html),
                 "to": settings.host_email, "subject": subject}
     if kind == "visitor_confirmed":
         r = templates.render_booking_visitor(templates.SAMPLE_BOOKING)
         if not r:
             return {"ok": False, "error": "that visitor email is disabled"}
         subject, body = r
-        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=templates.html_wrap(subject, body, ("Join Zoom", templates.SAMPLE_BOOKING["join_url"]))),
+        html = _booking_html(templates.SAMPLE_BOOKING, "visitor", templates.get_templates(), (subject, body))
+        return {"ok": _send(settings.host_email, "[test] " + subject, body, html=html),
                 "to": settings.host_email, "subject": subject}
     if kind == "host":
         subject, body = render_brief(templates.SAMPLE_LEAD)
