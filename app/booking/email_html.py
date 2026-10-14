@@ -8,8 +8,9 @@ builds the HTML part, from the real booking row (app/booking/flow.py). Two state
                 no meeting link (there is none yet); the visitor's call to action is the prefilled Zoom link
 
 Email-client rules followed here: table layout, inline styles (the <style> block only adds the mobile overrides),
-no SVG/flex/grid/JS, PNG icons from static/email/ (built by scripts/build_email_assets.py) embedded in the message as
-inline cid: parts (Gmail fetches remote images through its proxy, which never reaches a local or private host), with alt text and solid
+no SVG/flex/grid/JS, PNG icons from static/email/ (built by scripts/build_email_assets.py) loaded from EMAIL_ASSETS_URL
+(public https, jsDelivr over the GitHub repo by default: Gmail fetches images through its proxy, which can never reach
+a local or private PUBLIC_BASE_URL), or embedded as inline cid: parts when that is empty; with alt text and solid
 fallback colours so the email still reads with images blocked, VML for the hero and the button in Outlook desktop.
 Every dynamic value is HTML-escaped; only http(s) URLs become links.
 """
@@ -129,7 +130,8 @@ _CID_REF = re.compile(r"cid:([a-z0-9-]+\.png)@cg")
 
 
 def _src(base: str, name: str) -> str:
-    return f"cid:{name}@cg" if base == CID else f"{base}/static/email/{name}"
+    """`base` is CID or a folder URL that holds the PNGs."""
+    return f"cid:{name}@cg" if base == CID else f"{base.rstrip('/')}/{name}"
 
 
 def inline_images(html_text: str) -> list[tuple[str, bytes, str]]:
@@ -225,7 +227,7 @@ def _hero(base: str, brand: str, copy: dict[str, Any]) -> str:
 
 # ---------------------------------------------------------------- the email
 def render(booking: dict[str, Any], audience: str, tpl: dict[str, str] | None = None, now: datetime | None = None, *,
-           brief: str = "", notice: str = "", cta_ok: bool = True, images: str = "inline") -> str:
+           brief: str = "", notice: str = "", cta_ok: bool = True, images: str = "hosted") -> str:
     """HTML for audience 'visitor' or 'host'. `booking` is the dict stored by app/booking/flow.py (or SAMPLE_BOOKING).
     Host extras: `brief` is the pre-call brief as text (app/precall.text), `notice` a late update shown above the status
     ("the visitor has already cancelled"), `cta_ok=False` drops the button (nothing left to view or join)."""
@@ -233,7 +235,11 @@ def render(booking: dict[str, Any], audience: str, tpl: dict[str, str] | None = 
     v = templates.build_vars(templates.booking_to_lead(booking), tpl)
     confirmed = booking.get("status") == "confirmed"
     copy = _copy(audience, confirmed, v, tpl)
-    base = CID if images == "inline" else asset_base(booking)   # "url": a browser preview against the running app
+    if images == "url":                     # a browser preview against the running app
+        base = asset_base(booking) + "/static/email"
+    else:                                   # a real email: the public https folder (EMAIL_ASSETS_URL), else inline parts
+        hosted = safe_url(settings.email_assets_url)
+        base = hosted if hosted.startswith("https://") and images != "inline" else CID
     brand = tpl.get("brand_default") or templates.DEFAULTS["brand_default"]
     tz = _tz(booking.get("visitor_tz") if audience == "visitor" else settings.host_timezone)
     start = booking.get("start_utc")
