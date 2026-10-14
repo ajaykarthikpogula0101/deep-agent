@@ -11,7 +11,7 @@ gives Deep a brief on every lead before the call.
 ![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-448%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-481%20passing-2EA44F)
 
 [Features](#features) · [Features in detail](#features-in-detail) · [Quick start](#quick-start) ·
 [Configuration](#configuration) · [Visitor tracking and IP lookup](#visitor-tracking-and-ip-lookup) ·
@@ -29,6 +29,7 @@ gives Deep a brief on every lead before the call.
 | **Answers with sources** | Retrieval over the crawled deependhq.com (llms-full.txt, data.js, sitemap pages), with a confidence floor: off-topic questions get a polite refusal instead of a guess. Prompt-injection fences on everything retrieved. |
 | **Booking in the chat** | Call type → date → time → details → confirm. The visitor can add guests and gets a Zoom link and an `.ics` invite. Reschedule, cancel and "book again" also work from the chat, and every email carries a private manage page with a two-step cancel. Uses Zoom's official API, a public-page fallback, or a browser worker on the public scheduler page. |
 | **Branded booking emails** | Every booking email (confirmation, new booking, cancelled, moved, reminders, the host's day-before brief, guest notes) comes in one HTML design, "Ledger", with a plain-text part that stays editable in the console. No images: it reads the same with images blocked and in dark mode. |
+| **Ask Deep from every email** | Visitor and guest booking emails end with one-tap questions that open the assistant already knowing that booking. The booker's earlier website chats join the memory on whatever device they open it on; guests stay separate. |
 | **Pre-call brief and lead score** | Before every call Deep gets a brief: who they are, what they asked, pages they read, where they came from and a 0–100 score with a reason for every point. Hot leads who never booked trigger an alert. |
 | **Honest lead score** | Points come only from evidence the visitor cannot simply type: a company email whose domain was checked (website, MX record or DNS), the network matching their company, what they did on the site. What they only typed (company, role, budget) is listed as a claim and scores 0. Staff, test, competitor and throwaway addresses are flagged. Every line says whether it is *checked*, *seen* or a *warning*, and a thin record reads "Not enough data yet" instead of "Cold". |
 | **Host booking page** | "View booking details" in Deep's emails opens a private, phone-friendly page: status, lead score, join link, who they are, where they came from, the brief, the whole chat and earlier visits. Signed link bound to the booking, read-only on open (mail scanners click everything), never shows IPs or the visitor's manage links. |
@@ -157,6 +158,30 @@ Zoom link while it is only held. The plain-text part is always sent too and stay
 
 `EMAIL_ASSETS_URL` (hosted images, or empty to embed them in each message) is kept for a future email that needs
 images; no current email uses one. Every email, who receives it and how to change the wording: [EMAILS](docs/EMAILS.md).
+
+### Ask Deep from a booking email
+
+Emails cannot run a chat (mail apps block scripts), so every email to a visitor or a guest (confirmation, cancelled,
+moved, the day-before reminder, the 24 h Zoom reminder, and the four guest notes) ends with a small **Ask Deep** panel:
+two to four one-tap questions that fit that email and its state ("How should I prepare for this call?", "How do I
+confirm my time on Zoom?", "Book a new time"…) and "Open the assistant". Deep's own emails have no panel.
+
+- **The link** opens the assistant (`/ask`) with a signed token in the URL fragment, so it never reaches a server log.
+  The token is tied to one booking, one recipient and that email; it expires `EMAIL_ASK_TTL_DAYS` after the call, and
+  rotating the booking's manage token revokes it. The page exchanges it with `POST /ask/claim`.
+- **Mail scanners open links**: a plain fetch of `/ask` reads and writes nothing. The tapped question is sent only
+  once the page is really open in a browser, once per link and question, and it is stored as sent by the page, not typed.
+- **The conversation knows the booking**: call, time in the visitor's timezone, status (confirmed / waiting for Zoom /
+  cancelled), guests' first names. It goes to the model as a DATA block, read live every turn.
+- **Memory**: on another device (their phone), the booker's earlier website chats join that device's memory, and later
+  website visits there carry on. One way only: the phone reads the laptop's history, never the reverse. A browser other
+  people used gets the booking context but no history. With `EMAIL_ASK_TARGET=site` the link opens deependhq.com's
+  own widget, so on the same browser it is simply the same memory.
+- **Booker vs guest**: the booker can reschedule or cancel from that chat; a guest can ask questions but never change
+  the booking, and never sees the booker's address, notes or chats.
+- **Lead score**: opening a link or tapping a question earns nothing. A message the booker actually types in such a
+  chat is `email_ask_chat`, +3, seen.
+- **Analytics**: opens, taps and typed chats per email in `/admin/metrics` (`email_ask`); opens may include scanners.
 
 ### Pre-call brief and the honest lead score
 
@@ -562,6 +587,8 @@ All settings live in `.env`. `.env.example` lists the usual options with a comme
 | Setting | Default | Purpose |
 |---|---|---|
 | `OUTREACH_ENABLED` | `true` | greeting rules from the console |
+| `EMAIL_ASK_ENABLED`, `EMAIL_ASK_TARGET` | `true`, `assistant` | the Ask Deep panel in visitor and guest emails; `site` opens deependhq.com's widget instead of `/ask` |
+| `EMAIL_ASK_TTL_DAYS`, `EMAIL_ASK_AUTOSEND`, `EMAIL_ASK_BIND_HISTORY` | `30`, `true`, `true` | link lifetime after the call; send the tapped question; join the booker's earlier chats to the new device's memory |
 | `OUTREACH_VISITORS` | `true` | a `visitors` row per device for page views without a chat |
 | `OUTREACH_VISIT_GAP_MIN` | `30` | minutes without a check before the next counts as a new visit |
 | `OUTREACH_IP_CONTEXT` | `true` | hard switch for organisation and country in pop-ups (the console has a soft one) |
@@ -694,6 +721,7 @@ Times are in `HOST_TIMEZONE`, except the re-crawl, the purges and the lookup ret
 | daily 03:10 | purge old tracking data: IPs and user agents, idle visitor rows, unreviewed organisations, old lookup cache | always |
 | `GAP_CRON` (daily 03:20) | drafted answers for unanswered questions | `GAP_LOOP_ENABLED` |
 | daily 03:25 | purge old conversation memory | always |
+| daily 03:30 | purge Ask Deep link analytics (`TRACK_RETENTION_DAYS`) and claims (`MEMORY_RETENTION_DAYS`) | always |
 | daily 03:40 | re-learn the lead score from call outcomes | `OUTCOMES_ENABLED` |
 | every 10 min | retry IP lookups that are still pending or failed | always |
 | every 15 min | email approved answers to the people who asked | `GAP_LOOP_ENABLED` |
@@ -710,7 +738,7 @@ with a MaxMind key, downloads the GeoLite2 files in the background if they are m
 ## Tests
 
 ```bash
-pytest                                        # 448 passed, 2 skipped; no network (the database tests skip without Postgres)
+pytest                                        # 481 passed, 2 skipped; no network (the database tests skip without Postgres)
 python -m app.tracking 49.207.200.10 'Acme' a@acme.com   # one IP through GEOIP_PROVIDER and the network rules, no database
 python -m app.geoip_update                    # download or refresh the GeoLite2 files (needs MAXMIND_LICENSE_KEY)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)
@@ -743,6 +771,7 @@ app/
   geoip_update.py    MaxMind GeoLite2 download, checksum check and weekly refresh
   visitors.py        returning visitors who never chatted, organisations visiting
   outreach.py        greeting rules, returning-visitor pop-ups, the pop-up's DATA message
+  email_ask.py       Ask Deep from booking emails: signed links, the claim, booking context, memory binding
   memory.py          return-visitor memory (greeting, HISTORY block)
   session_memory.py  working memory for each conversation (CURRENT CONVERSATION block)
   media.py           uploads, speech-to-text clean-up, text-to-speech

@@ -24,7 +24,12 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.15.2';
+const VERSION = '2026.10.15.3';
+// Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
+const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
+  confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
+  when_now: 'When is my call now?' };
+const EMAIL_STATUS = { confirmed: 'confirmed', pending_zoom: 'waiting for you to confirm on Zoom', cancelled: 'cancelled' };
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -137,6 +142,8 @@ header:has(.home:not([hidden])) { padding-left:8px; gap:8px }
 .wav { width:40px; height:40px; border-radius:12px; display:grid; place-items:center; background:var(--da-grad); color:#fff; box-shadow:0 8px 18px -8px rgba(85,70,247,.6) } .wav svg { width:22px; height:22px }
 .welcome h2 { margin:0; font-size:18.5px; font-weight:700; line-height:1.25; letter-spacing:-.02em; color:var(--da-text) }
 .welcome p { margin:-4px 0 0; font-size:13.5px; line-height:1.55; color:var(--da-muted) }
+.emailctx { margin:0 0 2px; padding:8px 10px; border-radius:10px; background:var(--da-soft, rgba(85,70,247,.08)); font-size:12.5px; line-height:1.45; color:var(--da-text) }
+.emailctx b { font-weight:650 }
 .acts-label { margin:8px 2px -2px; font-size:11px; font-weight:650; letter-spacing:.06em; text-transform:uppercase; color:var(--da-muted) }
 .acts { display:flex; flex-direction:column; gap:8px }
 .act { display:flex; align-items:center; gap:12px; width:100%; min-height:46px; padding:8px 12px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-surface); color:var(--da-text); font-size:13.5px; font-weight:550; text-align:left; text-decoration:none; cursor:pointer; box-shadow:var(--da-shadow-sm); transition:border-color .15s, box-shadow .15s, transform .15s }
@@ -420,6 +427,38 @@ class DeepAssistant extends HTMLElement {
   get view() { return this._view; }
   get botName() { return this.getAttribute('title') || 'Deep'; }
   ask(text) { this.showView('chat'); return this._send(text); }
+  // Ask Deep from a booking email (docs/EMAILS.md): exchange the link's token, show which booking this chat is about, and
+  // send the tapped question only once a person really has the page open (mail scanners open links too)
+  async claimEmailLink(token, q) {
+    if (!this.api) return;
+    if (!token) { const t = q && ASK_SAMPLE[q]; if (t) { this.showView('chat'); this.$q.value = t; this._autosize(); } return; }  // Send test: prefill only
+    if (this._transcript.length) this.newChat();
+    let res = null, status = 0;
+    try {
+      const r = await fetch(this._url('/ask/claim'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ token, q: q || undefined, timezone: this.tz, gpc: !!(navigator.globalPrivacyControl || navigator.doNotTrack === '1') }) });
+      status = r.status; if (r.ok) res = await r.json();
+    } catch {}
+    if (!res) { this._toast(status === 410 ? 'This link has expired. You can still ask anything here.' : "That link didn't open. You can still ask anything here."); return; }
+    this._email = res; this._emit('email_link', { kind: res.kind, role: res.role, question: res.question && res.question.key });
+    try { await this._loadMe(); } catch {}
+    this.showView('chat'); this._renderWelcome();
+    const x = res.question; if (!x) return;
+    if (x.action === 'book') return this.startBooking(null, x.text);
+    const up = this._me && this._me.memory && this._me.memory.upcoming;
+    if (x.action === 'reschedule') { if (res.role === 'booker' && up && up.can_reschedule) return this.startReschedule(up, x.text); this.$q.value = x.text; this._autosize(); return; }
+    if (res.autosend && await this._reallyOpen()) { this._askAuto = true; return this._send(x.text); }
+    this.$q.value = x.text; this._autosize();
+  }
+  _reallyOpen() {  // a person, not a link checker: no automation flag, the page visible, a moment after it loaded
+    if (navigator.webdriver) return Promise.resolve(false);
+    return new Promise((done) => {
+      const go = () => setTimeout(() => done(true), 400);
+      if (document.visibilityState === 'visible') return go();
+      const give = setTimeout(() => done(false), 600000);
+      const f = () => { if (document.visibilityState === 'visible') { clearTimeout(give); document.removeEventListener('visibilitychange', f); go(); } };
+      document.addEventListener('visibilitychange', f);
+    });
+  }
   book(callType) { return this.startBooking(callType || null); }
   open() { this.setAttribute('open', ''); }
   close() { this.removeAttribute('open'); }
@@ -427,6 +466,7 @@ class DeepAssistant extends HTMLElement {
   setToken(token) { if (token) this.setAttribute('token', token); else this.removeAttribute('token'); }
   reset() { this.newChat(); }
   newChat() {
+    this._email = null;
     if (this._busy) this._stop(); this.stopVoice();
     this._sid = uuid(); store.set(this._key('sid'), this._sid);
     this.removeAttribute('outreach-event'); this._outreachSent = false;  // a fresh conversation carries no pop-up context
@@ -752,6 +792,10 @@ class DeepAssistant extends HTMLElement {
     w.innerHTML = `<h2>${esc(h2)}</h2><p>${esc(p)}</p>
       <div class="acts-label">${ctx === 'general' || ctx === 'custom' ? 'Popular ways to start' : 'Suggested for this page'}</div><div class="acts" role="group" aria-label="Suggested actions"></div>`;
     const acts = w.querySelector('.acts');
+    const em = this._email;  // opened from a booking email: say which booking, and offer that email's questions
+    if (em && em.booking) { const b = em.booking, n = document.createElement('div'); n.className = 'emailctx';
+      n.innerHTML = `From your ${esc(em.opened_from || 'booking email')} · <b>${esc(b.schedule_name || 'your call')}</b>${b.label_visitor ? ' · ' + esc(b.label_visitor) : ''} · ${esc(EMAIL_STATUS[b.status] || '')}`;
+      w.insertBefore(n, w.firstChild); }
     if (mem && mem.upcoming && (mem.upcoming.join_url || mem.upcoming.handoff_url)) { const u = mem.upcoming; const a = document.createElement('a'); a.className = 'act book'; a.href = u.join_url || u.handoff_url; a.target = '_blank'; a.rel = 'noopener';
       a.innerHTML = `<span class="ai">${SVG.cal}</span><span class="al">${esc(u.status === 'confirmed' ? 'Join your call' : 'Confirm your call on Zoom')}<small>${esc(u.schedule_name + ' · ' + u.label_visitor)}</small></span>${SVG.chev}`; acts.appendChild(a); }
     if (mem && mem.upcoming && mem.upcoming.can_reschedule) { const u = mem.upcoming; const b = document.createElement('button'); b.type = 'button'; b.className = 'act resched';
@@ -760,12 +804,13 @@ class DeepAssistant extends HTMLElement {
       b.innerHTML = `<span class="ai">${SVG.cal}</span><span class="al">Book a new time<small>You cancelled ${esc(r.schedule_name + ' · ' + r.label_visitor)}</small></span>${SVG.chev}`; b.onclick = () => this.startBooking(null, 'Book a new time'); acts.appendChild(b); }
     if (mem && mem.upcoming && mem.upcoming.can_cancel) { const u = mem.upcoming; const b = document.createElement('button'); b.type = 'button'; b.className = 'act cancelcall';
       b.innerHTML = `<span class="ai">${SVG.x || SVG.close || SVG.alert}</span><span class="al">Cancel your call<small>${esc(u.schedule_name + ' · ' + u.label_visitor)}</small></span>${SVG.chev}`; b.onclick = () => this.startCancel(u, 'Cancel my call'); acts.appendChild(b); }
-    this._actions().forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'act' + (x.book ? ' book' : ''); b.innerHTML = `<span class="ai">${SVG[x.icon] || SVG.spark}</span><span class="al">${esc(x.label)}</span>${SVG.chev}`; b.onclick = () => this._runAction(x, 'suggestion'); acts.appendChild(b); });
+    (em && em.questions && em.questions.length ? em.questions.map((q) => (q.action === 'book' ? { icon: 'cal', label: q.text, book: true } : q.action === 'reschedule' ? { icon: 'clock', label: q.text, resched: true } : { icon: 'spark', label: q.text, ask: q.text })) : this._actions()).forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'act' + (x.book ? ' book' : ''); b.innerHTML = `<span class="ai">${SVG[x.icon] || SVG.spark}</span><span class="al">${esc(x.label)}</span>${SVG.chev}`; b.onclick = () => this._runAction(x, 'suggestion'); acts.appendChild(b); });
     this.$log.appendChild(w);
   }
   _refreshWelcome() { if (!this._rendered || this._transcript.length) return; const w = this.$log.querySelector('.welcome'); if (w) { w.remove(); this._renderWelcome(); } }
   _runAction(x, source) {
     this._emit('action', { action: source, label: x.label, kind: x.book ? 'booking' : 'question' });
+    if (x.resched) { const u = this._me && this._me.memory && this._me.memory.upcoming; if (u && u.can_reschedule) return this.startReschedule(u, x.label); return this._send(x.label); }
     if (x.book) return this.startBooking(typeof x.book === 'string' ? x.book : null, x.label);
     return this._send(x.ask || x.label);
   }
@@ -1576,7 +1621,8 @@ class DeepAssistant extends HTMLElement {
       const beacon = this._tracked() ? undefined : this._beaconData();  // the /track fields until the server has them
       const r = await fetch(this._url('/chat'), { method: 'POST', signal: this._controller.signal, headers: this._headers(),
         body: JSON.stringify({ message: text || 'Please look at the attached file.', history: this._history, timezone: this.tz, attachments: files.map((a) => a.id), user_name: me.signed_in ? undefined : (me.name || undefined), user_email: me.signed_in ? undefined : (me.email || undefined), beacon,
-                               outreach_event: (!this._outreachSent && +this.getAttribute('outreach-event')) || undefined }) });
+                               outreach_event: (!this._outreachSent && +this.getAttribute('outreach-event')) || undefined, ask_auto: this._askAuto || undefined }) });
+      this._askAuto = false;
       if (!r.ok) { fail(this._errorText(r.status)); this._emit('error', { error: 'http_' + r.status }); return; }
       this._outreachSent = true;  // the server stamped the pop-up into this session; later turns find it there
       if (beacon) store.set(this._key('tracked'), sid);  // the server stored it before the stream started

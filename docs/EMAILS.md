@@ -169,3 +169,25 @@ Join Zoom / Book a new time / Open booking page). A pending email never says "co
 templates and example data, and writes every email × audience × state (plus long-name, many-guest, missing-field and
 long-brief cases and the Send test kinds) to `email_preview/` with an `index.html`. Nothing is sent and the database is
 not touched.
+
+
+## Added 2026-10-15: Ask Deep panel in visitor and guest emails
+
+Emails #1, #3, #5, #7, #9 and the four guest notes (#10-#13) end with an **Ask Deep** panel (`email_html.ask_panel`,
+built by `app/email_ask.panel` inside each email's HTML try block, so a failure still sends the simple card). Host emails
+(#2, #4, #6, #8) have none. HTML only: every plain-text part, subject, recipient, reply-to and attachment is unchanged.
+
+| Email | Questions (state at send time) |
+|---|---|
+| #1 confirmation | confirmed: prepare · what we'll cover · a different time; held: how to confirm on Zoom · what happens after · a different time |
+| #3 cancelled | book a new time · what Deep can help with |
+| #5 moved | confirmed: when is it now · prepare · a different time; held: how to confirm · what happens after |
+| #7 reminder | confirmed: how to join · prepare · can't make it; held: how to confirm · a different time |
+| #9 Zoom reminder | how to confirm · what happens after · what we'll cover |
+| #10-#13 guests | what is this call about / when is it now / what happens now · prepare or join (or "is the time set yet?" while held) · the time doesn't work / book my own call |
+
+Each link is signed for that booking, that recipient and that email (`app/email_ask.py`); a guest's link is their own.
+Console **Send test** shows the panel with question-only links (prefilled on the page, never sent). Settings:
+`EMAIL_ASK_ENABLED`, `EMAIL_ASK_TARGET` (`assistant` = `PUBLIC_BASE_URL/ask`, `site` = deependhq.com's widget),
+`EMAIL_ASK_TTL_DAYS`, `EMAIL_ASK_AUTOSEND`, `EMAIL_ASK_BIND_HISTORY`. How the chat and the memory use it: README,
+"Ask Deep from a booking email", and docs/MEMORY_VOICE.md.

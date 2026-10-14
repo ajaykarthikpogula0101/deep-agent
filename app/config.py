@@ -151,6 +151,12 @@ class Settings(BaseSettings):
     memory_history_sessions: int = Field(default=4, alias="MEMORY_HISTORY_SESSIONS")  # earlier conversations shown and caught up
     memory_stale_days: int = Field(default=90, alias="MEMORY_STALE_DAYS")             # need/buying facts older than this: "may be out of date"
     memory_retention_days: int = Field(default=365, alias="MEMORY_RETENTION_DAYS")    # session_memory rows older than this are purged (tombstones kept)
+    # Ask Deep panel in the visitor and guest booking emails (app/email_ask.py, docs/EMAILS.md)
+    email_ask_enabled: bool = Field(default=True, alias="EMAIL_ASK_ENABLED")
+    email_ask_target: str = Field(default="assistant", alias="EMAIL_ASK_TARGET")      # assistant (PUBLIC_BASE_URL/ask) | site (deependhq.com's widget)
+    email_ask_ttl_days: int = Field(default=30, alias="EMAIL_ASK_TTL_DAYS")           # links work until this many days after the call
+    email_ask_autosend: bool = Field(default=True, alias="EMAIL_ASK_AUTOSEND")        # a tapped question is sent once the page is really open
+    email_ask_bind_history: bool = Field(default=True, alias="EMAIL_ASK_BIND_HISTORY")  # the booker's earlier website chats join this device's memory
     outreach_enabled: bool = Field(default=True, alias="OUTREACH_ENABLED")  # proactive outreach rules (docs/OUTREACH.md)
     # returning visitors who never chatted and their network (docs/OUTREACH.md "Returning visitors and their network")
     outreach_visitors: bool = Field(default=True, alias="OUTREACH_VISITORS")  # a visitors row per device for page views without a chat; needs TRACKING_ENABLED

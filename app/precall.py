@@ -162,7 +162,7 @@ GROUP: dict[str, str] = {
                      "network_company_prompted"), "fit"),
     **dict.fromkeys(("call_type", "buying_topics", "data_need", "note", "soon", "this_week", "asked_for_person", "campaign", "search",
                      "key_pages", "outreach_popup"), "intent"),
-    **dict.fromkeys(("questions", "visits", "time_on_site"), "engagement"),
+    **dict.fromkeys(("questions", "visits", "time_on_site", "email_ask_chat"), "engagement"),
     **dict.fromkeys(("internal", "test_traffic", "competitor", "disposable_email", "typo_email", "brand_claim", "company_mismatch",
                      "placeholder_company", "name_mismatch", "name_quality", "injection", "far_out", "cancelled_before", "no_show_before",
                      "moved", "jobs", "vendor", "network_mismatch", "consumer_network", "privacy_network", "institution_network",
@@ -179,7 +179,7 @@ CLASS: dict[str, str] = {
     **dict.fromkeys(("personal_email", "colleagues", "call_type", "buying_topics", "data_need", "note", "soon", "this_week",
                      "asked_for_person", "campaign", "search", "key_pages", "questions", "visits", "time_on_site", "target_market",
                      "booked_before", "corporate_network", "consumer_network", "privacy_network", "institution_network",
-                     "outreach_popup"), "observed"),
+                     "outreach_popup", "email_ask_chat"), "observed"),
     # network_company_prompted: the company they typed echoes the one our own pop-up suggested, so it is their word only
     **dict.fromkeys(("company_named", "guest_company", "domain_unchecked", "stated_facts", "network_company_prompted"), "claimed"),
     **dict.fromkeys(("internal", "test_traffic", "competitor", "disposable_email", "dead_domain", "typo_email", "brand_claim",
@@ -462,6 +462,7 @@ def gather(email: str | None, session_id: str | None = None, booking: dict[str, 
                     _optional(c, _read_identity, sig, sids, email)
             if email:
                 _optional(c, _read_history, sig, b, email)
+                _optional(c, _read_email_ask, sig, email)
                 _optional(c, _read_lead, sig, email)
             domains = proof_domains(email, attendees)
             if domains:
@@ -580,7 +581,8 @@ def _read_sessions(c: Any, sig: dict[str, Any], b: dict[str, Any], email: str, s
         _best_network(rows, sig, b)
     except Exception as e:  # a bad network row never costs the rest of the brief
         log.warning("precall network signal failed: %s", e)
-    msgs = c.execute("SELECT text FROM messages WHERE session_id = ANY(%s) AND role = 'user' ORDER BY ts, id LIMIT 400",
+    msgs = c.execute("SELECT text FROM messages WHERE session_id = ANY(%s) AND role = 'user' AND COALESCE(reason, '') <> 'email_chip' "
+                     "ORDER BY ts, id LIMIT 400",
                      (sids,)).fetchall()
     seen, qs = set(), []
     for (t,) in msgs:
@@ -618,6 +620,14 @@ def _other_people(c: Any, sids: list[str], email: str) -> dict[str, set[str]]:
         if e and "@" in e and _untag(e) != me:
             out.setdefault(sid, set()).add(_untag(e))
     return out
+
+
+def _read_email_ask(c: Any, sig: dict[str, Any], email: str) -> None:
+    """They typed a message in a chat opened from one of their booking emails (app/email_ask.py). Opening the link or
+    tapping a question never counts: mail scanners open links, and a forwarded link proves nothing about who types."""
+    from app import email_ask
+
+    sig["email_ask_typed"] = email_ask.typed_by(c, email)
 
 
 def _read_identity(c: Any, sig: dict[str, Any], sids: list[str], email: str) -> None:
@@ -943,6 +953,8 @@ def score(sig: dict[str, Any], adjust: dict[str, int] | None = None) -> dict[str
         add("questions", 10, f"asked {n} questions")
     elif n >= 1:
         add("questions", 4, f"asked {n} question{'s' if n > 1 else ''}")
+    if sig.get("email_ask_typed"):
+        add("email_ask_chat", 3, "wrote to the assistant from their booking email")
     v = max(int(sig.get("visits") or 0), int(sig.get("site_visits") or 0))
     if v >= 3:
         add("visits", 15, f"{v} visits" + (f" since {_when(sig['first_seen']).split(',')[0]}" if sig.get("first_seen") else ""))
@@ -1109,7 +1121,7 @@ RULES = {"business_email": "company email", "personal_email": "personal email ad
          "domain_unchecked": "company email whose domain could not be checked yet", "stated_facts": "what they say about themselves (not scored)",
          "good_call_before": "you rated an earlier call good", "signed_in_email": "signed in with this email",
          "not_fit_before": "you rated an earlier call not a fit", "shared_browser": "browser shared with other people",
-         "outreach_popup": "opened the chat from a pop-up", "network_company_prompted": "typed the company a pop-up suggested (not scored)"}
+         "outreach_popup": "opened the chat from a pop-up", "email_ask_chat": "wrote to the assistant from a booking email", "network_company_prompted": "typed the company a pop-up suggested (not scored)"}
 
 
 # ---------------------------------------------------------------- 3. the brief

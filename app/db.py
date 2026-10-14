@@ -369,6 +369,47 @@ CREATE TABLE IF NOT EXISTS session_memory (
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS session_memory_updated_idx ON session_memory(updated_at);
+
+-- Ask Deep from a booking email (app/email_ask.py): a conversation opened from an email link. Never the token or the address.
+CREATE TABLE IF NOT EXISTS email_ask_claims (
+    id             BIGSERIAL PRIMARY KEY,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    token_id       TEXT NOT NULL,                       -- sha256(token)[:32]
+    booking_id     BIGINT,
+    lead_id        BIGINT,                              -- the unconfirmed-hold reminder has no booking row
+    role           TEXT NOT NULL,                       -- booker | guest
+    kind           TEXT NOT NULL,                       -- the email it came from (email_ask.KINDS)
+    email_hash     TEXT NOT NULL,                       -- links.sign('ask_deep_email', address)
+    session_id     TEXT NOT NULL,
+    visitor_id     TEXT,
+    grant_vid      BOOLEAN NOT NULL DEFAULT false,      -- booker actions from this device, not only this session
+    bind_history   BOOLEAN NOT NULL DEFAULT false,      -- this device's memory reads the anchors below
+    anchor_vids    TEXT[] NOT NULL DEFAULT '{{}}',
+    anchor_sids    TEXT[] NOT NULL DEFAULT '{{}}',
+    expires_at     TIMESTAMPTZ NOT NULL,
+    chip_q         TEXT,
+    chip_sent_at   TIMESTAMPTZ,                         -- the tapped question was sent (once per token and question)
+    first_typed_at TIMESTAMPTZ,                         -- a person typed a message here
+    revoked_at     TIMESTAMPTZ,
+    UNIQUE (token_id, session_id)
+);
+CREATE INDEX IF NOT EXISTS email_ask_claims_session_idx ON email_ask_claims(session_id);
+CREATE INDEX IF NOT EXISTS email_ask_claims_visitor_idx ON email_ask_claims(visitor_id);
+CREATE INDEX IF NOT EXISTS email_ask_claims_booking_idx ON email_ask_claims(booking_id);
+CREATE INDEX IF NOT EXISTS email_ask_claims_email_idx ON email_ask_claims(email_hash);
+CREATE TABLE IF NOT EXISTS email_ask_events (
+    id          BIGSERIAL PRIMARY KEY,
+    ts          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    action      TEXT NOT NULL,                          -- open | chip | typed | expired | invalid
+    kind        TEXT,
+    booking_id  BIGINT,
+    lead_id     BIGINT,
+    role        TEXT,
+    q           TEXT,
+    target      TEXT,
+    session_id  TEXT
+);
+CREATE INDEX IF NOT EXISTS email_ask_events_ts_idx ON email_ask_events(ts);
 """
 
 _pool: ConnectionPool | None = None

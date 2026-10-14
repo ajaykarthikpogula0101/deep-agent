@@ -20,6 +20,11 @@
 <deep-assistant id="assistant" api="" mode="panel" theme="light"></deep-assistant>
 <div class="links"><a href="/site">Site embed</a> · <a href="/admin">Console</a> · <span id="ver"></span></div>
 <script type="module">
+  // Ask Deep from a booking email (/ask#t=<token>&q=<key>): read the fragment and take it out of the address bar before
+  // anything records the page; the component exchanges the token once it is ready (POST /ask/claim)
+  const m = /^#(?:t=([A-Za-z0-9_.-]{10,160}))?(?:&?q=([a-z_]{1,24}))?$/.exec(location.hash || '');
+  const ask = location.pathname === '/ask' && m && (m[1] || m[2]) ? { t: m[1] || null, q: m[2] || null } : null;
+  if (location.pathname === '/ask' && location.hash) history.replaceState(null, '', location.pathname + location.search);
   const api = location.origin;
   // version query keeps browsers from reusing an older build of the component
   const v = (await (await fetch(api + '/healthz', { cache: 'no-store' })).json()).version;
@@ -27,6 +32,7 @@
   document.getElementById('assistant').setAttribute('api', api);
   await import(`${api}/static/deep-assistant.js?v=${encodeURIComponent(v)}`);
   document.getElementById('ver').textContent = 'assistant v' + v;
+  if (ask) { const el = document.getElementById('assistant'); await customElements.whenDefined('deep-assistant'); el.claimEmailLink(ask.t, ask.q); }
 </script>
 </body>
 </html>

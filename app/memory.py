@@ -87,13 +87,21 @@ def profile(visitor_id: str | None, user_id: str | None = None, current_session:
     if not visitor_id and not user_id and not current_session:
         return p
     try:
+        # a chat opened from a booking email adds the booker's earlier website sessions (app/email_ask.linked): one way,
+        # this device reads them, never the other way round
+        avids, asids = ([], [])
+        if settings.email_ask_enabled:
+            from app import email_ask
+
+            avids, asids = email_ask.linked(visitor_id, current_session)
         with conn() as c:
             rows = []
-            if visitor_id or user_id:
+            if visitor_id or user_id or avids or asids:
                 rows = c.execute(
                     """SELECT session_id, first_seen, last_seen, messages, user_name, user_email, title
-                       FROM sessions WHERE visitor_id = %s::text OR user_id = %s::text
-                       ORDER BY first_seen DESC LIMIT 100""", (visitor_id, user_id)).fetchall()
+                       FROM sessions WHERE visitor_id = %s::text OR user_id = %s::text OR visitor_id = ANY(%s::text[])
+                         OR session_id = ANY(%s::text[])
+                       ORDER BY first_seen DESC LIMIT 100""", (visitor_id, user_id, avids, asids)).fetchall()
             sids = [r[0] for r in rows]
             if current_session and current_session not in sids:
                 sids.append(current_session)

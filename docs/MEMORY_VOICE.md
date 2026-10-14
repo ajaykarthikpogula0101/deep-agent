@@ -129,6 +129,16 @@ of the chat turns already sent. The pre-call brief shows chat-sourced claims as 
 (their words, unverified)"; no score points use them. Clear memory is not erasure: a full deletion request still goes
 through Deep's team. Shared device: the next person on the same browser sees the earlier HISTORY, as with the greeting.
 
+### Chats opened from a booking email (2026-10-15)
+
+A conversation opened from an email's Ask Deep panel (`app/email_ask.py`) is tied to that booking and recipient.
+For the booker, `POST /ask/claim` records the sessions of their earlier bookings and leads (and those browsers, when no
+one else used them) as anchors; `memory.profile` adds them through `email_ask.linked()`, so the phone they opened the
+email on remembers their laptop chats and keeps doing so on later website visits. Binding is one way (the clicking
+device imports, nothing is exported back), skipped with GPC / Do Not Track, `TRACKING_ENABLED=false`,
+`VISITOR_MEMORY=false` or `EMAIL_ASK_BIND_HISTORY=false`, and skipped on a browser other people used (booking context
+only). Guests only ever reach sessions of their own address. Transcripts never travel: `/conversations` stays per device.
+
 ## Multilingual voice
 
 * Text already answers in the visitor's language (docs/AUTOMATIONS.md §10). The call view now follows:

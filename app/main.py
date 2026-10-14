@@ -24,7 +24,7 @@ from urllib.parse import quote as quote_param
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import conversations, digest, gaps, geoip_update, guidance, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking, visitors
+from app import conversations, digest, email_ask, gaps, geoip_update, guidance, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking, visitors
 from app.booking import availability as avail
 from app.booking import browser_booking
 from app.booking import email_html, flow, ics
@@ -41,7 +41,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.15.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.15.3"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -87,6 +87,9 @@ def _startup() -> None:
     # session_memory retention (app/session_memory.py); 03:25 keeps clear of the gap drafts at 03:20
     _scheduler.add_job(session_memory.purge, CronTrigger.from_crontab("25 3 * * *", timezone=settings.recrawl_tz),
                        id="memory_purge", replace_existing=True, misfire_grace_time=3600)
+    # Ask Deep from booking emails: link analytics after TRACK_RETENTION_DAYS, claims after MEMORY_RETENTION_DAYS
+    _scheduler.add_job(email_ask.purge, CronTrigger.from_crontab("30 3 * * *", timezone=settings.recrawl_tz),
+                       id="email_ask_purge", replace_existing=True, misfire_grace_time=3600)
     # lookups still pending or failed (provider down, quota, a row that got its IP late) are retried
     _scheduler.add_job(tracking.retry_pending, CronTrigger.from_crontab("*/10 * * * *", timezone=settings.recrawl_tz),
                        id="geo_retry", replace_existing=True, misfire_grace_time=600)
@@ -183,6 +186,7 @@ class ChatIn(BaseModel):
     attachments: list[str] = Field(default_factory=list, max_length=5)  # upload ids from POST /upload (this session's)
     beacon: BeaconIn | None = None
     outreach_event: int | None = Field(default=None, ge=1)  # the pop-up this chat was opened from (first message only)
+    ask_auto: bool = False  # the question a booking email's Ask Deep chip carried, sent by the page (not typed)
 
 
 def _visitor(request: Request, hint_name: str | None = None, hint_email: str | None = None) -> dict:
@@ -412,6 +416,53 @@ def outreach_event(body: OutreachEventIn, request: Request, x_visitor_id: str | 
     return {"ok": ok}
 
 
+class AskClaimIn(BaseModel):
+    token: str = Field(min_length=10, max_length=160)
+    q: str | None = Field(default=None, max_length=24, pattern=r"^[a-z_]+$")
+    gpc: bool = False                                   # Global Privacy Control or DNT: booking context only, no memory binding
+    timezone: str | None = Field(default=None, max_length=64)
+
+
+_ask_limiter = RateLimiter(per_minute=10, per_day=200)  # claims per token
+
+
+@app.get("/ask")
+def ask_page():
+    """Ask Deep from a booking email (app/email_ask.py): the assistant page. The signed token rides in the URL fragment,
+    which never reaches this server; the page exchanges it by POST /ask/claim. This GET reads and writes nothing, so a
+    mail scanner opening the link changes nothing."""
+    return FileResponse(STATIC / "index.html", headers=_PRIVATE)
+
+
+@app.post("/ask/claim")
+def ask_claim(body: AskClaimIn, request: Request, x_session_id: str | None = Header(default=None),
+              x_visitor_id: str | None = Header(default=None)):
+    """The page opened from an email link: tie this chat session to that booking and say what to show. Sends no message,
+    creates no lead, changes no booking and proves no address."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    if not settings.email_ask_enabled:
+        raise HTTPException(404, "not found")
+    if not tracking.valid_sid(x_session_id):
+        raise HTTPException(400, "X-Session-Id is required")
+    if not _ask_limiter.allow(email_ask.token_id(body.token)):
+        raise HTTPException(429, "too many requests")
+    grant = email_ask.verify(body.token)
+    if not grant:
+        email_ask.event("invalid", session_id=x_session_id)
+        raise HTTPException(404, "This link is not valid.")
+    if grant.get("expired"):
+        email_ask.event("expired", grant, session_id=x_session_id)
+        raise HTTPException(410, "This link has expired.")
+    vid = tracking.clean_vid(x_visitor_id)
+    tracking.ensure_session(x_session_id, visitor_id=vid, ip=_client_ip(request), user_agent=request.headers.get("user-agent"),
+                            client_tz=body.timezone)   # never the page or referrer: the token stays out of storage
+    gpc = body.gpc or request.headers.get("sec-gpc") == "1" or request.headers.get("dnt") == "1"
+    return email_ask.claim(grant, x_session_id, vid, body.q, gpc=gpc)
+
+
 @app.post("/chat")
 async def chat(body: ChatIn, request: Request, x_session_id: str | None = Header(default=None),
                x_visitor_id: str | None = Header(default=None)):
@@ -422,7 +473,8 @@ async def chat(body: ChatIn, request: Request, x_session_id: str | None = Header
         log_event("rate_limited", session_id, {"ip": _client_ip(request)})
         raise HTTPException(429, "Too many messages. Please try again in a minute.")
     # one upsert: message count, the visitor id (the widget's Messages list) and, while untracked, the beacon fields
-    _ensure(request, session_id, x_visitor_id, body.beacon, body.timezone, message=True)
+    auto = body.ask_auto and not body.history   # an email chip's question: the first turn only, and not counted as typed
+    _ensure(request, session_id, x_visitor_id, body.beacon, body.timezone, message=not auto)
     visitor = _visitor(request, body.user_name, body.user_email)
     if visitor.get("signed_in"):
         tracking.attach_user(session_id, visitor)
@@ -439,20 +491,21 @@ async def chat(body: ChatIn, request: Request, x_session_id: str | None = Header
 
     extra, attached = media.attachments_block(body.attachments, session_id) if body.attachments else ("", [])
     # the memory reads run off the event loop (profile() is ~20 ms of DB work)
-    mem, data, pending, ocx = await run_in_threadpool(_prompt_parts, x_visitor_id, visitor.get("sub") if visitor.get("signed_in") else None,
-                                                      session_id, len(body.history), body.outreach_event)
+    mem, data, pending, ocx, bcx = await run_in_threadpool(_prompt_parts, x_visitor_id, visitor.get("sub") if visitor.get("signed_in") else None,
+                                                           session_id, len(body.history), body.outreach_event, auto)
     if pending:  # earlier sessions the model has not read yet: their gists are ready a turn or two later
         session_memory.catch_up_async(pending)
     gen = respond(body.message, body.history, body.timezone, session_id, visitor=visitor, extra_context=extra, attachments=attached,
-                  memory=mem, memory_data=data, outreach_context=ocx)
+                  memory=mem, memory_data=data, outreach_context=ocx, booking_context=bcx, user_reason="email_chip" if auto and bcx else None)
     return StreamingResponse(iterate_in_threadpool(gen), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Session-Id": session_id})
 
 
 def _prompt_parts(visitor_id: str | None, user_id: str | None, session_id: str, n_history: int,
-                  outreach_event: int | None = None) -> tuple[str, str, list[str], str]:
-    """_memory_parts() plus the outreach DATA message: the pop-up this chat was opened from and its network guess
-    (app/outreach.chat_context; '' when there is none)."""
+                  outreach_event: int | None = None, auto: bool = False) -> tuple[str, str, list[str], str, str]:
+    """_memory_parts() plus the outreach DATA message (the pop-up this chat was opened from and its network guess,
+    app/outreach.chat_context) and the Booking context DATA message of a chat opened from a booking email
+    (app/email_ask.data_block); '' when there is none. A typed message in such a chat is marked for the score."""
     mem, data, pending = _memory_parts(visitor_id, user_id, session_id, n_history)
     ocx = ""
     if settings.outreach_enabled:
@@ -460,7 +513,12 @@ def _prompt_parts(visitor_id: str | None, user_id: str | None, session_id: str, 
             ocx = outreach.data_block(outreach.chat_context(session_id, tracking.clean_vid(visitor_id), outreach_event))
         except Exception as e:  # pop-up context is optional: never the chat's problem
             log.warning("outreach chat context failed: %s", e)
-    return mem, data, pending, ocx
+    bcx = ""
+    if settings.email_ask_enabled:
+        bcx = email_ask.data_block(session_id)
+        if bcx and not auto:
+            email_ask.mark_typed(session_id)
+    return mem, data, pending, ocx, bcx
 
 
 def _memory_parts(visitor_id: str | None, user_id: str | None, session_id: str, n_history: int) -> tuple[str, str, list[str]]:
@@ -823,7 +881,8 @@ def booking_reschedule(booking_id: int, body: RescheduleIn, request: Request, t:
     b = store_bookings.get(booking_id)
     sid = (x_session_id or "").strip()[:64] or None
     vid = (x_visitor_id or "").strip()[:64] or None
-    owned = bool(b) and ((t and b.get("manage_token") == t) or store_bookings.owned_by_visitor(booking_id, vid, sid))
+    owned = bool(b) and ((t and b.get("manage_token") == t) or store_bookings.owned_by_visitor(booking_id, vid, sid)
+                         or email_ask.booker_owns(booking_id, vid, sid))
     if not b or not owned:
         raise HTTPException(404, "booking not found")
     if not _booking_limiter.allow(sid or _client_ip(request)):
@@ -852,7 +911,8 @@ def booking_cancel_from_chat(booking_id: int, request: Request, t: str = "", x_s
     b = store_bookings.get(booking_id)
     sid = (x_session_id or "").strip()[:64] or None
     vid = (x_visitor_id or "").strip()[:64] or None
-    owned = bool(b) and ((t and b.get("manage_token") == t) or store_bookings.owned_by_visitor(booking_id, vid, sid))
+    owned = bool(b) and ((t and b.get("manage_token") == t) or store_bookings.owned_by_visitor(booking_id, vid, sid)
+                         or email_ask.booker_owns(booking_id, vid, sid))
     if not b or not owned:
         raise HTTPException(404, "booking not found")
     if b.get("status") == "cancelled":
@@ -931,7 +991,12 @@ def admin_purge(x_admin_token: str | None = Header(default=None)):
 @app.get("/admin/metrics")
 def admin_metrics(days: int = 7, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
-    return inbox.metrics(days)
+    out = inbox.metrics(days)
+    try:
+        out["email_ask"] = email_ask.metrics(days)
+    except Exception as e:  # reporting only
+        log.warning("email ask metrics failed: %s", e)
+    return out
 
 
 @app.get("/admin/conversations")

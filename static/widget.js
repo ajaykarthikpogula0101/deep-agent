@@ -28,6 +28,18 @@
 (function () {
   var script = document.currentScript;
   var ORIGIN = (script && script.src) ? new URL(script.src).origin : '';
+
+  // Ask Deep from a booking email (EMAIL_ASK_TARGET=site): #ask-deep=<token>&q=<key>. Read and removed before anything
+  // records the page (beacons, outreach, PATH), then the chat opens and exchanges the token (POST /ask/claim)
+  var ASK = parseAskHash(location.hash);
+  if (ASK) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    setTimeout(function () { mount(true).then(function (el) { if (el.claimEmailLink) el.claimEmailLink(ASK.t, ASK.q); }).catch(function () {}); }, 0);
+  }
+  function parseAskHash(hash) {
+    var m = /^#ask-deep=([A-Za-z0-9_.-]{10,160})(?:&q=([a-z_]{1,24}))?$/.exec(hash || '');
+    return m ? { t: m[1], q: m[2] || null } : null;
+  }
   if (!ORIGIN || document.querySelector('deep-assistant') || document.getElementById('dh-assistant-btn')) return;
   var ds = (script && script.dataset) || {};
   var VER = (function () { try { return new URL(script.src).searchParams.get('v') || ''; } catch (e) { return ''; } })();

@@ -96,10 +96,26 @@ def send_visitor_confirmation(lead: dict) -> bool:
     return _send(lead["email"], subject, body, reply_to=settings.host_email)
 
 
-def _nudge_html(lead: dict, subject: str, body: str) -> str:
+def ask(booking: dict[str, Any], kind: str, email: str | None = None, guest: bool = False) -> dict[str, Any] | None:
+    """The Ask Deep panel for one visitor or guest email (app/email_ask.py). Called inside the HTML try block: if it
+    fails the email still goes out, as the simple card."""
+    from app import email_ask
+
+    return email_ask.panel(kind=kind, email=email or booking.get("email") or "", pending=is_pending(booking),
+                           booking_id=booking.get("id"), bind=booking.get("manage_token") or "", start=booking.get("start_utc"),
+                           guest=guest)
+
+
+def _nudge_html(lead: dict, subject: str, body: str, sample: bool = False) -> str:
+    from app import email_ask
     from app.booking import email_html
 
-    return _html(lambda: email_html.render_nudge(lead, subject, body), subject, body,
+    def make() -> str:
+        a = (email_ask.sample_panel("vn", True) if sample else
+             email_ask.panel(kind="vn", email=lead.get("email") or "", pending=True, lead_id=lead.get("id"), start=lead.get("slot_start")))
+        return email_html.render_nudge(lead, subject, body, ask=a)
+
+    return _html(make, subject, body,
                  ("Confirm on Zoom", lead.get("handoff_url") or ""))
 
 
@@ -138,6 +154,12 @@ def attendee_notice(booking: dict[str, Any], guest: dict[str, str], kind: str, t
     return subject, body, cta
 
 
+def email_ask_kind(kind: str) -> str:
+    from app.email_ask import GUEST_KINDS
+
+    return GUEST_KINDS.get(kind, "gr")
+
+
 def send_attendee_emails(booking: dict[str, Any], kind: str, mailer=None, attachments: list | None = None) -> int:
     """Queue the notice for every extra guest on the booking. Returns how many were queued."""
     from app import mailer as m
@@ -151,7 +173,8 @@ def send_attendee_emails(booking: dict[str, Any], kind: str, mailer=None, attach
 
     for g in guests:
         subject, body, cta = attendee_notice(booking, g, kind, tpl)
-        html = _html(lambda: email_html.render_guest(booking, g, kind, subject, body, tpl, pending=is_pending(booking), actions=[cta]),
+        html = _html(lambda: email_html.render_guest(booking, g, kind, subject, body, tpl, pending=is_pending(booking), actions=[cta],
+                                                     ask=ask(booking, email_ask_kind(kind), g["email"], guest=True)),
                      subject, body, cta)
         mailer.enqueue(g["email"], subject, body, html=html, attachments=attachments,
                        reply_to=settings.host_email, kind=f"attendee_{kind}", ref=booking.get("id"))
@@ -205,7 +228,8 @@ def send_booking_emails(booking: dict[str, Any], mailer=None, with_brief: bool =
     att = [("invite.ics", invite, "text/calendar")]
     v = templates.render_booking_visitor(booking, tpl)
     if v and booking.get("email"):
-        mailer.enqueue(booking["email"], v[0], v[1], html=_booking_html(booking, "visitor", tpl, v, pending=is_pending(booking)), attachments=att,
+        mailer.enqueue(booking["email"], v[0], v[1], html=_booking_html(booking, "visitor", tpl, v, pending=is_pending(booking),
+                                                                        ask=lambda: ask(booking, "vc")), attachments=att,
                        reply_to=settings.host_email, kind="booking_visitor", ref=booking.get("id"))
 
     def host(brief: dict | None) -> None:
@@ -256,7 +280,8 @@ def send_reschedule_emails(booking: dict[str, Any], mailer=None) -> None:
     r = templates.render_booking_visitor(dict(booking, status="rescheduled", booking_status="pending_zoom" if pending else "confirmed",
                                               old_label_visitor=was, old_label_host=booking.get("old_label_host") or ""), tpl)
     if r and booking.get("email"):
-        html = _html(lambda: email_html.render_moved(booking, "visitor", r[0], r[1], tpl, pending=pending, actions=[cta]), r[0], r[1], cta)
+        html = _html(lambda: email_html.render_moved(booking, "visitor", r[0], r[1], tpl, pending=pending, actions=[cta],
+                                                     ask=ask(booking, "vr")), r[0], r[1], cta)
         mailer.enqueue(booking["email"], r[0], r[1], html=html, attachments=att,
                        reply_to=settings.host_email, kind="reschedule_visitor", ref=booking.get("id"))
     from app import host_page
@@ -279,6 +304,8 @@ def _booking_html(booking: dict[str, Any], audience: str, tpl: dict[str, str], t
     from app.booking import email_html
 
     try:
+        if callable(extra.get("ask")):   # built inside the try: a failing panel falls back like any other render failure
+            extra["ask"] = extra["ask"]()
         return email_html.render(booking, audience, tpl, **extra)
     except Exception as e:
         log.error("booking email html failed, sending the simple version: %s", e)
@@ -302,7 +329,8 @@ def send_cancel_emails(booking: dict[str, Any], mailer=None) -> None:
     r = templates.render_booking_visitor(dict(booking, status="cancelled", booking_status="cancelled"), tpl)  # editable "visitor_cancelled"
     if r and booking.get("email"):
         cta = ("Book a new time", settings.site_base_url)
-        html = _html(lambda: email_html.render_cancelled(booking, "visitor", r[0], r[1], tpl, actions=[cta]), r[0], r[1], cta)
+        html = _html(lambda: email_html.render_cancelled(booking, "visitor", r[0], r[1], tpl, actions=[cta], ask=ask(booking, "vx")),
+                     r[0], r[1], cta)
         mailer.enqueue(booking["email"], r[0], r[1], html=html,
                        reply_to=settings.host_email, kind="cancel_visitor", ref=booking.get("id"))
     actions = [("Open booking page", hu)] if hu else None
@@ -328,7 +356,8 @@ def send_reminder_email(booking: dict[str, Any], mailer=None) -> bool:
     if not r or not booking.get("email"):
         return False
     cta = ("Confirm on Zoom", booking["handoff_url"]) if pending and booking.get("handoff_url") else (("Join Zoom", booking["join_url"]) if booking.get("join_url") else None)
-    html = _html(lambda: email_html.render_reminder(booking, r[0], r[1], tpl, pending=pending, actions=[cta]), r[0], r[1], cta)
+    html = _html(lambda: email_html.render_reminder(booking, r[0], r[1], tpl, pending=pending, actions=[cta], ask=ask(booking, "vm")),
+                 r[0], r[1], cta)
     mailer.enqueue(booking["email"], r[0], r[1], html=html, reply_to=settings.host_email,
                    kind="reminder_visitor", ref=booking.get("id"))
     send_attendee_emails(booking, "reminder", mailer)
@@ -351,16 +380,22 @@ def send_test(kind: str) -> dict:
         if not r:
             return {"ok": False, "error": "that visitor email is disabled"}
         subject, body = r
+        from app import email_ask
+
+        sk = {"visitor_confirmed": "vc", "visitor_cancelled": "vx", "visitor_rescheduled": "vr", "visitor_reminder": "vm"}[kind]
         if kind == "visitor_confirmed":
-            html = _booking_html(sample, "visitor", templates.get_templates(), (subject, body), pending=is_pending(sample))
+            html = _booking_html(sample, "visitor", templates.get_templates(), (subject, body), pending=is_pending(sample),
+                                 ask=lambda: email_ask.sample_panel(sk, is_pending(sample)))
         else:
             from app.booking import email_html
 
             cta = ("Book a new time", settings.site_base_url) if kind == "visitor_cancelled" else ("Join Zoom", templates.SAMPLE_BOOKING["join_url"])
-            make = {"visitor_cancelled": lambda: email_html.render_cancelled(sample, "visitor", subject, body, actions=[cta]),
+            sp = lambda: email_ask.sample_panel(sk, is_pending(sample))  # noqa: E731
+            make = {"visitor_cancelled": lambda: email_html.render_cancelled(sample, "visitor", subject, body, actions=[cta], ask=sp()),
                     "visitor_rescheduled": lambda: email_html.render_moved(sample, "visitor", subject, body, pending=is_pending(sample),
-                                                                           actions=[cta]),
-                    "visitor_reminder": lambda: email_html.render_reminder(sample, subject, body, pending=is_pending(sample), actions=[cta])}[kind]
+                                                                           actions=[cta], ask=sp()),
+                    "visitor_reminder": lambda: email_html.render_reminder(sample, subject, body, pending=is_pending(sample), actions=[cta],
+                                                                           ask=sp())}[kind]
             html = _html(make, subject, body, cta)
         return {"ok": _send(settings.host_email, "[test] " + subject, body, html=html),
                 "to": settings.host_email, "subject": subject}
@@ -383,7 +418,7 @@ def send_test(kind: str) -> dict:
             return {"ok": False, "error": "that visitor email is disabled"}
         subject, body = r
         if kind == "visitor_nudge":  # the 24 h reminder in its HTML design; the other text emails stay text only
-            return {"ok": _send(settings.host_email, "[test] " + subject, body, html=_nudge_html(lead, subject, body)),
+            return {"ok": _send(settings.host_email, "[test] " + subject, body, html=_nudge_html(lead, subject, body, sample=True)),
                     "to": settings.host_email, "subject": "[test] " + subject}
         subject = "[test] " + subject
     return {"ok": _send(settings.host_email, subject, body), "to": settings.host_email, "subject": subject}

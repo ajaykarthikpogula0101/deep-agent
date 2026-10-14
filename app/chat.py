@@ -53,6 +53,12 @@ MAX_HISTORY = 12
 MAX_TOOL_ROUNDS = 4
 
 
+# a question about the booking a booking email opened this chat for: answered from its context, not refused for lack of
+# sources on the site
+ABOUT_BOOKING_RE = re.compile(r"\b(my (call|meeting|booking)|the (call|meeting|booking)|join|zoom|reschedul\w*|cancel\w*|move|prepare|"
+                              r"agenda|guest|invite\w*|what time|when is|confirm\w*|time set)\b", re.I)
+
+
 def sse(obj: dict) -> str:
     return f"data: {json.dumps(obj, default=str)}\n\n"
 
@@ -135,6 +141,8 @@ def respond(
     memory: str = "",
     memory_data: str = "",
     outreach_context: str = "",
+    booking_context: str = "",
+    user_reason: str | None = None,
 ) -> Iterator[str]:
     """Synchronous generator of SSE strings (run in a threadpool by FastAPI).
 
@@ -142,18 +150,20 @@ def respond(
     outcome, sources and latency, and a final {"type":"meta","message_id":...} lets the page attach feedback.
     `visitor` is the signed-in identity from app/identity.describe() when the widget runs inside an app.
     `memory` is the system section of app/memory.prompt_block(); `memory_data` the user-role DATA message of data_block();
-    `outreach_context` the DATA message of app/outreach.data_block() (the pop-up they tapped and its network guess)."""
+    `outreach_context` the DATA message of app/outreach.data_block() (the pop-up they tapped and its network guess).
+    `booking_context` the DATA message of app/email_ask.data_block() (the booking email this chat was opened from);
+    `user_reason` marks the stored visitor turn ('email_chip': the page sent the question an email chip carried)."""
     message = (message or "").strip()[: settings.max_message_chars]
     if attachments and not message:
         message = "Please look at the attached file" + ("s." if len(attachments) > 1 else ".")
     t0 = time.monotonic()
     logged = message + ("".join(f"\n[attached: {a['name']}]({a['url']})" for a in attachments) if attachments else "")
-    inbox.log_message(session_id, "user", logged)
+    inbox.log_message(session_id, "user", logged, reason=user_reason)
     text, outcome, reason, sources, finished = "", "answered", None, [], False
     card = None
     try:
         for chunk in _respond(message, history, visitor_tz, session_id, service, client, visitor, extra_context, memory, memory_data,
-                              outreach_context):
+                              outreach_context, booking_context):
             try:
                 ev = json.loads(chunk[6:])
             except ValueError:
@@ -214,6 +224,7 @@ def _respond(
     memory: str = "",
     memory_data: str = "",
     outreach_context: str = "",
+    booking_context: str = "",
 ) -> Iterator[str]:
     visitor = visitor or {}
     if not message:
@@ -282,7 +293,8 @@ def _respond(
     except Exception as e:
         log.error("retrieval failed: %s", e)
         hits = []
-    if not confident(hits) and not booking and not extra_context:  # an attached file is context of its own
+    about_booking = bool(booking_context) and ABOUT_BOOKING_RE.search(query) is not None  # answered from the booking email's context
+    if not confident(hits) and not booking and not extra_context and not about_booking:  # an attached file is context of its own
         log_event("refusal", session_id, {"reason": "low_confidence", "message": message[:300],
                                           "best_score": hits[0].score if hits else None})
         yield sse({"type": "refusal", "reason": "low_confidence"})
@@ -311,6 +323,10 @@ def _respond(
         from app.outreach import OUTREACH_RULES
 
         system += "\n" + OUTREACH_RULES
+    if booking_context:  # the chat was opened from a booking email (app/email_ask.py)
+        from app.email_ask import RULES as EMAIL_ASK_RULES
+
+        system += "\n" + EMAIL_ASK_RULES
     if visitor.get("signed_in") and (visitor.get("name") or visitor.get("email")):
         system += prompts.signed_in_note(visitor.get("name"), visitor.get("email"), bool(visitor.get("verified")))
     choices = None
@@ -325,6 +341,7 @@ def _respond(
     messages = [{"role": "system", "content": system},
                 *([{"role": "user", "content": memory_data}] if memory_data else []),
                 *([{"role": "user", "content": outreach_context}] if outreach_context else []),
+                *([{"role": "user", "content": booking_context}] if booking_context else []),
                 context_msg, *_history(history), {"role": "user", "content": message}]
     tools = TOOLS if booking else None
 
