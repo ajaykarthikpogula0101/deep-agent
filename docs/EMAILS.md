@@ -51,7 +51,7 @@ Templates are stored in the `settings` table under `tpl:*` keys; the defaults li
 
 * `visitor_confirmed_*` — "Your call with Deep is confirmed: {title} on {date_visitor}" (or "…: one last step" while the
   Zoom confirmation is pending), with `{join_url}`, `{meeting_line}` (Meeting ID · Passcode), `{manage_line}` (cancel /
-  reschedule link) and the `.ics` invite attached. Sent as text + a dark/orange HTML version (`templates.html_wrap`).
+  reschedule link) and the `.ics` invite attached. Sent as text + an HTML version (since 2026-10-15 the Ledger design, see the last section).
 * `host_booking_*` — "[{brand}] New booking: {name} · {title} · {date}" to `HOST_EMAIL`, with company, notes, origin,
   `{method_line}` (Scheduler API / Meetings API / hand-off) and the same invite.
 * Both go through `app/mailer.py` (background, 3 attempts with backoff); the booking succeeds even if SMTP is down.
@@ -85,13 +85,14 @@ notes as before.
 
 `{attendees}` lists the extra guests as "Name <email>, …" (empty when there are none; the "Guests:" line then
 disappears). Each guest receives a short built-in note per event: invited, moved, cancelled, day-before reminder
-(`app/booking/email.py: attendee_notice`), sent with the same layout and replies going to the host.
+(`app/booking/email.py: attendee_notice`), replies going to the host. Since 2026-10-15 their HTML is the Ledger design.
 
 ## Added 2026-10-14: branded HTML for the two in-chat booking emails
 
-* `visitor_confirmed_*` and `host_booking_*` now carry the Champions Group design (navy hero, status pill, event card,
+* `visitor_confirmed_*` and `host_booking_*` now carry a branded HTML design (status pill, event card,
   attendee/company rows, one button) built by `app/booking/email_html.py`. The **text part is unchanged**: still the
-  editable template above, so Console → Emails edits keep working. The moved / cancelled / reminder / guest emails keep the simple card.
+  editable template above, so Console → Emails edits keep working. (The first version had a navy hero and PNG icons;
+  since 2026-10-15 every booking email uses the Ledger design instead, see the last section.)
 * The host copy keeps everything main added: extra guests get a Guests row, the PRE-CALL BRIEF renders as its own
   section (UPPERCASE headings, fact rows, bullets), and a late "since cancelled / since moved" update shows above the status
   (no button once cancelled).
@@ -101,10 +102,8 @@ disappears). Each guest receives a short built-in note per event: invited, moved
   |---|---|---|
   | Visitor | "Your booking is confirmed", Join meeting link, button "View booking details" (manage page) | "Confirm your booking on Zoom", no meeting link, button "Confirm on Zoom" (prefilled link) |
   | Host | "New booking confirmed", Join meeting link, button "View booking details" | "New booking request", "still required to confirm on Zoom" (+ the 24 h reminder line only while reminders are on) |
-* Icons and the hero background are PNGs in `static/email/` (rebuild: `python scripts/build_email_assets.py`), loaded
-  from `PUBLIC_BASE_URL`, so that must be a public https URL in production or the images will not load (the email still
-  reads: solid colours, real text, empty alt on decorative icons).
-* Local look without SMTP: `python scripts/preview_booking_email.py` writes the four variants to `email_preview/`.
+* Local look without SMTP: `python scripts/preview_booking_email.py` writes every email to `email_preview/` (see the
+  last section).
 
 ## Added 2026-10-14: answers to unanswered questions, and call outcomes
 
@@ -118,3 +117,55 @@ The answer email is the template `visitor_gap` (Console → Emails), with five e
 in their words and the answer, for each question answered), `{question_short}`, `{asked_date}`, `{chat_link}` (the site
 with `utm_campaign=gap-followup`) and `{optout_line}` (the signed unsubscribe link). The other two are not templates: the
 outcome email is fixed, and the follow-up is drafted per call.
+
+## Added 2026-10-15: one design for every booking email ("Ledger")
+
+Every booking-lifecycle email now has its HTML part built from one design system in `app/booking/email_html.py`. The
+**text parts, subjects, recipients, reply-to, `.ics` attachments, when each email is sent and in what order are
+unchanged** (a golden snapshot test, `tests/test_email_golden.py`, holds them to what was sent before).
+
+| # | Email | To | Renderer |
+|---|---|---|---|
+| 1 | Booking confirmed / request (pending Zoom) | visitor | `render(…, "visitor")` |
+| 2 | New booking confirmed / request (+ pre-call brief, late "since cancelled / moved" update) | host | `render(…, "host")` |
+| 3, 4 | Booking cancelled | visitor, host | `render_cancelled` |
+| 5, 6 | Booking rescheduled | visitor, host | `render_moved` |
+| 7 | Day-before reminder | visitor | `render_reminder` |
+| 8 | "Brief for tomorrow / your call today" | host | `render_host_brief` |
+| 9 | Unconfirmed-hold reminder (`visitor_nudge`, 24 h after an unconfirmed Zoom hand-off) | visitor | `render_nudge` (new HTML part; before it was text only) |
+| 10–13 | Guest invited / call moved / call cancelled / day-before reminder | each extra guest | `render_guest` |
+
+Console → Emails → **Send test** shows the same design for `host_booking`, `visitor_confirmed`, `visitor_cancelled`,
+`visitor_rescheduled`, `visitor_reminder` and `visitor_nudge`. The hand-off and hand-over acknowledgements stay
+text-only; the knowledge-gap answer, the call-outcome question, the hot-lead alert and Console → Bookings → "email it
+to me" keep the simple card (`templates.html_wrap`), which is also every Ledger email's fallback if rendering fails.
+
+**The design.** One 600px column on a soft canvas; a header with a monogram tile, the brand (`brand_default`) and an
+eyebrow label; one white card with status pills, the heading, the opening paragraphs, the event card (a live-text date
+tile whose top strip carries the state colour, then label/value rows), the closing paragraphs with the next step as a
+note in the state colour, bulletproof buttons (VML for Outlook), the sign-off; a quiet footer with the sent line.
+System fonts, tables and inline styles, two small `<style>` blocks (mobile, dark mode incl. Outlook.com), **no images**
+(so blocked images change nothing and `static/email/` and `scripts/build_email_assets.py` are gone). Every email has a
+preheader. Times: visitor and guest emails in the visitor's time zone, host emails in the host's with the visitor's
+time beside it.
+
+| State | Pill | Colour |
+|---|---|---|
+| Confirmed | ● Confirmed | green |
+| Held, awaiting Zoom | ○ Awaiting Zoom confirmation (alone, or as a second pill next to Rescheduled / Today / You're invited) | amber |
+| Cancelled (overrides every other state) | – Cancelled | slate, no strike-through, no join link |
+| Rescheduled | ● Rescheduled, with a Was / Now block | violet |
+| Reminder | ● Tomorrow / ● Today / ● Upcoming (the call's date against today's in the recipient's zone; #8 follows its subject) | blue |
+| Guest invited | ● You're invited (outlined) | violet |
+
+**Wording.** #1 and #2 keep their fixed copy. #3–#13 take their words from the text part itself: its subject line is
+the heading (as in the simple card), its paragraphs the lead and closing notes, its `Label:  value` lines the event
+card (the call, its time and the Zoom line become the title, the date tile or Was/Now block and the Join row), its
+sign-off the sign-off; so a Console → Emails edit shows in both parts. Every link in the text part is a link in the
+HTML (a long one reads as host/path); the buttons are exactly those the send functions chose before (Confirm on Zoom /
+Join Zoom / Book a new time / Open booking page). A pending email never says "confirmed" and never shows a meeting link.
+
+**Preview.** `python scripts/preview_booking_email.py` runs the real send functions with a capturing mailer, the default
+templates and example data, and writes every email × audience × state (plus long-name, many-guest, missing-field and
+long-brief cases and the Send test kinds) to `email_preview/` with an `index.html`. Nothing is sent and the database is
+not touched.

@@ -1618,7 +1618,12 @@ def send_host_reminder(booking: dict[str, Any], mailer=None, ask=None) -> bool:
             f"Zoom:     {v['join_url']}\nNotes:    {v['reason']}\nBooking page: {hu}\n\n" + text(brief))
     body = templates._tidy(body)  # drops the empty 'Booking page:' line when there is no link
     actions = [a for a in (("Open booking page", hu), ("Join Zoom", email_html.safe_url(booking.get("join_url")))) if a[1]]
-    mailer.enqueue(settings.host_email, subject, body, html=templates.html_wrap(subject, body, None, audience="host", actions=actions),
+    from app.booking.email import _html, is_pending
+
+    html = _html(lambda: email_html.render_host_brief(booking, subject, body, text(brief), tpl, today=bool(soon),
+                                                      pending=is_pending(booking), actions=actions),
+                 subject, body, None, audience="host", actions=actions)
+    mailer.enqueue(settings.host_email, subject, body, html=html,
                    reply_to=booking.get("email"), kind="precall_host", ref=booking.get("id"))
     return True
 

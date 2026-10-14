@@ -1,0 +1,1313 @@
+[
+ {
+  "case": "booking:confirmed",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep is confirmed: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nYour call with Deep is confirmed.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nThe calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "booking_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:confirmed",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] New booking: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "New booking through the website assistant (Zoom meeting created).\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCompany:  Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Wed 07 Oct, 19:00 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 09:30 (America/New_York)\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nNotes:    B2B data for EU fintech\nWhere:    Bengaluru, Karnataka, IN · via linkedin.com (social) · visit 2 · 4 messages\nBooking page: https://assistant.example.com/host/booking/42?t=9VO7ta7lL85-IOGsQRsjQg\n\nThe calendar invite is attached.\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "booking_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:confirmed",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Mary Somerville\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:confirmed",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Charles Babbage\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:confirmed",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "booking:pending",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep: one last step: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nYour call with Deep: one last step.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\n\nTopic:    B2B data for EU fintech\n\nOne last step: confirm the time on Zoom here, your details are already filled in: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&lastname=Lovelace&email=ada%40lovelace.org\n\nThe calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "booking_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:pending",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] New booking: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "New booking through the website assistant (time held in chat; the visitor still has to confirm on Zoom).\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCompany:  Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Wed 07 Oct, 19:00 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 09:30 (America/New_York)\n\nNotes:    B2B data for EU fintech\nWhere:    Bengaluru, Karnataka, IN · via linkedin.com (social) · visit 2 · 4 messages\nBooking page: https://assistant.example.com/host/booking/42?t=9VO7ta7lL85-IOGsQRsjQg\n\nThe calendar invite is attached.\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "booking_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:pending",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Mary Somerville\nTopic:    B2B data for EU fintech\n\nThe time is held while it is confirmed on Zoom; Zoom sends the meeting link once it is final.\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:pending",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Charles Babbage\nTopic:    B2B data for EU fintech\n\nThe time is held while it is confirmed on Zoom; Zoom sends the meeting link once it is final.\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:pending",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "booking:confirmed_bare",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep is confirmed: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nYour call with Deep is confirmed.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nThe calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "booking_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nBooked through the www.example.com assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:confirmed_bare",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] New booking: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "New booking through the website assistant (Zoom meeting created).\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Wed 07 Oct, 19:00 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 09:30 (America/New_York)\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\n\nThe calendar invite is attached.\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "booking_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nBooked through the www.example.com assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:confirmed_bare",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "booking:pending_bare",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep: one last step: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nYour call with Deep: one last step.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\n\nTopic:    B2B data for EU fintech\n\nOne last step: confirm the time on Zoom here, your details are already filled in: \n\nThe calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "booking_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nTopic: B2B data for\r\n  EU fintech\\nBooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:pending_bare",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] New booking: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "New booking through the website assistant (time held in chat; the visitor still has to confirm on Zoom).\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCompany:  Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Wed 07 Oct, 19:00 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 09:30 (America/New_York)\n\nNotes:    B2B data for EU fintech\nWhere:    Bengaluru, Karnataka, IN · via linkedin.com (social) · visit 2 · 4 messages\n\nThe calendar invite is attached.\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "booking_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nTopic: B2B data for\r\n  EU fintech\\nBooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:pending_bare",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "booking:scheduler_no_join",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep is confirmed: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nYour call with Deep is confirmed.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\n\nTopic:    B2B data for EU fintech\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nThe calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "booking_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nTopic: B2B data for\r\n  EU fintech\\nBooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:scheduler_no_join",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] New booking: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "New booking through the website assistant (booked on the Zoom Scheduler).\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCompany:  Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Wed 07 Oct, 19:00 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 09:30 (America/New_York)\n\nNotes:    B2B data for EU fintech\nWhere:    Bengaluru, Karnataka, IN · via linkedin.com (social) · visit 2 · 4 messages\nBooking page: https://assistant.example.com/host/booking/42?t=9VO7ta7lL85-IOGsQRsjQg\n\nThe calendar invite is attached.\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "booking_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nTopic: B2B data for\r\n  EU fintech\\nBooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:scheduler_no_join",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Mary Somerville\nTopic:    B2B data for EU fintech\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nTopic: B2B data for\r\n  EU fintech\\nBooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:scheduler_no_join",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Charles Babbage\nTopic:    B2B data for EU fintech\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nTopic: B2B data for\r\n  EU fintech\\nBooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:scheduler_no_join",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "booking:with_brief",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep is confirmed: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nYour call with Deep is confirmed.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nThe calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "booking_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] New booking: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata) · Hot lead · 83/100",
+  "body": "New booking through the website assistant (Zoom meeting created).\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCompany:  Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Wed 07 Oct, 19:00 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 09:30 (America/New_York)\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nNotes:    B2B data for EU fintech\nWhere:    Bengaluru, Karnataka, IN · via linkedin.com (social) · visit 2 · 4 messages\nBooking page: https://assistant.example.com/host/booking/42?t=9VO7ta7lL85-IOGsQRsjQg\n\nThe calendar invite is attached.\n\nPRE-CALL BRIEF\nLead:     Hot lead · 83/100\nActivity: 2 visits · 5 questions · via google.com (search)\nPages:    /, /lakeb2b\nProfile:  Fit 20 · Intent 30 · Engagement 10 · Risk 0\nEvidence: 15 pts checked · 12 pts seen · 1 claim not scored\n\nAda wants EU fintech data for a launch in Q1.\n\nWHY THIS SCORE\n• +15  company email (lovelace.org) [checked: website]\n• +12  asked about pricing [seen]\n\nWHAT THEY SAY (NOT SCORED)\n• says they have a budget of 50k\n\nWHAT THEY ASKED\n• “What is the pricing for intent data?”\n\nTALKING POINTS\n• Show EU fintech coverage\n\nQUESTIONS TO ASK\n• When is the launch?\n\nWATCH OUT\n• New domain\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "booking_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Mary Somerville\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Charles Babbage\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "booking:with_brief_since_cancelled",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep: one last step: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nYour call with Deep: one last step.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\n\nTopic:    B2B data for EU fintech\n\nOne last step: confirm the time on Zoom here, your details are already filled in: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&lastname=Lovelace&email=ada%40lovelace.org\n\nThe calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "booking_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief_since_cancelled",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] New booking: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata) · Hot lead · 83/100 (since cancelled)",
+  "body": "Update: the visitor has already cancelled this call.\n\nNew booking through the website assistant (time held in chat; the visitor still has to confirm on Zoom).\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCompany:  Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Wed 07 Oct, 19:00 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 09:30 (America/New_York)\n\nNotes:    B2B data for EU fintech\nWhere:    Bengaluru, Karnataka, IN · via linkedin.com (social) · visit 2 · 4 messages\nBooking page: https://assistant.example.com/host/booking/42?t=9VO7ta7lL85-IOGsQRsjQg\n\nThe calendar invite is attached.\n\nPRE-CALL BRIEF\nLead:     Hot lead · 83/100\nActivity: 2 visits · 5 questions · via google.com (search)\nPages:    /, /lakeb2b\nProfile:  Fit 20 · Intent 30 · Engagement 10 · Risk 0\nEvidence: 15 pts checked · 12 pts seen · 1 claim not scored\n\nAda wants EU fintech data for a launch in Q1.\n\nWHY THIS SCORE\n• +15  company email (lovelace.org) [checked: website]\n• +12  asked about pricing [seen]\n\nWHAT THEY SAY (NOT SCORED)\n• says they have a budget of 50k\n\nWHAT THEY ASKED\n• “What is the pricing for intent data?”\n\nTALKING POINTS\n• Show EU fintech coverage\n\nQUESTIONS TO ASK\n• When is the launch?\n\nWATCH OUT\n• New domain\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "booking_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief_since_cancelled",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Mary Somerville\nTopic:    B2B data for EU fintech\n\nThe time is held while it is confirmed on Zoom; Zoom sends the meeting link once it is final.\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief_since_cancelled",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Charles Babbage\nTopic:    B2B data for EU fintech\n\nThe time is held while it is confirmed on Zoom; Zoom sends the meeting link once it is final.\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief_since_cancelled",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "booking:with_brief_since_moved",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep is confirmed: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nYour call with Deep is confirmed.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nThe calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "booking_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief_since_moved",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] New booking: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata) · Hot lead · 83/100 (since moved)",
+  "body": "Update: the visitor has since moved this call; the time below is the original one.\n\nNew booking through the website assistant (Zoom meeting created).\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCompany:  Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Wed 07 Oct, 19:00 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 09:30 (America/New_York)\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nNotes:    B2B data for EU fintech\nWhere:    Bengaluru, Karnataka, IN · via linkedin.com (social) · visit 2 · 4 messages\nBooking page: https://assistant.example.com/host/booking/42?t=9VO7ta7lL85-IOGsQRsjQg\n\nThe calendar invite is attached.\n\nPRE-CALL BRIEF\nLead:     Hot lead · 83/100\nActivity: 2 visits · 5 questions · via google.com (search)\nPages:    /, /lakeb2b\nProfile:  Fit 20 · Intent 30 · Engagement 10 · Risk 0\nEvidence: 15 pts checked · 12 pts seen · 1 claim not scored\n\nAda wants EU fintech data for a launch in Q1.\n\nWHY THIS SCORE\n• +15  company email (lovelace.org) [checked: website]\n• +12  asked about pricing [seen]\n\nWHAT THEY SAY (NOT SCORED)\n• says they have a budget of 50k\n\nWHAT THEY ASKED\n• “What is the pricing for intent data?”\n\nTALKING POINTS\n• Show EU fintech coverage\n\nQUESTIONS TO ASK\n• When is the launch?\n\nWATCH OUT\n• New domain\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "booking_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief_since_moved",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Mary Somerville\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief_since_moved",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Ada Lovelace invited you: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nAda Lovelace added you to a call with Deep.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Charles Babbage\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nThe calendar invite is attached. If you can't make it, just reply to this email.\n\nSee you there,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_booked",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "booking:with_brief_since_moved",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "cancel:confirmed",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep is cancelled: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThanks for letting us know. Your call with Deep is cancelled.\n\nCall:     LakeB2B Discovery Call with Deep\nWas:      Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\n\nIf your plans change you are always welcome back: open the chat on www.example.com and say \"book a call\", or pick a time at https://scheduler.zoom.us/sreedeep.\n\nAll the best,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "cancel_visitor",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "cancel:confirmed",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] Cancelled: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York) · Ada Lovelace",
+  "body": "Cancelled by the visitor.\n\nName:   Ada Lovelace\nEmail:  ada@lovelace.org\nCall:   LakeB2B Discovery Call\nWas:    Wed 07 Oct, 19:00 (Asia/Kolkata)\nNote:   Cancelled here; please also cancel the event in Zoom Scheduler.\nBooking page: https://assistant.example.com/host/booking/42?t=9VO7ta7lL85-IOGsQRsjQg\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "cancel_host",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "cancel:confirmed",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Cancelled: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nThe call Ada Lovelace added you to has been cancelled, so there is nothing in your diary for it any more.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWas:      Wed 07 Oct, 09:30 (America/New_York)\n\nAll the best,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_cancelled",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "cancel:confirmed",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Cancelled: LakeB2B Discovery Call with Deep on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nThe call Ada Lovelace added you to has been cancelled, so there is nothing in your diary for it any more.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWas:      Wed 07 Oct, 09:30 (America/New_York)\n\nAll the best,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_cancelled",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "cancel:confirmed",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "cancel:pending_bare",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep is cancelled: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThanks for letting us know. Your call with Deep is cancelled.\n\nCall:     LakeB2B Discovery Call with Deep\nWas:      Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\n\nIf your plans change you are always welcome back: open the chat on www.example.com and say \"book a call\", or pick a time at https://scheduler.zoom.us/sreedeep.\n\nAll the best,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "cancel_visitor",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "cancel:pending_bare",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] Cancelled: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York) · Ada Lovelace",
+  "body": "Cancelled by the visitor.\n\nName:   Ada Lovelace\nEmail:  ada@lovelace.org\nCall:   LakeB2B Discovery Call\nWas:    Wed 07 Oct, 19:00 (Asia/Kolkata)\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "cancel_host",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "cancel:pending_bare",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "move:confirmed",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep has moved: LakeB2B Discovery Call now on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThanks for letting us know. Your call with Deep has moved.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWas:      Tue 06 Oct, 10:00 (America/New_York)\nNow:      Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nThe updated calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nSee you then,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "reschedule_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:confirmed",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] Moved: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "The visitor moved their call.\n\nName:   Ada Lovelace\nEmail:  ada@lovelace.org\nCall:   LakeB2B Discovery Call\nWas:    Tue 06 Oct, 10:00 (America/New_York)\nNow:    Wed 07 Oct, 19:00 (Asia/Kolkata)\nStatus: rescheduled on Zoom Scheduler\nBooking page: https://assistant.example.com/host/booking/42?t=9VO7ta7lL85-IOGsQRsjQg\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "reschedule_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:confirmed",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Moved: LakeB2B Discovery Call with Deep now on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nThe call Ada Lovelace added you to has a new time.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWas:      Tue 06 Oct, 10:00 (America/New_York)\nNow:      Wed 07 Oct, 09:30 (America/New_York)\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\n\nThe updated calendar invite is attached.\n\nSee you then,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_moved",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:confirmed",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Moved: LakeB2B Discovery Call with Deep now on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nThe call Ada Lovelace added you to has a new time.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWas:      Tue 06 Oct, 10:00 (America/New_York)\nNow:      Wed 07 Oct, 09:30 (America/New_York)\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\n\nThe updated calendar invite is attached.\n\nSee you then,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_moved",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nTopic: B2B data for EU fintech\\nBooked through the www.example.com \r\n assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:confirmed",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "move:pending",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep has moved: LakeB2B Discovery Call now on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThanks for letting us know. Your call with Deep has moved.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWas:      Tue 06 Oct, 10:00 (America/New_York)\nNow:      Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\n\nOne last step: confirm the time on Zoom here, your details are already filled in: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&lastname=Lovelace&email=ada%40lovelace.org\n\nThe updated calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nSee you then,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "reschedule_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:pending",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] Moved: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "The visitor moved their call.\n\nName:   Ada Lovelace\nEmail:  ada@lovelace.org\nCall:   LakeB2B Discovery Call\nWas:    Tue 06 Oct, 10:00 (America/New_York)\nNow:    Wed 07 Oct, 19:00 (Asia/Kolkata)\nStatus: held, waiting for the visitor to confirm on Zoom\nBooking page: https://assistant.example.com/host/booking/42?t=9VO7ta7lL85-IOGsQRsjQg\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "reschedule_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:pending",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Moved: LakeB2B Discovery Call with Deep now on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nThe call Ada Lovelace added you to has a new time.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWas:      Tue 06 Oct, 10:00 (America/New_York)\nNow:      Wed 07 Oct, 09:30 (America/New_York)\n\nThe updated calendar invite is attached.\n\nSee you then,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_moved",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:pending",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Moved: LakeB2B Discovery Call with Deep now on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nThe call Ada Lovelace added you to has a new time.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWas:      Tue 06 Oct, 10:00 (America/New_York)\nNow:      Wed 07 Oct, 09:30 (America/New_York)\n\nThe updated calendar invite is attached.\n\nSee you then,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_moved",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nConfirm the time on\r\n  Zoom: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&las\r\n tname=Lovelace&email=ada%40lovelace.org\\nTopic: B2B data for EU fintech\\nB\r\n ooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nATTENDEE;CN=Charles Babbage;ROLE=REQ-PARTICIPANT:mailto:charles@babbage.org\r\nATTENDEE;CN=Mary Somerville;ROLE=REQ-PARTICIPANT:mailto:mary@somerville.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:pending",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "move:no_old_label",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep has moved: LakeB2B Discovery Call now on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThanks for letting us know. Your call with Deep has moved.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWas:      the earlier time\nNow:      Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nThe updated calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nSee you then,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "reschedule_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nBooked through the www.example.com assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:no_old_label",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] Moved: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "The visitor moved their call.\n\nName:   Ada Lovelace\nEmail:  ada@lovelace.org\nCall:   LakeB2B Discovery Call\nWas:    the earlier time\nNow:    Wed 07 Oct, 19:00 (Asia/Kolkata)\nStatus: rescheduled on Zoom Scheduler\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "reschedule_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nJoin Zoom: https://\r\n zoom.us/j/81234567890?pwd=sample\\nMeeting ID: 812 3456 7890 · Passcode: 7\r\n 42913\\nBooked through the www.example.com assistant.\r\nLOCATION:https://zoom.us/j/81234567890?pwd=sample\r\nURL:https://zoom.us/j/81234567890?pwd=sample\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:no_old_label",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "move:pending_bare",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Your call with Deep has moved: LakeB2B Discovery Call now on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThanks for letting us know. Your call with Deep has moved.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWas:      Tue 06 Oct, 10:00 (America/New_York)\nNow:      Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\n\nOne last step: confirm the time on Zoom here, your details are already filled in: \n\nThe updated calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nSee you then,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "reschedule_visitor",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nTopic: B2B data for\r\n  EU fintech\\nBooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:pending_bare",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] Moved: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "The visitor moved their call.\n\nName:   Ada Lovelace\nEmail:  ada@lovelace.org\nCall:   LakeB2B Discovery Call\nWas:    Tue 06 Oct, 10:00 (America/New_York)\nNow:    Wed 07 Oct, 19:00 (Asia/Kolkata)\nStatus: held, waiting for the visitor to confirm on Zoom\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "reschedule_host",
+  "ref": 42,
+  "attachments": [
+   [
+    "invite.ics",
+    "text/calendar",
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//www.example.com//assistant//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:booking-42@www.example.com\r\nDTSTAMP:<now>\r\nDTSTART:20261007T133000Z\r\nDTEND:20261007T134500Z\r\nSUMMARY:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nDESCRIPTION:LakeB2B Discovery Call with Deep (15 min).\\nTopic: B2B data for\r\n  EU fintech\\nBooked through the www.example.com assistant.\r\nLOCATION:Zoom\r\nORGANIZER;CN=Deep:mailto:deep@example.com\r\nATTENDEE;CN=Ada Lovelace;ROLE=REQ-PARTICIPANT:mailto:ada@lovelace.org\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:LakeB2B Discovery Call — Ada Lovelace × Deep\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+   ]
+  ]
+ },
+ {
+  "case": "move:pending_bare",
+  "via": "return",
+  "value": null
+ },
+ {
+  "case": "reminder:confirmed",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nA quick reminder that your LakeB2B Discovery Call with Deep is tomorrow.\n\nWhen:     Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nNeed to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nLooking forward to it,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "reminder_visitor",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "reminder:confirmed",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nA quick reminder that the call Ada Lovelace added you to is tomorrow.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Mary Somerville\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\n\nLooking forward to it,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_reminder",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "reminder:confirmed",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nA quick reminder that the call Ada Lovelace added you to is tomorrow.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Charles Babbage\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\n\nLooking forward to it,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_reminder",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "reminder:confirmed",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "reminder:pending",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nA quick reminder that your LakeB2B Discovery Call with Deep is tomorrow.\n\nWhen:     Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\n\nTopic:    B2B data for EU fintech\n\nOne last step: confirm the time on Zoom here, your details are already filled in: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&lastname=Lovelace&email=ada%40lovelace.org\n\nNeed to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nLooking forward to it,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "reminder_visitor",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "reminder:pending",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nA quick reminder that the call Ada Lovelace added you to is tomorrow.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Mary Somerville\n\nLooking forward to it,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_reminder",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "reminder:pending",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nA quick reminder that the call Ada Lovelace added you to is tomorrow.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Charles Babbage\n\nLooking forward to it,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_reminder",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "reminder:pending",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "reminder:pending_bare",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nA quick reminder that your LakeB2B Discovery Call with Deep is tomorrow.\n\nWhen:     Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\n\nTopic:    B2B data for EU fintech\n\nOne last step: confirm the time on Zoom here, your details are already filled in: \n\nNeed to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nLooking forward to it,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "reminder_visitor",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "reminder:pending_bare",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "reminder:scheduler_no_join",
+  "via": "mailer",
+  "to": "ada@lovelace.org",
+  "subject": "Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nA quick reminder that your LakeB2B Discovery Call with Deep is tomorrow.\n\nWhen:     Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\n\nTopic:    B2B data for EU fintech\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nNeed to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nLooking forward to it,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "reminder_visitor",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "reminder:scheduler_no_join",
+  "via": "mailer",
+  "to": "charles@babbage.org",
+  "subject": "Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Charles,\n\nA quick reminder that the call Ada Lovelace added you to is tomorrow.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Mary Somerville\n\nLooking forward to it,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_reminder",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "reminder:scheduler_no_join",
+  "via": "mailer",
+  "to": "mary@somerville.org",
+  "subject": "Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Mary,\n\nA quick reminder that the call Ada Lovelace added you to is tomorrow.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nWith:     Ada Lovelace, Charles Babbage\n\nLooking forward to it,\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": "attendee_reminder",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "reminder:scheduler_no_join",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "reminder:disabled",
+  "via": "return",
+  "value": false
+ },
+ {
+  "case": "precall:tomorrow",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] Brief for tomorrow: Ada Lovelace · Hot lead · 83/100 · Wed 07 Oct, 12:30 (Asia/Kolkata)",
+  "body": "Your call with Ada Lovelace is tomorrow.\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCompany:  Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Wed 07 Oct, 12:30 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 03:00 (America/New_York)\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nNotes:    B2B data for EU fintech\nBooking page: https://assistant.example.com/host/booking/42?t=9VO7ta7lL85-IOGsQRsjQg\n\nPRE-CALL BRIEF\nLead:     Hot lead · 83/100\nActivity: 2 visits · 5 questions · via google.com (search)\nPages:    /, /lakeb2b\nProfile:  Fit 20 · Intent 30 · Engagement 10 · Risk 0\nEvidence: 15 pts checked · 12 pts seen · 1 claim not scored\n\nAda wants EU fintech data for a launch in Q1.\n\nWHY THIS SCORE\n• +15  company email (lovelace.org) [checked: website]\n• +12  asked about pricing [seen]\n\nWHAT THEY SAY (NOT SCORED)\n• says they have a budget of 50k\n\nWHAT THEY ASKED\n• “What is the pricing for intent data?”\n\nTALKING POINTS\n• Show EU fintech coverage\n\nQUESTIONS TO ASK\n• When is the launch?\n\nWATCH OUT\n• New domain\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "precall_host",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "precall:tomorrow",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "precall:today",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] Brief for your call today: Ada Lovelace · Hot lead · 83/100 · Tue 06 Oct, 17:30 (Asia/Kolkata)",
+  "body": "Your call with Ada Lovelace is coming up.\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCompany:  Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nGuests:   Charles Babbage <charles@babbage.org>, Mary Somerville <mary@somerville.org>\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Tue 06 Oct, 17:30 (Asia/Kolkata)  /  visitor time Tue 06 Oct, 08:00 (America/New_York)\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nNotes:    B2B data for EU fintech\nBooking page: https://assistant.example.com/host/booking/42?t=9VO7ta7lL85-IOGsQRsjQg\n\nPRE-CALL BRIEF\nLead:     Hot lead · 83/100\nActivity: 2 visits · 5 questions · via google.com (search)\nPages:    /, /lakeb2b\nProfile:  Fit 20 · Intent 30 · Engagement 10 · Risk 0\nEvidence: 15 pts checked · 12 pts seen · 1 claim not scored\n\nAda wants EU fintech data for a launch in Q1.\n\nWHY THIS SCORE\n• +15  company email (lovelace.org) [checked: website]\n• +12  asked about pricing [seen]\n\nWHAT THEY SAY (NOT SCORED)\n• says they have a budget of 50k\n\nWHAT THEY ASKED\n• “What is the pricing for intent data?”\n\nTALKING POINTS\n• Show EU fintech coverage\n\nQUESTIONS TO ASK\n• When is the launch?\n\nWATCH OUT\n• New domain\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "precall_host",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "precall:today",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "precall:pending_bare",
+  "via": "mailer",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] Brief for tomorrow: Ada Lovelace · Hot lead · 83/100 · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "Your call with Ada Lovelace is tomorrow.\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCompany:  Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Wed 07 Oct, 19:00 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 09:30 (America/New_York)\nNotes:    B2B data for EU fintech\n\nPRE-CALL BRIEF\nLead:     Hot lead · 83/100\nActivity: 2 visits · 5 questions · via google.com (search)\nPages:    /, /lakeb2b\nProfile:  Fit 20 · Intent 30 · Engagement 10 · Risk 0\nEvidence: 15 pts checked · 12 pts seen · 1 claim not scored\n\nAda wants EU fintech data for a launch in Q1.\n\nWHY THIS SCORE\n• +15  company email (lovelace.org) [checked: website]\n• +12  asked about pricing [seen]\n\nWHAT THEY SAY (NOT SCORED)\n• says they have a budget of 50k\n\nWHAT THEY ASKED\n• “What is the pricing for intent data?”\n\nTALKING POINTS\n• Show EU fintech coverage\n\nQUESTIONS TO ASK\n• When is the launch?\n\nWATCH OUT\n• New domain\n",
+  "reply_to": "ada@lovelace.org",
+  "kind": "precall_host",
+  "ref": 42,
+  "attachments": []
+ },
+ {
+  "case": "precall:pending_bare",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "visitor_confirmation:handoff",
+  "via": "_send",
+  "to": "ada@lovelace.org",
+  "subject": "Thank you for booking with LakeB2B: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThank you for booking with LakeB2B.\n\nCall:   LakeB2B Discovery Call (15 min)\nWhen:   Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nTopic:  B2B data for EU fintech\n\nOne last step: confirm the time on Zoom here, your details are already filled in: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&email=ada%40lovelace.org\n\nIf anything changes, just reply to this email.\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "visitor_confirmation:handoff",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "visitor_confirmation:booked",
+  "via": "_send",
+  "to": "ada@lovelace.org",
+  "subject": "Thank you for booking with LakeB2B: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThank you for booking with LakeB2B.\n\nCall:   LakeB2B Discovery Call (15 min)\nWhen:   Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nTopic:  B2B data for EU fintech\n\nIt's confirmed. A Zoom calendar invite follows separately.\n\nIf anything changes, just reply to this email.\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "visitor_confirmation:booked",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "visitor_confirmation:enquiry",
+  "via": "_send",
+  "to": "ada@lovelace.org",
+  "subject": "Thank you for booking with LakeB2B: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThank you for booking with LakeB2B.\n\nCall:   LakeB2B Discovery Call (15 min)\nWhen:   Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nTopic:  B2B data for EU fintech\n\nZoom's scheduler was unavailable for a moment, so Deep has your details and will confirm the time by email.\n\nIf anything changes, just reply to this email.\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "visitor_confirmation:enquiry",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "visitor_confirmation:handover",
+  "via": "_send",
+  "to": "ada@lovelace.org",
+  "subject": "Thanks for your message to LakeB2B",
+  "body": "Hi Ada,\n\nThanks for reaching out. Deep has your message and will reply to this address.\n\nB2B data for EU fintech\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "visitor_confirmation:handover",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "visitor_confirmation:nudge",
+  "via": "_send",
+  "to": "ada@lovelace.org",
+  "subject": "Still want to talk with Deep? LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nYou picked Wed 07 Oct, 09:30 (America/New_York) for a LakeB2B Discovery Call with Deep, but the Zoom booking wasn't completed, so that time isn't reserved yet.\n\nConfirm it here, your details are already filled in: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&email=ada%40lovelace.org\n\nIf the time no longer works, just reply to this email and we'll find another.\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "visitor_confirmation:nudge",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "nudge:lead",
+  "via": "_send",
+  "to": "ada@lovelace.org",
+  "subject": "Still want to talk with Deep? LakeB2B Discovery Call on Thu 08 Oct, 08:00 (America/New_York)",
+  "body": "Hi Ada,\n\nYou picked Thu 08 Oct, 08:00 (America/New_York) for a LakeB2B Discovery Call with Deep, but the Zoom booking wasn't completed, so that time isn't reserved yet.\n\nConfirm it here, your details are already filled in: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&lastname=Lovelace&email=ada%40lovelace.org&month=2026-10&utm_source=deependhq-assistant&utm_medium=chat\n\nIf the time no longer works, just reply to this email and we'll find another.\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "nudge:lead",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "nudge:no_slot",
+  "via": "_send",
+  "to": "ada@lovelace.org",
+  "subject": "Still want to talk with Deep? Discovery Call on",
+  "body": "Hi Ada,\n\nYou picked  for a Discovery Call with Deep, but the Zoom booking wasn't completed, so that time isn't reserved yet.\n\nConfirm it here, your details are already filled in: https://scheduler.zoom.us/sreedeep/discovery-call\n\nIf the time no longer works, just reply to this email and we'll find another.\n\nDeep\nwww.example.com\n",
+  "reply_to": "deep@example.com",
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "nudge:no_slot",
+  "via": "return",
+  "value": true
+ },
+ {
+  "case": "send_test:host",
+  "via": "_send",
+  "to": "deep@example.com",
+  "subject": "[LakeB2B] Demo request, handing off to Zoom: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "Demo request, handing off to Zoom\n\nName:    Ada Lovelace\nEmail:   ada@lovelace.org\nCompany: Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nReason:  B2B data for EU fintech\nCall:    LakeB2B Discovery Call\nWanted:  Wed 07 Oct, 19:00 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nWhere:   Bengaluru, Karnataka, IN · via linkedin.com (social) · visit 2 · 4 messages\n\nSent by the website assistant. Reply to the visitor directly if the Zoom booking never lands.\n",
+  "reply_to": null,
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "send_test:host",
+  "via": "return",
+  "value": {
+   "ok": true,
+   "to": "deep@example.com",
+   "subject": "[LakeB2B] Demo request, handing off to Zoom: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)"
+  }
+ },
+ {
+  "case": "send_test:visitor_booking",
+  "via": "_send",
+  "to": "deep@example.com",
+  "subject": "[test] Thank you for booking with LakeB2B: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThank you for booking with LakeB2B.\n\nCall:   LakeB2B Discovery Call (15 min)\nWhen:   Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nTopic:  B2B data for EU fintech\n\nOne last step: confirm the time on Zoom here, your details are already filled in: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&email=ada%40lovelace.org\n\nIf anything changes, just reply to this email.\n\nDeep\nwww.example.com\n",
+  "reply_to": null,
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "send_test:visitor_booking",
+  "via": "return",
+  "value": {
+   "ok": true,
+   "to": "deep@example.com",
+   "subject": "[test] Thank you for booking with LakeB2B: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)"
+  }
+ },
+ {
+  "case": "send_test:visitor_handover",
+  "via": "_send",
+  "to": "deep@example.com",
+  "subject": "[test] Thanks for your message to LakeB2B",
+  "body": "Hi Ada,\n\nThanks for reaching out. Deep has your message and will reply to this address.\n\nB2B data for EU fintech\n\nDeep\nwww.example.com\n",
+  "reply_to": null,
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "send_test:visitor_handover",
+  "via": "return",
+  "value": {
+   "ok": true,
+   "to": "deep@example.com",
+   "subject": "[test] Thanks for your message to LakeB2B"
+  }
+ },
+ {
+  "case": "send_test:visitor_nudge",
+  "via": "_send",
+  "to": "deep@example.com",
+  "subject": "[test] Still want to talk with Deep? LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nYou picked Wed 07 Oct, 09:30 (America/New_York) for a LakeB2B Discovery Call with Deep, but the Zoom booking wasn't completed, so that time isn't reserved yet.\n\nConfirm it here, your details are already filled in: https://scheduler.zoom.us/sreedeep/discovery-call?firstname=Ada&email=ada%40lovelace.org\n\nIf the time no longer works, just reply to this email and we'll find another.\n\nDeep\nwww.example.com\n",
+  "reply_to": null,
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "send_test:visitor_nudge",
+  "via": "return",
+  "value": {
+   "ok": true,
+   "to": "deep@example.com",
+   "subject": "[test] Still want to talk with Deep? LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)"
+  }
+ },
+ {
+  "case": "send_test:visitor_confirmed",
+  "via": "_send",
+  "to": "deep@example.com",
+  "subject": "[test] Your call with Deep is confirmed: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nYour call with Deep is confirmed.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWhen:     Wed 07 Oct, 09:30 (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nThe calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nDeep\nwww.example.com\n",
+  "reply_to": null,
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "send_test:visitor_confirmed",
+  "via": "return",
+  "value": {
+   "ok": true,
+   "to": "deep@example.com",
+   "subject": "Your call with Deep is confirmed: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)"
+  }
+ },
+ {
+  "case": "send_test:host_booking",
+  "via": "_send",
+  "to": "deep@example.com",
+  "subject": "[test] [LakeB2B] New booking: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)",
+  "body": "New booking through the website assistant (Zoom meeting created).\n\nName:     Ada Lovelace\nEmail:    ada@lovelace.org\nCompany:  Lovelace Analytical Engines (lovelace.org) · Computation for the modern enterprise\nGuests:   Charles Babbage <charles@babbage.org>\nCall:     LakeB2B Discovery Call (15 min)\nWhen:     Wed 07 Oct, 19:00 (Asia/Kolkata)  /  visitor time Wed 07 Oct, 09:30 (America/New_York)\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nNotes:    B2B data for EU fintech\nWhere:    Bengaluru, Karnataka, IN · via linkedin.com (social) · visit 2 · 4 messages\nBooking page: https://assistant.example.com/host/booking/sample\n\nThe calendar invite is attached.\n",
+  "reply_to": null,
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "send_test:host_booking",
+  "via": "return",
+  "value": {
+   "ok": true,
+   "to": "deep@example.com",
+   "subject": "[LakeB2B] New booking: Ada Lovelace · LakeB2B Discovery Call · Wed 07 Oct, 19:00 (Asia/Kolkata)"
+  }
+ },
+ {
+  "case": "send_test:visitor_rescheduled",
+  "via": "_send",
+  "to": "deep@example.com",
+  "subject": "[test] Your call with Deep has moved: LakeB2B Discovery Call now on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThanks for letting us know. Your call with Deep has moved.\n\nCall:     LakeB2B Discovery Call (15 min) with Deep\nWas:      Tue 06 Oct, 10:00 (America/New_York)\nNow:      Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nThe updated calendar invite is attached. Need to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nSee you then,\nDeep\nwww.example.com\n",
+  "reply_to": null,
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "send_test:visitor_rescheduled",
+  "via": "return",
+  "value": {
+   "ok": true,
+   "to": "deep@example.com",
+   "subject": "Your call with Deep has moved: LakeB2B Discovery Call now on Wed 07 Oct, 09:30 (America/New_York)"
+  }
+ },
+ {
+  "case": "send_test:visitor_cancelled",
+  "via": "_send",
+  "to": "deep@example.com",
+  "subject": "[test] Your call with Deep is cancelled: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nThanks for letting us know. Your call with Deep is cancelled.\n\nCall:     LakeB2B Discovery Call with Deep\nWas:      Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\n\nIf your plans change you are always welcome back: open the chat on www.example.com and say \"book a call\", or pick a time at https://scheduler.zoom.us/sreedeep.\n\nAll the best,\nDeep\nwww.example.com\n",
+  "reply_to": null,
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "send_test:visitor_cancelled",
+  "via": "return",
+  "value": {
+   "ok": true,
+   "to": "deep@example.com",
+   "subject": "Your call with Deep is cancelled: LakeB2B Discovery Call on Wed 07 Oct, 09:30 (America/New_York)"
+  }
+ },
+ {
+  "case": "send_test:visitor_reminder",
+  "via": "_send",
+  "to": "deep@example.com",
+  "subject": "[test] Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)",
+  "body": "Hi Ada,\n\nA quick reminder that your LakeB2B Discovery Call with Deep is tomorrow.\n\nWhen:     Wed 07 Oct, 09:30 (America/New_York) (America/New_York)\nGuests:   Charles Babbage <charles@babbage.org>\nZoom:     https://zoom.us/j/81234567890?pwd=sample\nMeeting ID 812 3456 7890 · Passcode 742913\nTopic:    B2B data for EU fintech\n\nJoin with the Zoom link above when it's time. Nothing else to do.\n\nNeed to change it? Cancel or reschedule here: https://assistant.deependhq.com/booking/42/manage?t=sample\n\nLooking forward to it,\nDeep\nwww.example.com\n",
+  "reply_to": null,
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "send_test:visitor_reminder",
+  "via": "return",
+  "value": {
+   "ok": true,
+   "to": "deep@example.com",
+   "subject": "Reminder: LakeB2B Discovery Call with Deep tomorrow, Wed 07 Oct, 09:30 (America/New_York)"
+  }
+ },
+ {
+  "case": "send_test:visitor_gap",
+  "via": "_send",
+  "to": "deep@example.com",
+  "subject": "[test] Your question, answered: do u have fintech contacts in germany",
+  "body": "Hi Ada,\n\nWhen you visited www.example.com on 9 Oct, you asked our assistant something it couldn't answer yet. Deep's team has written the answer for you:\n\nYOUR QUESTION\n“do u have fintech contacts in germany”\n\nYes. LakeB2B covers fintech decision makers across the DACH region, with phone and email verified before every delivery. Tell us your target titles and we'll share a sample.\n\nRead more: https://deependhq.com/lakeb2b\n\nAnything else on your mind? Reply to this email and a person reads it, or pick a time to talk with Deep: https://scheduler.zoom.us/sreedeep\n\nDeep\nwww.example.com\n\nPrefer no emails like this? https://assistant.example.com/email/optout?e=ada%40lovelace.org&t=NTvP3Lrr05Kbq2uXVf9j4Q\n",
+  "reply_to": null,
+  "kind": null,
+  "ref": null,
+  "attachments": []
+ },
+ {
+  "case": "send_test:visitor_gap",
+  "via": "return",
+  "value": {
+   "ok": true,
+   "to": "deep@example.com",
+   "subject": "Your question, answered: do u have fintech contacts in germany"
+  }
+ }
+]

@@ -25,7 +25,8 @@ def html(booking, audience="visitor"):
 
 def test_confirmed_visitor_email_says_confirmed_and_links_the_meeting_and_the_booking_page():
     h = html(CONFIRMED)
-    assert "Your booking is confirmed" in h and "Booking Confirmed" in h and "Awaiting Zoom Confirmation" not in h
+    assert "Your booking is confirmed" in h and "&nbsp;Confirmed</td>" in h and 'class="st-ok"' in h
+    assert "Awaiting Zoom confirmation" not in h and 'class="st-wait"' not in h
     assert "Hi Harsha," in h and "Your GTM Strategy Session: Data, AI &amp; Revenue Acceleration has been scheduled." in h
     assert "Fri, 09 Oct 2026" in h and "6:30 PM IST" in h and "(45 minutes)" in h
     assert 'href="https://zoom.us/j/81234567890?pwd=sample"' in h and "Join meeting" in h
@@ -36,7 +37,7 @@ def test_confirmed_visitor_email_says_confirmed_and_links_the_meeting_and_the_bo
 def test_pending_visitor_email_never_claims_confirmation_and_points_to_the_zoom_confirmation():
     h = html(PENDING)
     assert "confirmed" not in re.sub(r"<[^>]+>", " ", h).lower().replace("confirmation", "")   # no "is confirmed" anywhere
-    assert "Awaiting Zoom Confirmation" in h and "Confirm your booking on Zoom" in h
+    assert "Awaiting Zoom confirmation" in h and 'class="st-wait"' in h and "Confirm your booking on Zoom" in h
     assert "Join meeting" not in h and "zoom.us/j/" not in h
     link = 'href="https://scheduler.zoom.us/sreedeep/gtm?firstname=Harsha&amp;email=harsha%40example.com"'
     assert h.count(link) == 2 and "Confirm on Zoom →" not in h       # only the button (Outlook VML + everyone else)
@@ -45,10 +46,10 @@ def test_pending_visitor_email_never_claims_confirmation_and_points_to_the_zoom_
 
 def test_pending_host_email_is_a_request_with_the_true_follow_up(monkeypatch):
     h = html(PENDING, "host")
-    assert "New booking request" in h and "Awaiting Zoom Confirmation" in h and "Your booking is confirmed" not in h
+    assert "New booking request" in h and "Awaiting Zoom confirmation" in h and "Your booking is confirmed" not in h
     assert "The visitor is still required to confirm the booking on Zoom." in h and "24 hours" in h
     assert "scheduler.zoom.us" not in h                     # the visitor's prefilled link is theirs, not the host's
-    assert "View booking details" not in h and "Notes: B2B data for EU fintech" in h   # no host_url: no button
+    assert "View booking details" not in h and ">Notes<" in h and "B2B data for EU fintech" in h   # no host_url: no button
     assert PENDING["manage_url"] not in h                    # never the visitor's page (it has a Cancel button)
     u = "https://assistant.deependhq.com/host/booking/42?t=hosttoken"
     assert f'href="{u}"' in html(dict(PENDING, host_url=u), "host") and "View booking details" in html(dict(PENDING, host_url=u), "host")
@@ -59,7 +60,7 @@ def test_pending_host_email_is_a_request_with_the_true_follow_up(monkeypatch):
 
 def test_confirmed_host_email():
     h = html(CONFIRMED, "host")
-    assert "New booking confirmed" in h and "Booking Confirmed" in h and "Join meeting" in h
+    assert "New booking confirmed" in h and "&nbsp;Confirmed</td>" in h and 'class="st-ok"' in h and "Join meeting" in h
     assert "Lovelace Analytical Engines (lovelace.org)" in h  # enrichment detail line, host only
     assert "Lovelace Analytical Engines (lovelace.org)" not in html(CONFIRMED)
 
@@ -107,8 +108,8 @@ def test_time_formatting_uses_the_booking_timezone():
 def test_email_safe_markup():
     h = html(CONFIRMED)
     assert "<script" not in h and "<svg" not in h and "display:flex" not in h and "display:grid" not in h
-    assert "@media only screen and (max-width:620px)" in h and "max-width:640px" in h
-    assert "https://cdn.jsdelivr.net/gh/" in h and "hero.png" in h and "cid:" not in h and "v:roundrect" in h and 'role="presentation"' in h
+    assert "@media only screen and (max-width:620px)" in h and "max-width:600px" in h
+    assert "<img" not in h and "cid:" not in h and "v:roundrect" in h and 'role="presentation"' in h   # no images at all
     assert all(re.search(r'alt="[^"]*"', tag) for tag in re.findall(r"<img [^>]+>", h))
 
 
@@ -127,7 +128,8 @@ def test_send_booking_emails_uses_the_branded_html_and_falls_back_when_it_fails(
     monkeypatch.setattr(E, "render", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     mail.send_booking_emails(PENDING, mailer=m)
     main_two = [s for s in sent if s[0] in ("harsha@example.com", settings.host_email)]
-    assert len(main_two) == 2 and all(s[3]["html"] and "hero.png" not in s[3]["html"] for s in main_two)  # simple card
+    assert len(main_two) == 2 and all(s[3]["html"] and "hero.png" not in s[3]["html"] and "dm-card" not in s[3]["html"]
+                                      for s in main_two)  # simple card
 
 
 def test_host_extras_from_main_guests_brief_and_a_late_update():
@@ -232,11 +234,18 @@ def test_booking_emails_carry_the_host_link(monkeypatch):
     assert "View booking details" not in host[3]["html"] and "Booking page:" not in host[2]
 
 
-def test_icons_travel_inside_the_message_so_gmail_shows_them(monkeypatch):
-    """Gmail fetches remote images through its proxy, which cannot reach a local or private host; so the icons are
-    inline cid: parts of the HTML (multipart/related) and every reference has its part."""
+PNG = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+                    "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")   # a 1x1 test image
+
+
+def test_inline_images_travel_inside_the_message_so_gmail_shows_them(monkeypatch, tmp_path):
+    """No current email uses images, but the delivery mechanism stays: an email that references cid: images (here a
+    test image in a stand-in static/email folder) gets them as inline parts of the HTML (multipart/related), every
+    reference with its part and nothing extra."""
     from app.booking import email as mail
 
+    (tmp_path / "test.png").write_bytes(PNG)
+    monkeypatch.setattr(E, "ASSETS", tmp_path)
     captured = []
 
     class FakeSMTP:
@@ -251,30 +260,136 @@ def test_icons_travel_inside_the_message_so_gmail_shows_them(monkeypatch):
     monkeypatch.setattr(mail.smtplib, "SMTP", FakeSMTP)
     h = E.render(dict(CONFIRMED, method="browser"), "host", dict(templates.DEFAULTS), now=NOW, images="inline")
     assert ">Zoom<" in h                                      # the browser-booked kind is a Zoom booking too
+    assert "cid:" not in h and E.inline_images(h) == []       # the Ledger design itself has no images
+    img = E._img(E.image_base(CONFIRMED, "inline"), "test.png", 20, alt="Test")
+    assert 'alt="Test"' in img and 'src="cid:test.png@cg"' in img
+    h = h.replace("</body>", img + "</body>")
     assert mail._send("deep@example.com", "s", "Hi", html=h, attachments=[("invite.ics", "BEGIN:VCALENDAR", "text/calendar")])
     msg = captured[0]
     refs = set(re.findall(r"cid:([a-z0-9-]+\.png@cg)", h))
     related = [p for p in msg.walk() if p.get_content_type() == "multipart/related"]
     assert len(related) == 1 and related[0].get_payload()[0].get_content_type() == "text/html"
     cids = {p["Content-ID"].strip("<>") for p in msg.walk() if p.get_content_type() == "image/png"}
-    assert refs and refs == cids                              # nothing broken, nothing extra
+    assert refs == {"test.png@cg"} and refs == cids           # nothing broken, nothing extra
     assert any(p.get_filename() == "invite.ics" for p in msg.walk()) and msg.get_body(("plain",)).get_content().startswith("Hi")
     assert "static/email" not in h and "http://127.0.0.1" not in h
 
 
-def test_preview_mode_uses_urls_and_unknown_cids_are_ignored():
-    h = E.render(CONFIRMED, "visitor", dict(templates.DEFAULTS), now=NOW, images="url")
-    assert "/static/email/hero.png" in h and "cid:" not in h
-    assert E.inline_images('<img src="cid:../../.env@cg"><img src="cid:nope.png@cg"><img src="cid:ic-date.png@cg">') ==         [("ic-date.png@cg", (E.ASSETS / "ic-date.png").read_bytes(), "ic-date.png")]
+def test_preview_mode_uses_urls_and_unknown_cids_are_ignored(monkeypatch, tmp_path):
+    (tmp_path / "test.png").write_bytes(PNG)
+    monkeypatch.setattr(E, "ASSETS", tmp_path)
+    src = E._src(E.image_base(dict(CONFIRMED, host_url=""), "url"), "test.png")
+    assert src.endswith("/static/email/test.png") and "cid:" not in src      # the running app's own copy
+    assert E.inline_images('<img src="cid:../../.env@cg"><img src="cid:nope.png@cg"><img src="cid:test.png@cg">') ==         [("test.png@cg", PNG, "test.png")]
 
 
-def test_default_icons_are_public_https_files_that_exist_and_empty_setting_embeds_them(monkeypatch):
-    h = html(CONFIRMED)
-    urls = set(re.findall(r"(https://cdn\.jsdelivr\.net/gh/[^\"')]+?\.png)", h))
-    assert urls and all(u.startswith(settings.email_assets_url + "/") for u in urls)
-    assert all((E.ASSETS / u.rsplit("/", 1)[1]).is_file() for u in urls)        # every icon is in the repo (so on the CDN)
-    assert "127.0.0.1" not in h and "localhost" not in h
+def test_hosted_images_come_from_a_public_https_folder_and_an_empty_setting_embeds_them(monkeypatch):
+    monkeypatch.setattr(settings, "email_assets_url", "https://cdn.example.com/static/email")
+    assert E.image_base(CONFIRMED) == "https://cdn.example.com/static/email"
+    assert E._src(E.image_base(CONFIRMED), "test.png") == "https://cdn.example.com/static/email/test.png"
+    assert E.image_base(CONFIRMED, "inline") == E.CID                       # inline wins over hosted when asked
     monkeypatch.setattr(settings, "email_assets_url", "")
-    assert "cid:hero.png@cg" in html(CONFIRMED)
+    assert E.image_base(CONFIRMED) == E.CID
     monkeypatch.setattr(settings, "email_assets_url", "http://insecure.example/x")   # never plain http
-    assert "cid:hero.png@cg" in html(CONFIRMED)
+    assert E.image_base(CONFIRMED) == E.CID
+    for audience in ("visitor", "host"):                                     # and no current email references one
+        assert "<img" not in html(CONFIRMED, audience) and "cid:" not in html(PENDING, audience)
+
+
+# ---------------------------------------------------------------- the Ledger visitor confirmation (#1)
+def _text(h):
+    """What a reader sees: tags, the head (title, styles) and the hidden preheader filler removed."""
+    body = h.split("<body", 1)[1]
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body.replace("&#847;&zwnj;&nbsp;", "")))
+
+
+def test_visitor_confirmation_states_differ_in_pill_tile_note_and_button():
+    c, p = html(CONFIRMED), html(PENDING)
+    # confirmed: green pill and strip, the meeting link + ID, the ready note, the manage page as the button
+    assert 'class="st-ok"' in c and 'bgcolor="#1AA179"' in c and 'bgcolor="#E8A317"' not in c
+    assert ">Join<" in c and "Join meeting</a>" in c and "Your Zoom meeting is ready." in c
+    assert c.count(f'href="{CONFIRMED["manage_url"]}"') == 2                      # the button only (VML + link)
+    # pending: amber pill and strip, no meeting at all, the held note, the prefilled Zoom link as the only button
+    assert 'class="st-wait"' in p and 'bgcolor="#E8A317"' in p and 'bgcolor="#1AA179"' not in p and 'class="st-ok"' not in p
+    assert ">Join<" not in p and ">Meeting<" not in p and "Passcode" not in p and "ID 812" not in p
+    assert "Your time is held but not final yet." in p and "Your GTM Strategy Session: Data, AI &amp; Revenue Acceleration time is held for you." in p
+    assert PENDING["manage_url"] not in p and "View booking details" not in p
+    # pending without a prefilled link: the manage page is the button (as before), still never "confirmed"
+    no_link = html(dict(PENDING, handoff_url=""))
+    assert f'href="{PENDING["manage_url"]}"' in no_link and "Confirm on Zoom" not in no_link
+    assert "confirmed" not in _text(no_link).lower().replace("confirmation", "")
+    assert "v:roundrect" not in html(dict(PENDING, handoff_url="", manage_url=""))      # nothing to link: no button
+
+
+def test_visitor_confirmation_keeps_the_copy_word_for_word():
+    tpl = dict(templates.DEFAULTS)
+    for b, confirmed in ((CONFIRMED, True), (PENDING, False)):
+        v = templates.build_vars(templates.booking_to_lead(b), tpl)
+        copy = E._copy("visitor", confirmed, v, tpl)
+        h = html(b)
+        for key in ("eyebrow", "heading", "intro2", "status", "preheader"):
+            assert E.esc(copy[key]) in h, key
+        assert all(E.esc(t) in h for t in copy["intro"])
+        assert f"<title>{E.esc(copy['heading'])}</title>" in h
+        assert E.esc(E.FOOTER_NOTE["visitor"]) in h and "to harsha@example.com · Fri, 09 Oct 2026, 6:12 PM" in h
+
+
+def test_visitor_confirmation_event_card_facts():
+    h = html(dict(CONFIRMED, attendees=[{"name": "Ravi", "email": "ravi@xyz.com"}]))
+    t = _text(h)
+    assert "OCT" in t and " 9 " in t and "Fri" in t                               # the date tile, visitor time zone
+    assert "Fri, 09 Oct 2026 6:30 PM IST (45 minutes)" in t
+    assert "Platform Zoom" in t and "Attendee Harsha harsha@example.com" in t and "Company xyz.com" in t
+    assert "Guests Ravi · ravi@xyz.com" in t and 'href="mailto:ravi@xyz.com"' in h
+    assert "Notes" not in t and "B2B data for EU fintech" not in t                 # notes stay in the host copy
+    late = html(dict(CONFIRMED, start_utc=datetime(2026, 10, 9, 20, 0, tzinfo=timezone.utc)))
+    assert "Sat, 10 Oct 2026" in late and ">10</div>" in late and "1:30 AM IST" in late   # the tile follows visitor_tz
+
+
+def test_visitor_confirmation_without_a_start_has_no_tile_and_no_guessing():
+    h = html({"name": "Ada", "email": "ada@example.com", "status": "confirmed", "schedule_name": "Intro Call"})
+    assert 'height="3"' not in h and ">Platform<" not in h and ">When<" not in h and "minutes)" not in h
+    assert "Intro Call" in h and ">Attendee<" in h
+
+
+def test_visitor_confirmation_design_system_markup():
+    h = html(CONFIRMED)
+    assert h.count("<style>") == 2                                                # Gmail dropping one keeps the other
+    assert '<meta name="color-scheme" content="light dark">' in h and "@media (prefers-color-scheme:dark)" in h
+    assert "[data-ogsc] .dm-ink" in h and "[data-ogsb] .dm-card" in h              # Outlook.com dark mode
+    css = "".join(re.findall(r"<style>(.*?)</style>", h, flags=re.S))
+    assert len(css.encode()) < 3000                                               # small enough to survive clipping rules
+    assert len(h.encode()) < 80_000                                               # far below Gmail's 102 KB clip
+    assert 'width="600"' in h and "<!--[if mso]>" in h                              # the Outlook ghost table
+    assert "Inter" not in h and "fonts.googleapis" not in h and "<img" not in h and "url(" not in h
+    assert "#101E50" not in h and "Strategy · Growth · Impact" not in h            # nothing of the previous design
+    pre = re.search(r"<body[^>]*>\s*<div[^>]*>(.*?)</div>", h, flags=re.S).group(1)
+    assert pre == E.esc("GTM Strategy Session: Data, AI & Revenue Acceleration is confirmed for Fri 09 Oct, 18:30 (Asia/Kolkata).")
+
+
+def test_visitor_confirmation_has_no_images_in_any_delivery_mode(monkeypatch):
+    for mode in ("hosted", "inline", "url"):
+        h = E.render(CONFIRMED, "visitor", dict(templates.DEFAULTS), now=NOW, images=mode)
+        assert "<img" not in h and "cid:" not in h and "static/email" not in h and E.inline_images(h) == []
+    monkeypatch.setattr(settings, "email_assets_url", "")
+    assert "<img" not in html(CONFIRMED)
+    assert E.image_base(CONFIRMED, "inline") == E.CID and E.image_base(CONFIRMED, "url").endswith("/static/email")
+
+
+def test_visitor_brand_monogram_and_brand_are_escaped():
+    tpl = dict(templates.DEFAULTS, brand_default="<b>Acme</b> & Co")
+    h = E.render(CONFIRMED, "visitor", tpl, now=NOW)
+    assert "<b>Acme" not in h and "&lt;b&gt;Acme&lt;/b&gt; &amp; Co" in h and ">&lt;</td>" in h
+
+
+def test_buttons_and_time_change_components():
+    b = E.buttons([("Join Zoom", "https://zoom.us/j/1"), ("Open booking page", "https://x.example/host/booking/1?t=a&b=c"),
+                   ("Bad", "javascript:alert(1)"), None])
+    assert b.count('href="https://zoom.us/j/1"') == 2 and b.count('href="https://x.example/host/booking/1?t=a&amp;b=c"') == 2
+    assert "Bad" not in b and "javascript" not in b
+    assert 'class="btn"' in b and 'class="btn btn2"' in b and b.index("Join Zoom") < b.index("Open booking page")
+    assert E.buttons([("Nothing", "")]) == "" and E.buttons([]) == ""
+    w = E.time_change("Tue 06 Oct, 10:00 <old>", "Wed 07 Oct, 09:30")
+    assert ">Was<" in w and ">Now<" in w and "line-through" in w and "&lt;old&gt;" in w
+    assert E.notice("") == "" and "&lt;b&gt;" in E.notice("<b>")
+    assert "&nbsp;Cancelled</td>" in E.pills([("off", "")]) and E.pills([("move", ""), ("wait", "")]).count('class="pgap"') == 1

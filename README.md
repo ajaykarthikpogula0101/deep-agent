@@ -28,7 +28,7 @@ gives Deep a brief on every lead before the call.
 |---|---|
 | **Answers with sources** | Retrieval over the crawled deependhq.com (llms-full.txt, data.js, sitemap pages), with a confidence floor: off-topic questions get a polite refusal instead of a guess. Prompt-injection fences on everything retrieved. |
 | **Booking in the chat** | Call type → date → time → details → confirm. The visitor can add guests and gets a Zoom link and an `.ics` invite. Reschedule, cancel and "book again" also work from the chat, and every email carries a private manage page with a two-step cancel. Uses Zoom's official API, a public-page fallback, or a browser worker on the public scheduler page. |
-| **Branded booking emails** | The visitor's confirmation and Deep's "New booking" email come as Champions Group HTML with a plain-text part that stays editable in the console. Icons load from a public CDN by default (`EMAIL_ASSETS_URL`) or travel inside the message. |
+| **Branded booking emails** | Every booking email (confirmation, new booking, cancelled, moved, reminders, the host's day-before brief, guest notes) comes in one HTML design, "Ledger", with a plain-text part that stays editable in the console. No images: it reads the same with images blocked and in dark mode. |
 | **Pre-call brief and lead score** | Before every call Deep gets a brief: who they are, what they asked, pages they read, where they came from and a 0–100 score with a reason for every point. Hot leads who never booked trigger an alert. |
 | **Honest lead score** | Points come only from evidence the visitor cannot simply type: a company email whose domain was checked (website, MX record or DNS), the network matching their company, what they did on the site. What they only typed (company, role, budget) is listed as a claim and scores 0. Staff, test, competitor and throwaway addresses are flagged. Every line says whether it is *checked*, *seen* or a *warning*, and a thin record reads "Not enough data yet" instead of "Cold". |
 | **Host booking page** | "View booking details" in Deep's emails opens a private, phone-friendly page: status, lead score, join link, who they are, where they came from, the brief, the whole chat and earlier visits. Signed link bound to the booking, read-only on open (mail scanners click everything), never shows IPs or the visitor's manage links. |
@@ -147,15 +147,16 @@ mail scanner, an old email or a mis-tap cannot cancel a call. Details: [BOOKING]
 
 ### Booking emails
 
-The visitor's confirmation and Deep's "New booking" email are branded Champions Group HTML (navy hero, status pill,
-event card, one button), built from the real booking: "Booking Confirmed" with a join link once Zoom has created the
-meeting, "Awaiting Zoom Confirmation" with the prefilled Zoom link while it is only held. The plain-text part is always
-sent too and stays the editable template in **Console → Emails**.
+Every booking-lifecycle email (the visitor's confirmation, Deep's "New booking", cancelled, moved, the day-before
+reminders, Deep's day-before brief, the 24 h reminder for an unconfirmed Zoom hold, and the notes to extra guests) is
+HTML in one design system, "Ledger" (`app/booking/email_html.py`): a status pill, the heading, an event card with a
+live-text date tile, before-and-after times for a move, and bulletproof buttons, built from the real booking: a
+"Confirmed" pill and the join link once Zoom has created the meeting, "Awaiting Zoom confirmation" and the prefilled
+Zoom link while it is only held. The plain-text part is always sent too and stays the editable template in
+**Console → Emails**. The design uses no images, so blocked images change nothing; it has its own dark mode.
 
-The icons are PNGs in `static/email/`. Gmail fetches images through its own proxy, which cannot reach a local or
-private server, so by default they load from a public https copy on jsDelivr (`EMAIL_ASSETS_URL`). Set
-`EMAIL_ASSETS_URL=` (empty) to embed them inside each message instead. Every email, who receives it and how to change
-the wording: [EMAILS](docs/EMAILS.md).
+`EMAIL_ASSETS_URL` (hosted images, or empty to embed them in each message) is kept for a future email that needs
+images; no current email uses one. Every email, who receives it and how to change the wording: [EMAILS](docs/EMAILS.md).
 
 ### Pre-call brief and the honest lead score
 
@@ -538,7 +539,7 @@ All settings live in `.env`. `.env.example` lists the usual options with a comme
 | `BROWSER_BOOKING_ENABLED`, `JEV_*`, `TYPESAFE_*` | `false` | booking on the public Zoom page by a browser worker ([BROWSER_BOOKING](docs/BROWSER_BOOKING.md)) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM` | | outgoing mail |
 | `HOST_EMAIL` | `deep@championsmail.com` | Deep's inbox: briefs, alerts, digest, outcome questions. Every host email links the host booking page |
-| `EMAIL_ASSETS_URL` | jsDelivr copy of `static/email` | public https folder for the booking-email icons; empty = embed them in each message |
+| `EMAIL_ASSETS_URL` | jsDelivr copy of `static/email` | public https folder for email images; empty = embed them in each message. No current email uses images |
 
 **Tracking and IP lookup** ([TRACKING](docs/TRACKING.md))
 
@@ -714,7 +715,7 @@ python -m app.tracking 49.207.200.10 'Acme' a@acme.com   # one IP through GEOIP_
 python -m app.geoip_update                    # download or refresh the GeoLite2 files (needs MAXMIND_LICENSE_KEY)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)
 python scripts/verify_zoom.py                 # check Zoom S2S credentials once they are in .env
-python scripts/preview_booking_email.py       # the booking emails as HTML files in email_preview/, no SMTP
+python scripts/preview_booking_email.py       # every booking email as HTML in email_preview/ (index.html), no SMTP
 node scripts/browser_check_widget.mjs http://127.0.0.1:8080 out   # the widget in a real headless browser
 cd tools/openui && npm ci && npm test         # answer-card parser, renderer and email renderer
 ```

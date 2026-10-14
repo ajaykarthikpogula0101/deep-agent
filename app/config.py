@@ -182,7 +182,8 @@ class Settings(BaseSettings):
     host_hours: str = Field(default="", alias="HOST_HOURS")  # "09:00-18:00" in HOST_TIMEZONE; empty = inferred from open slots
     booking_max_active_per_email: int = Field(default=2, alias="BOOKING_MAX_ACTIVE_PER_EMAIL")
     public_base_url: str = Field(default="", alias="PUBLIC_BASE_URL")  # where this service is reachable; used in email links
-    # booking email icons (static/email/*.png): a public https folder Gmail's image proxy can fetch; empty = embed them as cid parts
+    # email images (static/email/*): a public https folder Gmail's image proxy can fetch; empty = embed them as cid parts.
+    # No current email uses images (app/booking/email_html.py); the delivery mechanism is kept for one that does
     email_assets_url: str = Field(default="https://cdn.jsdelivr.net/gh/ajaykarthikpogula0101/deep-agent@main/static/email",
                                   alias="EMAIL_ASSETS_URL")
     host_name_short: str = Field(default="Deep", alias="HOST_NAME_SHORT")
