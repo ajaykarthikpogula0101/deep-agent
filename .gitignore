@@ -9,3 +9,4 @@ uploads/
 node_modules/
 *.log
 edge-profile/
+tools/stt_bench/out/

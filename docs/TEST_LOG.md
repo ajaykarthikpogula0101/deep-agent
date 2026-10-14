@@ -1,5 +1,19 @@
 # Test log
 
+## 2026-10-14 — voice accuracy in every language (version 2026.10.14.1)
+
+Mic button and voice call rebuilt around measured problems (docs/MEMORY_VOICE.md "Accuracy").
+
+```
+benchmark (tools/stt_bench, 17 languages x 3 conditions + 3 non-speech, English browser), character error rate:
+  old mic button 69.4% (non-English translated to English) · old voice call 18.4% (6 s cut: long sentence 52%)
+  · now through the app's /stt 8.0%; noise/silence turned into words: 3/3 -> 0/3
+  names prompt rejected: 9.8% -> 12.3%, Kannada translated
+in-browser (scripts/browser_check_voice.mjs, WAV as the fake microphone): 17/17 pass, mean 3.3%
+  first run: Bengali heard as Hindi with the browser's noise suppression on -> noise suppression off, noise-tracking endpointing
+pytest 237 passed, 1 skipped (tests/test_media.py: 11) · widget suite 133 checks pass
+```
+
 ## 2026-10-13 — pre-call brief and lead score for the host (version 2026.10.13.7)
 
 `app/precall.py`: gather (all chats of the person by browser and email), rule-based score with reasons, model-written

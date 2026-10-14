@@ -64,11 +64,62 @@ where the visitor only used the booking buttons counts as a visit.
   exist on Windows 11 and on Android; iOS has Hindi. Where a voice is missing the text answer is still in the right
   language, only the audio falls back.
 
+## Accuracy (2026-10-14, version 2026.10.14.1)
+
+The user reported that voice "is not able to catch the voice properly". Measured first, then fixed.
+
+**What was wrong** (server speech-to-text, `STT_PROVIDER=openai`, Groq whisper-large-v3):
+
+1. Composer mic in "Auto" sent the *browser's* language (`en` in an English browser) as Whisper's `language`, so Hindi,
+   Telugu, Arabic or Japanese speech came back **translated into English** (69% character error rate).
+2. The voice call stopped recording after a fixed 6 s: long sentences were cut in half, a slow start lost the end.
+3. Silence, room noise and a cough became words ("Thank you for watching.", "Terima kasih.") and were sent as messages.
+4. The file was always named `audio.webm`, also for Safari's mp4 recordings.
+
+**What it does now**
+
+* Widget (`_capture`): records until the visitor stops talking. A level meter tracks the room's noise floor (the quietest
+  50 ms of the last 3 s) and ends the recording 1.3 s (call) / 2.5 s (mic button) after speech stops; nothing is sent
+  when nobody spoke ("I didn't hear anything…"); at most 30 s / 120 s. The browser's own noise suppression is off
+  (it made Whisper hear Bengali as Hindi); echo cancellation and gain control stay on. The container the browser really
+  records is named correctly (webm / ogg / m4a). "Auto" no longer forces a language; the visitor's languages travel as
+  `hints` (the conversation's language, then `navigator.languages`).
+* Server (`app/media.py` `transcribe`): `verbose_json`, temperature 0; Whisper's own no-speech and looping signals drop
+  segments; known silence phrases in 12 languages, punctuation-only results and 1–3 words Whisper itself rates as
+  "probably not speech" are dropped; stutter loops ("ക്ക്ക്ക്…") collapse. When the detected language is none of the
+  hints, the audio is read again in the first hint and the more confident reading wins (`STT_HINT_RECHECK`). When the
+  text comes back in the wrong alphabet (Whisper writes Malayalam in Gurmukhi), it is read again with a greeting in the
+  right script as context. Optional second readings never fail a request; a Groq 429 is waited out once.
+  Returns `{"text", "language"}`; the widget remembers the language for the next turn and for the spoken reply.
+* `STT_PROMPT` (product names as context) is **off**: on the benchmark it raised the error rate from 9.8% to 12.3% and
+  made Kannada come back translated.
+
+**Measured** (character error rate, lower is better; `tools/stt_bench`, 17 languages x clean / slow start / office
+noise, an English browser):
+
+| | old mic button | old voice call | now (server) |
+|---|---|---|---|
+| all speech | 69.4% | 18.4% | **8.0%** |
+| long English sentence | 0% | 52% | **0%** |
+| slow start | 69.5% | 26.6% | **8.8%** |
+| noise / silence turned into words | 3 of 3 | 3 of 3 | **0 of 3** |
+
+In a real browser (`scripts/browser_check_voice.mjs`: each clip played as the microphone; the widget's own recorder,
+endpointing and `/stt`): 17 of 17 pass, mean 3.3% over English, Hindi, Telugu, Tamil, Kannada, Bengali, Spanish, Arabic,
+Chinese, Japanese, Hindi in office noise, and silence (nothing sent).
+
+**Limits.** Malayalam stays weak (whisper-large-v3 itself; ~50–70% character errors even in the right script); Kannada
+and Bengali come back with small spelling slips (11–20%) the chat model reads fine. The visitor can pin a language with
+the voice language button. Groq's free tier allows **20 transcriptions a minute for all visitors together**; a busy site
+needs the paid tier (or `STT_HINT_RECHECK=false`, one call per utterance).
+
 ## Testing
 
 * `pytest tests/test_memory.py`: greeting precedence, prompt framing, the profile query across two sessions of one device.
 * Manually: ask something, press ⋯ → New conversation: the welcome now says "Welcome back" with the last topic. Book a
   call, start a new conversation: the line shows the booking and a "Confirm your call on Zoom" card. Ask "when is my
   call?" in chat: the model answers from memory. ⋯ → Forget me: the greeting returns to the first-visit copy.
+* Speech accuracy: `pytest tests/test_media.py`; `tools/stt_bench` (README there) for the multilingual benchmark;
+  `node scripts/browser_check_voice.mjs http://127.0.0.1:8089 out tools/stt_bench/out/wav` for the in-browser check.
 * Voice: press Speak to Deep, tap the language button until it reads HI, speak Hindi: the transcript and the answer are
   Hindi and the status reads "सुन रहा हूँ…"; the reply is spoken with the Hindi voice when the device has one.

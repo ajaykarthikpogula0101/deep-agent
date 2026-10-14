@@ -24,13 +24,15 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.13.7';
+const VERSION = '2026.10.14.1';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
 // voice languages: code -> BCP-47 tag for speech recognition / synthesis, native name, and the call-view labels
 const VOICE_LANGS = { auto: ['', 'Auto'], en: ['en-US', 'English'], hi: ['hi-IN', 'हिन्दी'], te: ['te-IN', 'తెలుగు'], ta: ['ta-IN', 'தமிழ்'], es: ['es-ES', 'Español'], fr: ['fr-FR', 'Français'], de: ['de-DE', 'Deutsch'], pt: ['pt-BR', 'Português'], it: ['it-IT', 'Italiano'], nl: ['nl-NL', 'Nederlands'], ar: ['ar-SA', 'العربية'], zh: ['zh-CN', '中文'], ja: ['ja-JP', '日本語'], ko: ['ko-KR', '한국어'], ru: ['ru-RU', 'Русский'], bn: ['bn-IN', 'বাংলা'] };
 const VOICE_LABELS = { en: { listen: 'Listening…', think: 'Thinking…', speak: 'Speaking…', muted: 'Muted' }, hi: { listen: 'सुन रहा हूँ…', think: 'सोच रहा हूँ…', speak: 'बोल रहा हूँ…', muted: 'म्यूट' }, te: { listen: 'వింటున్నాను…', think: 'ఆలోచిస్తున్నాను…', speak: 'మాట్లాడుతున్నాను…', muted: 'మ్యూట్' }, ta: { listen: 'கேட்கிறேன்…', think: 'யோசிக்கிறேன்…', speak: 'பேசுகிறேன்…', muted: 'ஒலியடக்கம்' }, es: { listen: 'Escuchando…', think: 'Pensando…', speak: 'Hablando…', muted: 'Silenciado' }, fr: { listen: 'À l’écoute…', think: 'Réflexion…', speak: 'Je parle…', muted: 'Muet' }, de: { listen: 'Ich höre zu…', think: 'Ich denke nach…', speak: 'Ich spreche…', muted: 'Stumm' }, pt: { listen: 'Ouvindo…', think: 'Pensando…', speak: 'Falando…', muted: 'Mudo' } };
+// microphone settings for server speech-to-text (docs/MEMORY_VOICE.md "Accuracy")
+const STT_AUDIO = { echoCancellation: true, noiseSuppression: false, autoGainControl: true, channelCount: 1 };
 const BOOK_RE = /\b(book|schedule|meeting|appointment|demo call|call with)\b/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const EMOJI = [['😀', 'grin smile happy'], ['😂', 'laugh joy tears'], ['🙂', 'smile'], ['😉', 'wink'], ['😍', 'love heart eyes'], ['🤔', 'thinking hmm'], ['😅', 'sweat smile'], ['😎', 'cool sunglasses'], ['🥳', 'party celebrate'], ['😢', 'sad cry'], ['😡', 'angry'], ['🙏', 'thanks please pray'],
@@ -1353,15 +1355,61 @@ class DeepAssistant extends HTMLElement {
       return;
     }
     if (this._cfg.stt !== 'server' || !navigator.mediaDevices) { show('Dictation is not available in this browser.'); setTimeout(done, 2500); return; }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); const mr = new MediaRecorder(stream); const chunks = [];
-      mr.ondataavailable = (e) => chunks.push(e.data);
-      mr.onstop = async () => { stream.getTracks().forEach((t) => t.stop()); show('Transcribing…'); try { const fd = new FormData(); fd.append('file', new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), 'audio.webm'); fd.append('language', this._voiceLang() !== 'auto' ? this._voiceLang() : (navigator.language || 'en').slice(0, 2));
-          const r = await fetch(this._url('/stt'), { method: 'POST', headers: this._headers(false), body: fd }); const d = r.ok ? await r.json() : null; if (d && d.text) this._insert((this.$q.value && !/\s$/.test(this.$q.value) ? ' ' : '') + d.text); else show('Could not transcribe that.'); } catch { show('Could not transcribe that.'); } setTimeout(done, 600); };
-      this._rec = { stop: () => mr.stop() }; show('Recording…'); mr.start();
-    } catch (e) { show(e && e.name === 'NotAllowedError' ? 'Microphone access was denied. Allow it in your browser settings and try again.' : 'Could not access the microphone.'); setTimeout(done, 2500); }
+    let cap;
+    try { cap = await this._capture({ endMs: 2500, giveUpMs: 10000, maxMs: 120000, onVoice: (rms, spoke) => { if (this._rec) label.textContent = spoke ? 'Hearing you… tap the mic when done' : 'Listening…'; } }); }
+    catch (e) { show(e && e.name === 'NotAllowedError' ? 'Microphone access was denied. Allow it in your browser settings and try again.' : 'Could not access the microphone.'); setTimeout(done, 2500); return; }
+    this._rec = { stop: () => cap.stop() }; show('Listening…');
+    const res = await cap.done; this._rec = { stop: () => {} };
+    if (!res.spoke) { show("I didn't hear anything. Try again a little closer to the mic."); setTimeout(done, 2200); return; }
+    show('Transcribing…'); const d = await this._transcribe(res, this._voiceLang());
+    if (d && d.text) this._insert((this.$q.value && !/\s$/.test(this.$q.value) ? ' ' : '') + d.text); else show(d ? "I couldn't make out any words. Try again?" : 'Could not transcribe that.');
+    setTimeout(done, d && d.text ? 300 : 2200);
   }
   _stopDictation() { if (this._rec) this._rec.stop(); }
+  // ---- recording for server speech-to-text (docs/MEMORY_VOICE.md "Accuracy"): a clean mic signal, the container the
+  // browser really records (Safari: mp4), and voice-activity endpointing: stop ~1 s after the speaker stops, never send silence
+  _recMime() { const c = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4']; try { return c.find((m) => MediaRecorder.isTypeSupported(m)) || ''; } catch { return ''; } }
+  _recExt(mime) { return /mp4|m4a|aac/.test(mime) ? 'm4a' : /ogg/.test(mime) ? 'ogg' : /wav/.test(mime) ? 'wav' : 'webm'; }
+  _sttHints() { const out = []; const add = (c) => { c = String(c || '').toLowerCase().split('-')[0]; if (/^[a-z]{2}$/.test(c) && !out.includes(c)) out.push(c); }; add(this._lastLang); (navigator.languages || [navigator.language]).forEach(add); return out.slice(0, 4).join(','); }
+  async _capture({ auto = true, endMs = 1300, giveUpMs = 12000, maxMs = 30000, onVoice = null } = {}) {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: this._audioConstraints || STT_AUDIO });
+    const mime = this._recMime(); let mr;
+    try { mr = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 64000 } : undefined); } catch { mr = new MediaRecorder(stream); }
+    let ctx = null, an = null;
+    try { const C = window.AudioContext || window.webkitAudioContext; ctx = new C(); if (ctx.state === 'suspended') ctx.resume().catch(() => {}); an = ctx.createAnalyser(); an.fftSize = 1024; ctx.createMediaStreamSource(stream).connect(an); } catch { an = null; }
+    const buf = an ? new Float32Array(an.fftSize) : null, chunks = [], t0 = performance.now();
+    // noise floor = the quietest 50 ms of the last 3 s (the pauses between words count), so a noisy room raises the bar for
+    // "speaking" and "stopped" alike; the browser's own noise suppression stays off because it hurts Whisper's language detection
+    let loud = 0, spoke = false, measured = false, last = 0, reason = 'manual', iv = null; const recent = [];
+    const finish = (why) => { reason = why; if (mr.state !== 'inactive') { try { mr.stop(); } catch {} } };
+    const done = new Promise((resolve) => {
+      mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      mr.onstop = () => { clearInterval(iv); stream.getTracks().forEach((t) => t.stop()); if (ctx) ctx.close().catch(() => {}); const type = (mr.mimeType || mime || 'audio/webm').split(';')[0];
+        // no working level meter (audio context blocked): we cannot tell speech from silence, so send it and let the server's no-speech filter decide
+        resolve({ blob: new Blob(chunks, { type }), mime: type, ext: this._recExt(type), spoke: spoke || !measured, reason, ms: Math.round(performance.now() - t0) }); };
+    });
+    iv = setInterval(() => {
+      const now = performance.now() - t0;
+      if (an && ctx.state === 'running') {
+        an.getFloatTimeDomainData(buf); let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i]; const rms = Math.sqrt(s / buf.length);
+        if (rms > 0) measured = true;
+        recent.push(rms); if (recent.length > 60) recent.shift();
+        const floor = Math.max(0.0015, Math.min(...recent)), start = Math.max(0.012, floor * 3), hold = Math.max(0.007, floor * 1.8);
+        if (rms > (spoke ? hold : start)) { loud += 50; last = now; if (loud >= 150) spoke = true; } else loud = Math.max(0, loud - 25);
+        if (onVoice) onVoice(rms, spoke);
+      }
+      if (auto && spoke && now - last > endMs) finish('end');
+      else if (auto && !spoke && measured && now > giveUpMs) finish('nospeech');
+      if (now > maxMs) finish('max');
+    }, 50);
+    mr.start(250);
+    return { stop: () => finish('manual'), done };
+  }
+  async _transcribe(res, pick) {
+    const fd = new FormData(); fd.append('file', res.blob, 'audio.' + res.ext); if (pick && pick !== 'auto') fd.append('language', pick); fd.append('hints', this._sttHints());
+    try { const r = await fetch(this._url('/stt'), { method: 'POST', headers: this._headers(false), body: fd }); const d = r.ok ? await r.json() : null; if (d && d.language && VOICE_LANGS[d.language]) this._lastLang = d.language; return d; }
+    catch { return null; }
+  }
   // ---------------------------------------------------------------- voice conversation: living orb + audio analysers (docs/AGENT_UI.md)
   async startVoice() {
     const sh = this.shadowRoot;
@@ -1448,10 +1496,17 @@ class DeepAssistant extends HTMLElement {
       v.rec = r; try { r.start(); } catch { this._vstate('Could not start listening.', 'idle'); }
       return;
     }
-    navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => { const mr = new MediaRecorder(stream); const chunks = []; mr.ondataavailable = (e) => chunks.push(e.data);
-      mr.onstop = async () => { stream.getTracks().forEach((t) => t.stop()); v.rec = null; if (v.ended || v.discard) { v.discard = false; return; } this._vstate(this._vlabel('think'), 'think'); const fd = new FormData(); fd.append('file', new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), 'audio.webm'); if (pick !== 'auto') fd.append('language', pick);
-        try { const r = await fetch(this._url('/stt'), { method: 'POST', headers: this._headers(false), body: fd }); const d = r.ok ? await r.json() : null; if (d && d.text) onText(d.text.trim()); else if (!v.muted) setTimeout(() => this._vListen(), 300); } catch { this._vstate('Transcription failed.', 'idle'); } };
-      v.rec = mr; mr.start(); setTimeout(() => { if (mr.state === 'recording') mr.stop(); }, 6000); }).catch(() => this._vstate('Microphone access was denied.', 'idle'));
+    // server speech-to-text: record until the visitor stops talking (not a fixed few seconds); silence is never sent
+    this._capture({ endMs: 1300, giveUpMs: 12000, maxMs: 30000, onVoice: (rms, spoke) => { if (spoke && v.state === 'listen' && !this.shadowRoot.querySelector('.vcap .cu').textContent) this._caption('you', '…'); } })
+      .then(async (cap) => {
+        v.rec = cap; const res = await cap.done; v.rec = null;
+        if (v.ended || v.discard || v.muted) { v.discard = false; return; }
+        if (!res.spoke || res.blob.size < 1000) { setTimeout(() => this._vListen(), 150); return; }  // nobody spoke: listen again, nothing sent
+        this._vstate(this._vlabel('think'), 'think');
+        const d = await this._transcribe(res, pick); if (v.ended) return;
+        if (d && d.text) onText(d.text.trim()); else if (d) { this._caption('you', ''); setTimeout(() => this._vListen(), 200); } else { this._vstate('Transcription failed. Listening again…', 'idle'); setTimeout(() => { if (!v.ended && !v.muted) this._vListen(); }, 1800); }
+      })
+      .catch((e) => this._vstate(e && e.name === 'NotAllowedError' ? 'Microphone access was denied.' : 'Could not access the microphone.', 'idle'));
   }
   _vSpeak(text) {
     return new Promise(async (resolve) => {

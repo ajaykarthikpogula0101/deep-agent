@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     stt_api_key: str = Field(default="", alias="STT_API_KEY")
     stt_base_url: str = Field(default="https://api.groq.com/openai/v1", alias="STT_BASE_URL")
     stt_model: str = Field(default="whisper-large-v3", alias="STT_MODEL")
+    # text Whisper reads as "what came before" (e.g. product names). Off by default: on the 2026-10-14 multilingual benchmark a
+    # names list raised the error rate from 9.8% to 12.3% (Kannada came back translated); docs/MEMORY_VOICE.md "Accuracy"
+    stt_prompt: str = Field(default="", alias="STT_PROMPT")
+    stt_hint_recheck: bool = Field(default=True, alias="STT_HINT_RECHECK")  # re-read in the visitor's own language when detection disagrees
     # text-to-speech: "browser" = SpeechSynthesis in the widget; "openai" = /audio/speech (OpenAI tts-1 or compatible)
     tts_provider: str = Field(default="browser", alias="TTS_PROVIDER")  # browser | openai
     tts_api_key: str = Field(default="", alias="TTS_API_KEY")
@@ -90,7 +94,7 @@ class Settings(BaseSettings):
     enrich_enabled: bool = Field(default=True, alias="ENRICH_ENABLED")
     suggestions_days: int = Field(default=30, alias="SUGGESTIONS_DAYS")
     multilingual: bool = Field(default=True, alias="MULTILINGUAL")
-    voice_languages: str = Field(default="auto,en,hi,te,ta,es,fr,de", alias="VOICE_LANGUAGES")  # call view language picker
+    voice_languages: str = Field(default="auto,en,hi,te,ta,bn,es,fr,de", alias="VOICE_LANGUAGES")  # call view language picker
     visitor_memory: bool = Field(default=True, alias="VISITOR_MEMORY")  # return-visitor memory in the greeting and prompt
     outreach_enabled: bool = Field(default=True, alias="OUTREACH_ENABLED")  # proactive outreach rules (docs/OUTREACH.md)
     # Answer cards (docs/UI_CARDS.md): one optional openui-lang block per answer, rendered by static/deep-ui.js

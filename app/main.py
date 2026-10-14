@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.13.7"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.14.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -489,7 +489,7 @@ def gifs(request: Request, q: str = ""):
 
 
 @app.post("/stt")
-async def stt(request: Request, file: UploadFile = File(...), language: str | None = Form(default=None)):
+async def stt(request: Request, file: UploadFile = File(...), language: str | None = Form(default=None), hints: str | None = Form(default=None)):
     if not _origin_ok(request):
         raise HTTPException(403, "origin not allowed")
     if not _track_limiter.allow(_client_ip(request)):
@@ -498,7 +498,7 @@ async def stt(request: Request, file: UploadFile = File(...), language: str | No
         raise HTTPException(501, "speech-to-text is not configured on the server")
     data = await file.read(media.AUDIO_MAX_BYTES + 1)
     try:
-        return {"text": media.transcribe(data, file.filename or "audio.webm", file.content_type or "audio/webm", language)}
+        return media.transcribe(data, file.filename or "audio.webm", file.content_type or "audio/webm", language, hints)
     except ValueError as e:
         raise HTTPException(422, str(e))
     except Exception as e:
