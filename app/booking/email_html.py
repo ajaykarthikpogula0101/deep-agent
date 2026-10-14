@@ -8,7 +8,9 @@ builds the HTML part, from the real booking row (app/booking/flow.py). Two state
                 no meeting link (there is none yet); the visitor's call to action is the prefilled Zoom link
 
 Email-client rules followed here: table layout, inline styles (the <style> block only adds the mobile overrides),
-no SVG/flex/grid/JS, PNG icons from /static/email/ (built by scripts/build_email_assets.py) with alt text and solid
+no SVG/flex/grid/JS, PNG icons from static/email/ (built by scripts/build_email_assets.py) loaded from EMAIL_ASSETS_URL
+(public https, jsDelivr over the GitHub repo by default: Gmail fetches images through its proxy, which can never reach
+a local or private PUBLIC_BASE_URL), or embedded as inline cid: parts when that is empty; with alt text and solid
 fallback colours so the email still reads with images blocked, VML for the hero and the button in Outlook desktop.
 Every dynamic value is HTML-escaped; only http(s) URLs become links.
 """
@@ -18,6 +20,7 @@ import html
 import re
 from datetime import datetime, timezone
 from typing import Any
+from pathlib import Path
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
@@ -121,9 +124,29 @@ def _copy(audience: str, confirmed: bool, v: dict[str, str], tpl: dict[str, str]
 
 
 # ---------------------------------------------------------------- building blocks
+CID = "cid"                                   # `base` value meaning: images ride inside the message (see inline_images)
+ASSETS = Path(__file__).resolve().parent.parent.parent / "static" / "email"
+_CID_REF = re.compile(r"cid:([a-z0-9-]+\.png)@cg")
+
+
+def _src(base: str, name: str) -> str:
+    """`base` is CID or a folder URL that holds the PNGs."""
+    return f"cid:{name}@cg" if base == CID else f"{base.rstrip('/')}/{name}"
+
+
+def inline_images(html_text: str) -> list[tuple[str, bytes, str]]:
+    """[(content-id, png bytes, filename)] for every cid: image the HTML references; only files in static/email/."""
+    out = []
+    for name in dict.fromkeys(_CID_REF.findall(html_text or "")):
+        f = ASSETS / name
+        if f.is_file():
+            out.append((f"{name}@cg", f.read_bytes(), name))
+    return out
+
+
 def _img(base: str, name: str, w: int, h: int | None = None, alt: str = "", style: str = "") -> str:
     h = h or w
-    return (f'<img src="{esc(base)}/static/email/{name}" width="{w}" height="{h}" alt="{esc(alt)}" '
+    return (f'<img src="{esc(_src(base, name))}" width="{w}" height="{h}" alt="{esc(alt)}" '
             f'style="display:block;width:{w}px;height:{h}px;border:0;outline:none;text-decoration:none;{style}">')
 
 
@@ -169,13 +192,13 @@ def _button(url: str, text: str, base: str) -> str:
             f'<a class="btn" href="{u}" style="display:inline-block;width:290px;max-width:100%;box-sizing:border-box;background:{NAVY};color:#ffffff;'
             f'font-family:{FONT};font-size:15px;line-height:50px;font-weight:700;text-align:center;text-decoration:none;border-radius:8px;'
             f'box-shadow:0 6px 16px -8px rgba(16,30,80,.55)">'
-            f'<img src="{esc(base)}/static/email/ic-external.png" width="14" height="14" alt="" '
+            f'<img src="{esc(_src(base, "ic-external.png"))}" width="14" height="14" alt="" '
             f'style="display:inline-block;width:14px;height:14px;border:0;vertical-align:-2px;margin-right:8px">{t}</a>'
             f'<!--<![endif]--></td></tr></table>')
 
 
 def _hero(base: str, brand: str, copy: dict[str, Any]) -> str:
-    bg = f"{base}/static/email/hero.png"
+    bg = _src(base, "hero.png")
     intro = "".join(f'<p style="margin:0 0 {10 if i < len(copy["intro"]) - 1 else 0}px;font-family:{FONT};font-size:17px;line-height:28px;color:#FFFFFF">{esc(t)}</p>'
                     for i, t in enumerate(copy["intro"]))
     content = (
@@ -204,7 +227,7 @@ def _hero(base: str, brand: str, copy: dict[str, Any]) -> str:
 
 # ---------------------------------------------------------------- the email
 def render(booking: dict[str, Any], audience: str, tpl: dict[str, str] | None = None, now: datetime | None = None, *,
-           brief: str = "", notice: str = "", cta_ok: bool = True) -> str:
+           brief: str = "", notice: str = "", cta_ok: bool = True, images: str = "hosted") -> str:
     """HTML for audience 'visitor' or 'host'. `booking` is the dict stored by app/booking/flow.py (or SAMPLE_BOOKING).
     Host extras: `brief` is the pre-call brief as text (app/precall.text), `notice` a late update shown above the status
     ("the visitor has already cancelled"), `cta_ok=False` drops the button (nothing left to view or join).
@@ -214,7 +237,11 @@ def render(booking: dict[str, Any], audience: str, tpl: dict[str, str] | None = 
     v = templates.build_vars(templates.booking_to_lead(booking), tpl)
     confirmed = booking.get("status") == "confirmed"
     copy = _copy(audience, confirmed, v, tpl)
-    base = asset_base(booking)
+    if images == "url":                     # a browser preview against the running app
+        base = asset_base(booking) + "/static/email"
+    else:                                   # a real email: the public https folder (EMAIL_ASSETS_URL), else inline parts
+        hosted = safe_url(settings.email_assets_url)
+        base = hosted if hosted.startswith("https://") and images != "inline" else CID
     brand = tpl.get("brand_default") or templates.DEFAULTS["brand_default"]
     tz = _tz(booking.get("visitor_tz") if audience == "visitor" else settings.host_timezone)
     start = booking.get("start_utc")
@@ -233,7 +260,8 @@ def render(booking: dict[str, Any], audience: str, tpl: dict[str, str] | None = 
 
     # three columns: date, time, platform
     method = booking.get("method") or ""
-    platform = "Zoom" if method in ("scheduler", "meeting", "handoff") else "Online"
+    links = " ".join(str(booking.get(k) or "") for k in ("join_url", "handoff_url"))
+    platform = "Zoom" if method in ("scheduler", "meeting", "handoff", "browser") or "zoom.us" in links else "Online"
     join = safe_url(booking.get("join_url")) if confirmed else ""
     confirm_url = safe_url(booking.get("handoff_url")) if not confirmed else ""
     plat_extra = ""

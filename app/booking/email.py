@@ -37,6 +37,12 @@ def _send(to: str, subject: str, body: str, reply_to: str | None = None, html: s
     msg.set_content(body)
     if html:
         msg.add_alternative(html, subtype="html")
+        if "cid:" in html:  # the booking email's icons travel inside the message (app/booking/email_html.py)
+            from app.booking.email_html import inline_images
+
+            part = msg.get_body(preferencelist=("html",))
+            for cid, data, name in inline_images(html):
+                part.add_related(data, maintype="image", subtype="png", cid=f"<{cid}>", disposition="inline", filename=name)
     for name, data, mime in attachments or []:
         maintype, _, subtype = mime.partition("/")
         raw = data.encode("utf-8") if isinstance(data, str) else data

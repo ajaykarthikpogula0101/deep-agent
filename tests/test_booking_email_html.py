@@ -108,7 +108,7 @@ def test_email_safe_markup():
     h = html(CONFIRMED)
     assert "<script" not in h and "<svg" not in h and "display:flex" not in h and "display:grid" not in h
     assert "@media only screen and (max-width:620px)" in h and "max-width:640px" in h
-    assert "/static/email/hero.png" in h and "v:roundrect" in h and 'role="presentation"' in h
+    assert "https://cdn.jsdelivr.net/gh/" in h and "hero.png" in h and "cid:" not in h and "v:roundrect" in h and 'role="presentation"' in h
     assert all(re.search(r'alt="[^"]*"', tag) for tag in re.findall(r"<img [^>]+>", h))
 
 
@@ -127,7 +127,7 @@ def test_send_booking_emails_uses_the_branded_html_and_falls_back_when_it_fails(
     monkeypatch.setattr(E, "render", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     mail.send_booking_emails(PENDING, mailer=m)
     main_two = [s for s in sent if s[0] in ("harsha@example.com", settings.host_email)]
-    assert len(main_two) == 2 and all(s[3]["html"] and "/static/email/hero.png" not in s[3]["html"] for s in main_two)  # simple card
+    assert len(main_two) == 2 and all(s[3]["html"] and "hero.png" not in s[3]["html"] for s in main_two)  # simple card
 
 
 def test_host_extras_from_main_guests_brief_and_a_late_update():
@@ -230,3 +230,51 @@ def test_booking_emails_carry_the_host_link(monkeypatch):
     mail.send_booking_emails(dict(templates.SAMPLE_BOOKING), mailer=m)    # no manage token: no link at all
     host = next(s for s in sent if s[0] == settings.host_email)
     assert "View booking details" not in host[3]["html"] and "Booking page:" not in host[2]
+
+
+def test_icons_travel_inside_the_message_so_gmail_shows_them(monkeypatch):
+    """Gmail fetches remote images through its proxy, which cannot reach a local or private host; so the icons are
+    inline cid: parts of the HTML (multipart/related) and every reference has its part."""
+    from app.booking import email as mail
+
+    captured = []
+
+    class FakeSMTP:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def starttls(self): pass
+        def login(self, *a): pass
+        def send_message(self, msg): captured.append(msg)
+
+    monkeypatch.setattr(settings, "smtp_host", "smtp.test")
+    monkeypatch.setattr(mail.smtplib, "SMTP", FakeSMTP)
+    h = E.render(dict(CONFIRMED, method="browser"), "host", dict(templates.DEFAULTS), now=NOW, images="inline")
+    assert ">Zoom<" in h                                      # the browser-booked kind is a Zoom booking too
+    assert mail._send("deep@example.com", "s", "Hi", html=h, attachments=[("invite.ics", "BEGIN:VCALENDAR", "text/calendar")])
+    msg = captured[0]
+    refs = set(re.findall(r"cid:([a-z0-9-]+\.png@cg)", h))
+    related = [p for p in msg.walk() if p.get_content_type() == "multipart/related"]
+    assert len(related) == 1 and related[0].get_payload()[0].get_content_type() == "text/html"
+    cids = {p["Content-ID"].strip("<>") for p in msg.walk() if p.get_content_type() == "image/png"}
+    assert refs and refs == cids                              # nothing broken, nothing extra
+    assert any(p.get_filename() == "invite.ics" for p in msg.walk()) and msg.get_body(("plain",)).get_content().startswith("Hi")
+    assert "static/email" not in h and "http://127.0.0.1" not in h
+
+
+def test_preview_mode_uses_urls_and_unknown_cids_are_ignored():
+    h = E.render(CONFIRMED, "visitor", dict(templates.DEFAULTS), now=NOW, images="url")
+    assert "/static/email/hero.png" in h and "cid:" not in h
+    assert E.inline_images('<img src="cid:../../.env@cg"><img src="cid:nope.png@cg"><img src="cid:ic-date.png@cg">') ==         [("ic-date.png@cg", (E.ASSETS / "ic-date.png").read_bytes(), "ic-date.png")]
+
+
+def test_default_icons_are_public_https_files_that_exist_and_empty_setting_embeds_them(monkeypatch):
+    h = html(CONFIRMED)
+    urls = set(re.findall(r"(https://cdn\.jsdelivr\.net/gh/[^\"')]+?\.png)", h))
+    assert urls and all(u.startswith(settings.email_assets_url + "/") for u in urls)
+    assert all((E.ASSETS / u.rsplit("/", 1)[1]).is_file() for u in urls)        # every icon is in the repo (so on the CDN)
+    assert "127.0.0.1" not in h and "localhost" not in h
+    monkeypatch.setattr(settings, "email_assets_url", "")
+    assert "cid:hero.png@cg" in html(CONFIRMED)
+    monkeypatch.setattr(settings, "email_assets_url", "http://insecure.example/x")   # never plain http
+    assert "cid:hero.png@cg" in html(CONFIRMED)
