@@ -37,7 +37,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.14.3"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.14.8"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 

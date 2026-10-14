@@ -9,3 +9,5 @@ uploads/
 node_modules/
 *.log
 edge-profile/
+email_preview/
+.playwright-mcp/

@@ -11,7 +11,7 @@ gives Deep a brief on every lead before the call.
 ![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-248%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-259%20passing-2EA44F)
 
 [Features](#features) · [Quick start](#quick-start) · [Configuration](#configuration) · [Embed it](#embed-it) ·
 [Deploy](#deploy) · [Tests](#tests) · [Docs](#documentation)
@@ -174,7 +174,7 @@ gcloud run deploy deependhq-assistant --source . --region asia-south1 \
 ## Tests
 
 ```bash
-pytest                                        # 248 tests, no network (the database ones skip without Postgres)
+pytest                                        # 259 tests, no network (the database ones skip without Postgres)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)
 python scripts/verify_zoom.py                 # check Zoom S2S credentials once they are in .env
 node scripts/browser_check_widget.mjs http://127.0.0.1:8080 out   # the widget in a real headless browser
