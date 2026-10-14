@@ -24,8 +24,8 @@ Where it shows:
   users, whose verified identity wins).
 * **The model**: `GET /chat` adds a `VISITOR MEMORY` section to the system prompt, framed as data with the rules
   "welcome back once, use facts only when relevant, never recite, never share". So "when is my call?" is answered.
-* **Forget me on this device** (⋯ menu) rotates the device id: the browser is no longer linked to the earlier visits
-  (the server rows remain under the old id until the retention purge).
+* **No "forget me" control** (removed in 2026.10.14.2): the device id stays, so every return visit is recognised. A
+  visitor who asks to be forgotten is pointed to Deep's team ("Message the team"), who can delete their data on request.
 
 Endpoints: `GET /me` now returns `memory` (`returning, visits, name, email, company, lang, last_topic, upcoming,
 headline, line`) for the `X-Visitor-Id` header. `VISITOR_MEMORY=false` turns everything off.
@@ -118,7 +118,7 @@ needs the paid tier (or `STT_HINT_RECHECK=false`, one call per utterance).
 * `pytest tests/test_memory.py`: greeting precedence, prompt framing, the profile query across two sessions of one device.
 * Manually: ask something, press ⋯ → New conversation: the welcome now says "Welcome back" with the last topic. Book a
   call, start a new conversation: the line shows the booking and a "Confirm your call on Zoom" card. Ask "when is my
-  call?" in chat: the model answers from memory. ⋯ → Forget me: the greeting returns to the first-visit copy.
+  call?" in chat: the model answers from memory.
 * Speech accuracy: `pytest tests/test_media.py` (silence, noise, wrong script, language re-check, Groq 429).
 * Voice: press Speak to Deep, tap the language button until it reads HI, speak Hindi: the transcript and the answer are
   Hindi and the status reads "सुन रहा हूँ…"; the reply is spoken with the Hindi voice when the device has one.

@@ -65,7 +65,7 @@ try {
   check(await evaluate(P("panel", "/Hi! I'm Deep/.test(sh.querySelector('.welcome h2').textContent)")), "welcome: 'Hi! I'm Deep' title for anonymous visitors");
   check(await evaluate(P("panel", "/explore LakeB2B's solutions/.test(sh.querySelector('.welcome p').textContent)")), "welcome: intro explains what the assistant can do");
   await evaluate(P("panel", "(sh.querySelector('.more').click(), true)")); await sleep(150);
-  check(await evaluate(P("panel", "sh.querySelector('.menu').classList.contains('open') && [...sh.querySelectorAll('.menu button > span:last-child')].map(s => s.textContent).join('|') === 'New conversation|Help & contact|Download transcript|Forget me on this device|Dark theme'")), "header: ⋯ menu with New conversation, Help & contact, Download transcript, Forget me on this device, Dark theme");
+  check(await evaluate(P("panel", "sh.querySelector('.menu').classList.contains('open') && [...sh.querySelectorAll('.menu button > span:last-child')].map(s => s.textContent).join('|') === 'New conversation|Help & contact|Download transcript|Dark theme'")), "header: ⋯ menu with New conversation, Help & contact, Download transcript, Dark theme (no forget-me)");
   await evaluate(P("panel", "(sh.querySelector('.menu button[data-act=theme]').click(), true)")); await sleep(150);
   check(await evaluate(P("panel", "el.getAttribute('theme') === 'dark' && getComputedStyle(sh.querySelector('.panel')).backgroundColor === 'rgb(15, 19, 36)'")), "menu: theme item flips to dark");
   await evaluate(P("panel", "(el.setAttribute('theme', 'light'), true)"));
@@ -243,9 +243,7 @@ try {
   await evaluate(P("panel", "(el.newChat(), true)")); await waitFor(P("panel", "/Welcome back/.test((sh.querySelector('.welcome h2') || {}).textContent || '')"), 15000, "welcome-back greeting"); await sleep(200);
   const wb = await evaluate(P("panel", "(() => { const w = sh.querySelector('.welcome'); return { h2: w.querySelector('h2').textContent, p: w.querySelector('p').textContent, back: w.classList.contains('back'), mem: el._me && el._me.memory && el._me.memory.returning }; })()"));
   check(/^Welcome back/.test(wb.h2) && wb.back && wb.mem && /Last time|Good to see you again|Your /.test(wb.p), `memory: returning visitor greeting '${wb.h2}' · '${wb.p.slice(0, 70)}'`);
-  await evaluate(P("panel", "(el.forgetMe(), true)")); await sleep(1200);
-  const fg = await evaluate(P("panel", "(() => { const w = sh.querySelector('.welcome'); return { h2: w ? w.querySelector('h2').textContent : '', mem: !!(el._me && el._me.memory && el._me.memory.returning) }; })()"));
-  check(/^Hi! I'm Deep/.test(fg.h2) && !fg.mem, `memory: 'Forget me on this device' returns to the first-visit greeting ('${fg.h2}')`);
+  check(await evaluate(P("panel", "typeof el.forgetMe === 'undefined' && !sh.querySelector('[data-act=forget]')")), "memory: no way for the visitor to unlink the device");
   // signed-in launcher: token from /demo/token, identity visible, booking skips name/email
   await waitFor(P("launcher", "el.getAttribute('token')"), 10000, "demo token"); await sleep(600);
   const me = await evaluate(P("launcher", "el._me"));

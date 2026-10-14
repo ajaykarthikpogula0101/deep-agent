@@ -29,7 +29,7 @@ gives Deep a brief on every lead before the call.
 | **Pre-call brief and lead score** | Before every call Deep gets a brief: who they are, what they asked, pages they read, where they came from and a 0–100 score with reasons. Hot leads trigger an alert. |
 | **Voice in any language** | A mic button and a hands-free voice call. Server speech-to-text (Whisper) detects the language automatically. It ignores silence and noise and re-reads text written in the wrong alphabet. Answers are spoken back. |
 | **Answer cards** | Comparisons, KPI tiles, timelines and next-step buttons rendered under the answer (openui-lang, sandboxed). |
-| **Remembers return visitors** | "Welcome back" with the last topic, upcoming bookings, a conversation history page and "Forget me". |
+| **Remembers return visitors** | "Welcome back" with the last topic, upcoming bookings, and a conversation history page. |
 | **Proactive outreach** | Rules written in the console decide when the greeting speaks up ("45 s on the LakeB2B page → offer a walkthrough"). |
 | **Automations** | Weekly digest email, follow-up nudges, reminders the day before, lead enrichment and smart suggestions. All of it runs in the same process. |
 | **Owner console** (`/admin`) | Conversations, bookings with briefs, knowledge gaps, guidance, custom answers, outreach rules, email templates and metrics. |

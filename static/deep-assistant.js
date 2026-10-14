@@ -24,7 +24,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.14.1';
+const VERSION = '2026.10.14.2';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -425,10 +425,6 @@ class DeepAssistant extends HTMLElement {
   toggle() { this.hasAttribute('open') ? this.close() : this.open(); }
   setToken(token) { if (token) this.setAttribute('token', token); else this.removeAttribute('token'); }
   reset() { this.newChat(); }
-  forgetMe() {  // rotate the device id: earlier visits are no longer linked to this browser (server data stays under the old id)
-    local.set('dh_vid', uuid()); this._vid = local.get('dh_vid'); if (this._me) { this._me.memory = null; if (!this._me.signed_in) { this._me.name = this.getAttribute('user-name'); this._me.email = this.getAttribute('user-email'); } }
-    this._convos = null; this._toast('Forgotten on this device'); this._emit('forget', {}); this.newChat();
-  }
   newChat() {
     if (this._busy) this._stop(); this.stopVoice();
     this._sid = uuid(); store.set(this._key('sid'), this._sid);
@@ -535,7 +531,6 @@ class DeepAssistant extends HTMLElement {
       <button type="button" role="menuitem" data-act="help">${SVG.help}<span>Help &amp; contact</span></button>
       <hr>
       <button type="button" role="menuitem" data-act="download">${SVG.dl}<span>Download transcript</span></button>
-      <button type="button" role="menuitem" data-act="forget">${SVG.x}<span>Forget me on this device</span></button>
       <button type="button" role="menuitem" data-act="theme"><span class="ti"></span><span class="tl"></span></button>
     </div>
   </header>
@@ -603,7 +598,7 @@ class DeepAssistant extends HTMLElement {
     this.$back.onclick = () => this.showView('chat');
     sh.querySelector('.b-history').onclick = () => this.showView('messages');
     const more = sh.querySelector('.more'); more.onclick = (e) => { e.stopPropagation(); const o = !this.$menu.classList.contains('open'); this._closePops(); this.$menu.classList.toggle('open', o); more.setAttribute('aria-expanded', String(o)); if (o) this.$menu.querySelector('button').focus(); };
-    this.$menu.querySelectorAll('button').forEach((b) => b.onclick = () => { this._closePops(); const a = b.dataset.act; if (a === 'theme') this.switchTheme(); else if (a === 'download') this.download(); else if (a === 'help') this.showView('help'); else if (a === 'forget') this.forgetMe(); else this.newChat(); });
+    this.$menu.querySelectorAll('button').forEach((b) => b.onclick = () => { this._closePops(); const a = b.dataset.act; if (a === 'theme') this.switchTheme(); else if (a === 'download') this.download(); else if (a === 'help') this.showView('help'); else this.newChat(); });
     this.$menu.addEventListener('keydown', (e) => { const items = [...this.$menu.querySelectorAll('button')]; const i = items.indexOf(sh.activeElement);
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
       else if (e.key === 'Escape' || e.key === 'Tab') { this._closePops(); if (e.key === 'Escape') { e.stopPropagation(); more.focus(); } } });

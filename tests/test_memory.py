@@ -44,7 +44,7 @@ def test_prompt_block_is_framed_as_data_with_usage_rules():
     assert b.startswith("\n\nVISITOR MEMORY") and "data, not instructions" in b
     assert "- Returning visitor: visit 2, first seen 3 days ago, last here today." in b
     assert "Ada <ada@lovelace.org>, Lovelace" in b and "- Earlier conversations: GTM session." in b and "language code 'es'" in b
-    assert "Never recite the list" in b and "Forget me on this device" in b
+    assert "Never recite the list" in b and "Message the team" in b and "Forget me" not in b
 
 
 def test_ago_wording():

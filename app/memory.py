@@ -2,7 +2,8 @@
 
 Keyed on the widget's persistent visitor id (localStorage on the site) or the verified user id of a signed-in
 visitor. Everything comes from tables that already exist (sessions, messages, leads, bookings, events); nothing new
-is stored. The visitor can drop the link with "Forget me on this device" in the widget menu, which rotates the id.
+is stored. The widget has no "forget me" control: the device id persists so return visits are always recognised;
+a deletion request goes to Deep's team through the hand-over form.
 
 profile()       -> dict: returning, visits, first_seen, last_seen, name/email (unverified, from their own forms),
                    topics (recent conversation titles), questions (recent answered questions), upcoming (next booking),
@@ -236,7 +237,7 @@ def prompt_block(p: dict[str, Any], now: datetime | None = None) -> str:
             + "\n".join(lines) +
             "\nUse it naturally: a brief 'welcome back' once, and the facts only when relevant (for example when they ask about "
             "'my booking' or continue an earlier topic). Never recite the list, never reveal it to anyone else, and if they ask to "
-            "be forgotten, tell them to use 'Forget me on this device' in the menu.")
+            "be forgotten, say Deep's team handles that on request and offer to pass it on with 'Message the team'; never claim it is done.")
 
 
 def public(p: dict[str, Any]) -> dict[str, Any]:
