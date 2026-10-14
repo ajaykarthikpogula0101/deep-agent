@@ -55,9 +55,70 @@ def domain_of(email: str | None) -> str:
     return d if re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", d) else ""
 
 
+def registrable_root(domain: str | None) -> str:
+    """'mail.company.com' -> 'company', 'yahoo.com.au' -> 'yahoo', 'infilect.co.in' -> 'infilect'."""
+    from app.network import domain_root
+
+    return domain_root(domain)
+
+
 def is_free_mail(domain: str) -> bool:
     d = (domain or "").lower()
-    return d in FREE_MAIL or d.split(".")[0] in FREE_ROOTS
+    return d in FREE_MAIL or registrable_root(d) in FREE_ROOTS
+
+
+# throwaway inboxes: nobody books a real call from one
+DISPOSABLE = {
+    "mailinator.com", "yopmail.com", "guerrillamail.com", "guerrillamail.net", "sharklasers.com", "grr.la", "10minutemail.com",
+    "10minutemail.net", "temp-mail.org", "temp-mail.io", "tempmail.com", "tempmail.net", "tempmailo.com", "trashmail.com",
+    "trashmail.de", "getnada.com", "nada.email", "dispostable.com", "maildrop.cc", "mailnesia.com", "throwawaymail.com",
+    "fakeinbox.com", "emailondeck.com", "mintemail.com", "mohmal.com", "spamgourmet.com", "burnermail.io", "moakt.com",
+    "tmail.ws", "discard.email", "mail.tm", "mailcatch.com", "spambox.us", "jetable.org", "mytemp.email",
+}
+EDU_RE = re.compile(r"(^|\.)edu(\.[a-z]{2})?$|(^|\.)ac\.[a-z]{2}$")
+_EDU_NAME = re.compile(r"universit|college|deemed|polytechnic|\bIIT\b", re.I)
+
+
+def is_disposable(domain: str | None) -> bool:
+    d = (domain or "").lower()
+    return d in DISPOSABLE or ".".join(d.split(".")[-2:]) in DISPOSABLE
+
+
+def is_education(domain: str | None, data: dict[str, Any] | None = None) -> bool:
+    """A university or college: .edu / .ac.xx / edu.xx domains, or a homepage company or title that says so. The
+    description is never read: EdTech companies describe schools and colleges all day."""
+    d = data or {}
+    return bool(EDU_RE.search((domain or "").lower()) or _EDU_NAME.search(f"{d.get('company') or ''} {d.get('title') or ''}"))
+
+
+def _distance(a: str, b: str) -> int:
+    """Edit distance with adjacent swaps counted as one edit (gmial -> gmail)."""
+    prev2: list[int] = []
+    prev = list(range(len(b) + 1))
+    for i in range(1, len(a) + 1):
+        cur = [i] + [0] * len(b)
+        for j in range(1, len(b) + 1):
+            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] != b[j - 1]))
+            if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
+                cur[j] = min(cur[j], prev2[j - 2] + 1)
+        prev2, prev = prev, cur
+    return prev[-1]
+
+
+def typo_of_free_mail(domain: str | None) -> str | None:
+    """The free-mail domain this one is a likely typo of ('gmial.com' -> 'gmail.com'), else None. Same first letter and
+    within 1 edit (2 for 8+ characters), so real companies one letter off a short provider (aon.com, skf.com) stay business."""
+    d = (domain or "").lower()
+    if not d or d in FREE_MAIL or is_free_mail(d):
+        return None
+    best = None
+    for f in sorted(FREE_MAIL):
+        if f[0] != d[0] or len(f.split(".")[0]) < 5:
+            continue
+        dist = _distance(d, f)
+        if dist <= (2 if len(d) >= 8 else 1) and (best is None or dist < best[0]):
+            best = (dist, f)
+    return best[1] if best else None
 
 
 def from_domain(domain: str) -> str:
@@ -159,6 +220,11 @@ def _cache_get(domain: str) -> dict[str, Any] | None:
     except Exception as e:  # cache is an optimisation only
         log.debug("company cache read failed: %s", e)
     return None
+
+
+def cached(domain: str | None) -> dict[str, Any] | None:
+    """The cached enrichment of a domain, or None. Never fetches."""
+    return _cache_get(domain) if domain else None
 
 
 def _cache_put(domain: str, data: dict[str, Any]) -> None:

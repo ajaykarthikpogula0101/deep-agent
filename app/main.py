@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from starlette.concurrency import iterate_in_threadpool
+from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 
 import re
 from html import escape as html_escape
@@ -21,12 +21,13 @@ from urllib.parse import quote as quote_param
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import conversations, digest, gaps, guidance, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, store_bookings, suggestions, templates, titles, tracking
+from app import conversations, digest, gaps, guidance, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking
 from app.booking import availability as avail
 from app.booking import browser_booking
 from app.booking import flow, ics
 from app.booking.service import BookingService
 from app.booking.email import send_host_brief, send_test
+from app import chat as chat_mod
 from app.chat import respond, sse
 from app.config import settings
 from app.db import init_schema, log_event, spend_today
@@ -37,7 +38,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.14.8"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.15.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -72,10 +73,25 @@ _outreach_limiter = RateLimiter(per_minute=60, per_day=3000)  # a few checks per
 @app.on_event("startup")
 def _startup() -> None:
     init_schema()
+    try:  # sessions a write path missed (booking-only sessions before 2026.10.15) get their row
+        tracking.backfill_orphans()
+    except Exception as e:
+        log.warning("orphan backfill failed: %s", e)
     _scheduler.add_job(run_ingest, CronTrigger.from_crontab(settings.recrawl_cron, timezone=settings.recrawl_tz),
                        id="recrawl", replace_existing=True, misfire_grace_time=3600)
     _scheduler.add_job(tracking.purge, CronTrigger.from_crontab("10 3 * * *", timezone=settings.recrawl_tz),
                        id="tracking_purge", replace_existing=True, misfire_grace_time=3600)
+    # session_memory retention (app/session_memory.py); 03:25 keeps clear of the gap drafts at 03:20
+    _scheduler.add_job(session_memory.purge, CronTrigger.from_crontab("25 3 * * *", timezone=settings.recrawl_tz),
+                       id="memory_purge", replace_existing=True, misfire_grace_time=3600)
+    # lookups still pending or failed (provider down, quota, a row that got its IP late) are retried
+    _scheduler.add_job(tracking.retry_pending, CronTrigger.from_crontab("*/10 * * * *", timezone=settings.recrawl_tz),
+                       id="geo_retry", replace_existing=True, misfire_grace_time=600)
+    chain = tracking.providers()
+    if "ipapi" in chain:
+        log.warning("GEOIP_PROVIDER includes ipapi (ip-api.com): plain HTTP and non-commercial use only")
+    if "mmdb" in chain and tracking.mmdb_problem():
+        log.warning("GEOIP_PROVIDER includes mmdb but %s; it will be skipped", tracking.mmdb_problem())
     if settings.digest_enabled:  # weekly digest to the host (app/digest.py)
         _scheduler.add_job(digest.run, CronTrigger.from_crontab(settings.digest_cron, timezone=settings.host_timezone),
                            id="weekly_digest", replace_existing=True, misfire_grace_time=6 * 3600)
@@ -102,13 +118,22 @@ def _startup() -> None:
         outreach.seed_if_empty()
     _scheduler.start()
     log.info("recrawl scheduled: '%s' (%s); tracking=%s geo=%s ip_mode=%s retention=%sd",
-             settings.recrawl_cron, settings.recrawl_tz, settings.tracking_enabled, settings.geoip_provider,
+             settings.recrawl_cron, settings.recrawl_tz, settings.tracking_enabled, ",".join(chain) or "none",
              settings.track_ip_mode, settings.track_retention_days)
 
 
 @app.on_event("shutdown")
 def _shutdown() -> None:
     _scheduler.shutdown(wait=False)
+
+
+class BeaconIn(BaseModel):
+    """The /track fields, carried by /chat and /booking/confirm while the widget has no confirmed /track (lost beacon,
+    blocked path). Kept only as first values, like the beacon's."""
+    page: str | None = Field(default=None, max_length=2000)
+    referrer: str | None = Field(default=None, max_length=2000)
+    lang: str | None = Field(default=None, max_length=16)
+    screen: str | None = Field(default=None, max_length=16)
 
 
 class ChatIn(BaseModel):
@@ -118,6 +143,7 @@ class ChatIn(BaseModel):
     user_name: str | None = Field(default=None, max_length=120)   # unverified hints from the host app
     user_email: str | None = Field(default=None, max_length=200)
     attachments: list[str] = Field(default_factory=list, max_length=5)  # upload ids from POST /upload (this session's)
+    beacon: BeaconIn | None = None
 
 
 def _visitor(request: Request, hint_name: str | None = None, hint_email: str | None = None) -> dict:
@@ -229,6 +255,7 @@ class ConfirmIn(BaseModel):
     company: str = Field(default="", max_length=120)
     notes: str = Field(default="", max_length=1000)
     timezone: str = Field(default="UTC", max_length=64)
+    beacon: BeaconIn | None = None
 
 
 class RescheduleIn(BaseModel):
@@ -245,6 +272,18 @@ class CustomAnswerPatch(BaseModel):
 
 def _client_ip(req: Request) -> str:
     return tracking.client_ip(req.headers, req.client.host if req.client else None)
+
+
+def _ensure(request: Request, sid: str | None, vid: str | None, beacon: BeaconIn | None = None, tz: str | None = None, *,
+            message: bool = False) -> None:
+    """Make sure this session has its sessions row (visitor id, IP, and the page if a beacon came along)."""
+    if not tracking.valid_sid(sid):
+        return
+    b = beacon or BeaconIn()
+    tracking.ensure_session(sid, visitor_id=tracking.clean_vid(vid), ip=_client_ip(request),
+                            user_agent=request.headers.get("user-agent"), page=b.page, referrer=b.referrer, lang=b.lang,
+                            screen=b.screen, client_tz=tz if beacon else None,  # the bodies default tz to 'UTC'
+                            message=message)
 
 
 def _require_admin(token: str | None) -> None:
@@ -318,12 +357,11 @@ async def chat(body: ChatIn, request: Request, x_session_id: str | None = Header
     if not limiter.allow(_client_ip(request)):
         log_event("rate_limited", session_id, {"ip": _client_ip(request)})
         raise HTTPException(429, "Too many messages. Please try again in a minute.")
-    tracking.touch(session_id, _client_ip(request), request.headers.get("user-agent"))
+    # one upsert: message count, the visitor id (the widget's Messages list) and, while untracked, the beacon fields
+    _ensure(request, session_id, x_visitor_id, body.beacon, body.timezone, message=True)
     visitor = _visitor(request, body.user_name, body.user_email)
     if visitor.get("signed_in"):
         tracking.attach_user(session_id, visitor)
-    if x_visitor_id:  # the widget's persistent visitor id, so the session shows up in that visitor's Messages list
-        tracking.attach_visitor(session_id, x_visitor_id)
     if spend_cap_reached():
         log_event("spend_cap", session_id, {"usd": spend_today()})
 
@@ -336,12 +374,29 @@ async def chat(body: ChatIn, request: Request, x_session_id: str | None = Header
         return StreamingResponse(capped(), media_type="text/event-stream")
 
     extra, attached = media.attachments_block(body.attachments, session_id) if body.attachments else ("", [])
-    mem = ""
-    if settings.visitor_memory:  # without a visitor id the current conversation still gives booking facts
-        mem = memory.prompt_block(memory.profile(x_visitor_id, visitor.get("sub") if visitor.get("signed_in") else None, session_id))
-    gen = respond(body.message, body.history, body.timezone, session_id, visitor=visitor, extra_context=extra, attachments=attached, memory=mem)
+    # the memory reads run off the event loop (profile() is ~20 ms of DB work)
+    mem, data, pending = await run_in_threadpool(_memory_parts, x_visitor_id, visitor.get("sub") if visitor.get("signed_in") else None,
+                                                 session_id, len(body.history))
+    if pending:  # earlier sessions the model has not read yet: their gists are ready a turn or two later
+        session_memory.catch_up_async(pending)
+    gen = respond(body.message, body.history, body.timezone, session_id, visitor=visitor, extra_context=extra, attachments=attached,
+                  memory=mem, memory_data=data)
     return StreamingResponse(iterate_in_threadpool(gen), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Session-Id": session_id})
+
+
+def _memory_parts(visitor_id: str | None, user_id: str | None, session_id: str, n_history: int) -> tuple[str, str, list[str]]:
+    """(system section, DATA message, earlier sessions to catch up). Without a visitor id the current conversation still
+    gives booking and form facts."""
+    if not settings.visitor_memory:
+        return "", "", []
+    p = memory.profile(visitor_id, user_id, session_id)
+    if settings.working_memory:
+        sm = session_memory.get(session_id)
+    else:  # CURRENT CONVERSATION off: neither working memory nor form facts
+        sm, p = None, dict(p, form=None)
+    data = memory.data_block(p, sm, window_full=n_history >= chat_mod.MAX_HISTORY)
+    return memory.prompt_block(p), data, p.get("memory_pending") or []
 
 
 @app.post("/feedback")
@@ -549,6 +604,7 @@ def me(request: Request, x_visitor_id: str | None = Header(default=None), x_sess
     if settings.visitor_memory and (x_visitor_id or v.get("signed_in")):
         p = memory.profile((x_visitor_id or "").strip()[:64] or None, v.get("sub") if v.get("signed_in") else None, (x_session_id or "").strip()[:64] or None)
         out["memory"] = memory.public(p)
+        session_memory.catch_up_async(p.get("memory_pending"))  # a returning visitor: earlier sessions' gists before they write
         if not v.get("signed_in"):  # hints from their own earlier forms; the booking/hand-over forms prefill them, unverified
             out["name"] = out.get("name") or p.get("name")
             out["email"] = out.get("email") or p.get("email")
@@ -556,7 +612,7 @@ def me(request: Request, x_visitor_id: str | None = Header(default=None), x_sess
 
 
 @app.post("/handover")
-def handover(body: HandoverIn, request: Request):
+def handover(body: HandoverIn, request: Request, x_visitor_id: str | None = Header(default=None)):
     """Visitor asks for a human: store it as a lead, email the host with the recent conversation."""
     if not _origin_ok(request):
         raise HTTPException(403, "origin not allowed")
@@ -569,6 +625,7 @@ def handover(body: HandoverIn, request: Request):
         tracking.attach_user(body.session_id, v)
     if not _EMAIL.match(email.strip()):
         raise HTTPException(422, "that email address doesn't look right")
+    _ensure(request, body.session_id, x_visitor_id)
     try:
         result = inbox.save_handover(body.session_id, name, email, body.message, send_host_brief)
     except Exception as e:
@@ -593,13 +650,16 @@ def booking_availability(request: Request, schedule: str = "", days: int | None 
 
 
 @app.post("/booking/confirm")
-def booking_confirm(body: ConfirmIn, request: Request, x_session_id: str | None = Header(default=None)):
+def booking_confirm(body: ConfirmIn, request: Request, x_session_id: str | None = Header(default=None),
+                    x_visitor_id: str | None = Header(default=None)):
     """The visitor pressed 'Confirm booking': re-check the slot, book on Zoom, store, queue both emails."""
     if not _origin_ok(request):
         raise HTTPException(403, "origin not allowed")
     sid = (x_session_id or "").strip()[:64] or None
     if not _booking_limiter.allow(sid or _client_ip(request)):
         raise HTTPException(429, "Too many booking attempts. Please wait a minute and try again.")
+    # the row (and its geo, on the background executor while Zoom books) exists before flow.confirm reads the origin
+    _ensure(request, sid, x_visitor_id, body.beacon, body.timezone)
     v = _visitor(request)
     name, email = body.name, body.email
     if v.get("signed_in") and v.get("verified"):  # a verified identity beats whatever the form says
@@ -678,6 +738,7 @@ def booking_reschedule(booking_id: int, body: RescheduleIn, request: Request, t:
         raise HTTPException(404, "booking not found")
     if not _booking_limiter.allow(sid or _client_ip(request)):
         raise HTTPException(429, "Too many booking attempts. Please wait a minute and try again.")
+    _ensure(request, sid, vid)  # only after the ownership check: an unowned request writes nothing
     try:
         res = flow.reschedule(_booking_service, b, body.start, body.timezone)
     except Exception as e:
@@ -708,6 +769,7 @@ def booking_cancel_from_chat(booking_id: int, request: Request, t: str = "", x_s
         return {"status": "cancelled", "already": True, "booking": flow._booking_view(b)}
     if not _booking_limiter.allow(sid or _client_ip(request)):
         raise HTTPException(429, "Too many attempts. Please wait a minute and try again.")
+    _ensure(request, sid, vid)  # only after the ownership check: an unowned request writes nothing
     try:
         r = flow.cancel(b, _booking_service)
     except Exception as e:
@@ -774,6 +836,48 @@ def admin_conversations(days: int = 7, limit: int = 100, x_admin_token: str | No
 def admin_transcript(session_id: str, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
     return inbox.transcript(session_id)
+
+
+def _memory_profile(session_id: str) -> dict:
+    """The profile the chat would build for this session: its visitor and user id, or the session alone (form-only)."""
+    from app.db import conn
+
+    with conn() as c:
+        r = c.execute("SELECT visitor_id, user_id FROM sessions WHERE session_id = %s", (session_id,)).fetchone()
+    return memory.profile(r[0] if r else None, r[1] if r else None, session_id)
+
+
+@app.get("/admin/memory/{session_id}")
+def admin_memory(session_id: str, x_admin_token: str | None = Header(default=None)):
+    """The working memory of one conversation and exactly what the model sees (system section + DATA message)."""
+    _require_admin(x_admin_token)
+    row = session_memory.row(session_id) or {}
+    p = _memory_profile(session_id)
+    return {"session_id": session_id, "facts": row.get("facts") or {}, "gist": row.get("gist") or "", "extractor": row.get("extractor"),
+            "rules_msg_id": row.get("rules_msg_id", 0), "model_msg_id": row.get("model_msg_id", 0), "model_fail": row.get("model_fail", 0),
+            "forgotten_at": row.get("forgotten_at"), "updated_at": row.get("updated_at"), "form": p.get("form"),
+            "rendered": {"system": memory.prompt_block(p), "data": memory.data_block(p, session_memory.get(session_id), window_full=True)}}
+
+
+@app.delete("/admin/memory/{session_id}")
+def admin_memory_forget(session_id: str, visitor: bool = False, x_admin_token: str | None = Header(default=None)):
+    """Clear memory: a tombstone (facts and gist emptied, never re-learned). Transcripts, bookings and leads stay.
+    ?visitor=1 clears every session of that device."""
+    _require_admin(x_admin_token)
+    if visitor:
+        return {"forgotten": session_memory.forget_visitor(session_id)}
+    session_memory.forget(session_id)
+    return {"forgotten": [session_id]}
+
+
+@app.post("/admin/memory/{session_id}/rebuild")
+def admin_memory_rebuild(session_id: str, unforget: bool = False, more: bool = False, x_admin_token: str | None = Header(default=None)):
+    """Re-extract from the transcript (at most 2 model batches per call). The console repeats with ?more=1 (no reset)
+    while 'remaining' is true. A cleared conversation stays cleared unless ?unforget=1."""
+    _require_admin(x_admin_token)
+    if not more:
+        session_memory.reset(session_id, unforget)
+    return session_memory.update(session_id, "rebuild")
 
 
 @app.get("/admin/gaps")

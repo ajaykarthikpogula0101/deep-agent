@@ -137,3 +137,50 @@ def test_host_extras_from_main_guests_brief_and_a_late_update():
     assert "already cancelled" in h and "View booking details" not in h
     v = E.render(b, "visitor", dict(templates.DEFAULTS), now=NOW, brief="PRE-CALL BRIEF\nLead: x")
     assert "PRE-CALL BRIEF" not in v and ">Guests<" in v                    # the brief is for the host only
+
+
+def _db_up() -> bool:
+    try:
+        from app.db import conn, init_schema
+
+        init_schema()
+        with conn() as c:
+            c.execute("SELECT 1")
+        return True
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_host_email_refreshes_a_pending_origin_line(monkeypatch):
+    """The origin is captured at confirm time, usually before the geo lookup finished; the host copy re-reads it."""
+    import uuid
+
+    from app import store_bookings as sb
+    from app.booking import email as mail
+    from app.db import conn
+
+    monkeypatch.setattr(settings, "tracking_enabled", True)
+    sid = f"test-{uuid.uuid4()}"
+    start = datetime(2020, 1, 6, 10, 0, tzinfo=timezone.utc)  # long past: never blocks a real slot
+    b = dict(CONFIRMED, session_id=sid, origin="location pending · direct · 0 messages", attendees=[], email="ada@example.test",
+             start_utc=start, end_utc=start.replace(minute=45), manage_token="t" + sid)
+    bid = None
+    try:
+        with conn() as c:
+            c.execute("""INSERT INTO sessions(session_id, channel, geo_status, city, region, country_code, messages)
+                         VALUES (%s, 'direct', 'ok', 'Bengaluru', 'Karnataka', 'IN', 0)""", (sid,))
+            c.commit()
+        bid = b["id"] = sb.insert(b)
+        sent = []
+        m = mailer_mod.Mailer(sender=lambda to, subject, body, **k: sent.append((to, subject, body, k)) or True, sync=True)
+        mail.send_booking_emails(b, mailer=m)
+        host = next(s for s in sent if s[0] == settings.host_email)
+        assert "Bengaluru, Karnataka, IN · direct" in host[2] and "location pending" not in host[2]
+        assert sb.get(bid)["origin"].startswith("Bengaluru, Karnataka, IN")
+    finally:
+        with conn() as c:
+            if bid:
+                c.execute("DELETE FROM bookings WHERE id = %s", (bid,))
+            c.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))
+            c.commit()

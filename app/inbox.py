@@ -32,11 +32,16 @@ def wants_human(text: str) -> bool:
 def log_message(session_id: str | None, role: str, text: str, *, question: str | None = None, outcome: str | None = None,
                 reason: str | None = None, sources: list[dict] | None = None, latency_ms: int | None = None,
                 model: str | None = None) -> int | None:
-    """Never raises: the inbox is a side channel."""
+    """Never raises: the inbox is a side channel. Also guarantees the session has a sessions row (bare if need be)."""
+    from app.tracking import valid_sid  # lazy, like save_handover's: no import cycle
+
     if not session_id or not text:
         return None
     try:
         with conn() as c:
+            if valid_sid(session_id):
+                c.execute("""INSERT INTO sessions(session_id, channel, geo_status) VALUES (%s, 'direct', 'unknown')
+                             ON CONFLICT (session_id) DO NOTHING""", (session_id,))
             row = c.execute(
                 """INSERT INTO messages(session_id, role, text, question, outcome, reason, sources, latency_ms, model)
                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s) RETURNING id""",
@@ -208,8 +213,12 @@ def transcript(session_id: str) -> dict[str, Any]:
     mcols = ["id", "ts", "role", "text", "outcome", "reason", "sources", "latency_ms", "feedback", "feedback_note"]
     scols = ["first_seen", "city", "region", "country_code", "channel", "referrer_host", "page", "client_tz", "user_agent", "visits"]
     lcols = ["id", "ts", "name", "email", "reason", "status", "slot_start", "company", "confirmed_at", "nudged_at"]
+    from app import session_memory  # admin console only (the Memory panel)
+
+    mem = session_memory.row(session_id)
     return {"session_id": session_id, "messages": [dict(zip(mcols, r)) for r in rows],
-            "session": dict(zip(scols, s)) if s else None, "leads": [dict(zip(lcols, r)) for r in leads]}
+            "session": dict(zip(scols, s)) if s else None, "leads": [dict(zip(lcols, r)) for r in leads],
+            "memory": mem if mem and not mem["forgotten_at"] else None, "forgotten_at": (mem or {}).get("forgotten_at")}
 
 
 def gaps(days: int = 30, limit: int = 50) -> dict[str, Any]:

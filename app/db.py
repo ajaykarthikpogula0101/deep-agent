@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     lon           DOUBLE PRECISION,
     isp           TEXT,
     geo_tz        TEXT,
-    geo_status    TEXT,                           -- pending | ok | failed | private | disabled
+    geo_status    TEXT,                           -- pending | ok | failed | private | disabled | unknown (row created without an IP)
     messages      INT NOT NULL DEFAULT 0,
     leads         INT NOT NULL DEFAULT 0
 );
@@ -160,6 +160,13 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMPTZ;  -- Mess
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS title TEXT;                 -- conversation title (app/titles.py)
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS title_source TEXT;          -- 'auto' | 'user'
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS title_turns INT;            -- visitor turns when the auto title was made
+-- the network behind the IP (app/network.py); never an IP or a hostname
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS asn INT;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS net_org TEXT;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS net_domain TEXT;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS net_kind TEXT;   -- corporate|consumer|hosting|privacy|coworking|education|government|unknown|local
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS net_flags JSONB NOT NULL DEFAULT '{{}}'::jsonb;  -- mobile, proxy, hosting, why, provider, dev
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS geo_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS sessions_first_seen_idx ON sessions(first_seen DESC);
 CREATE INDEX IF NOT EXISTS sessions_visitor_idx ON sessions(visitor_id);
 
@@ -176,11 +183,23 @@ CREATE TABLE IF NOT EXISTS uploads (
 );
 CREATE INDEX IF NOT EXISTS uploads_session_idx ON uploads(session_id);
 
+-- legacy per-IP cache: no longer read or written, emptied by tracking.purge(); drop in a later release
 CREATE TABLE IF NOT EXISTS ip_geo (
     ip          TEXT PRIMARY KEY,
     data        JSONB NOT NULL,
     fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- geo + network lookups cached per /24 (IPv4) or /48 (IPv6); data never holds an IP or a hostname
+CREATE TABLE IF NOT EXISTS ip_net (
+    net         TEXT PRIMARY KEY,               -- tracking.mask_ip()
+    provider    TEXT,
+    data        JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+    status      TEXT NOT NULL,                  -- ok | failed
+    retry_after TIMESTAMPTZ,
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ip_net_fetched_idx ON ip_net(fetched_at);
 
 -- Conversation inbox (app/inbox.py): every turn, with the outcome of each assistant turn and visitor feedback.
 CREATE TABLE IF NOT EXISTS messages (
@@ -290,6 +309,21 @@ CREATE TABLE IF NOT EXISTS email_optouts (
     email  TEXT PRIMARY KEY,
     ts     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Working memory per conversation (app/session_memory.py). No FK to sessions: form-only sessions have no sessions row.
+-- Booking and hand-over state is never stored here; it is read live from bookings and leads.
+CREATE TABLE IF NOT EXISTS session_memory (
+    session_id   TEXT PRIMARY KEY,
+    facts        JSONB NOT NULL DEFAULT '{{}}'::jsonb,   -- field: v, src, turn, ts, prev; plus the asked and declined lists
+    gist         TEXT NOT NULL DEFAULT '',
+    rules_msg_id BIGINT NOT NULL DEFAULT 0,              -- last messages.id the rules saw
+    model_msg_id BIGINT NOT NULL DEFAULT 0,              -- last messages.id sent to the extraction model
+    model_fail   INT NOT NULL DEFAULT 0,
+    extractor    TEXT,                                   -- rules | model
+    forgotten_at TIMESTAMPTZ,                            -- tombstone: Clear memory in the console
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS session_memory_updated_idx ON session_memory(updated_at);
 """
 
 _pool: ConnectionPool | None = None

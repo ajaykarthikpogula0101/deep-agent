@@ -60,6 +60,8 @@
   .gd label.f input, .gd label.f textarea { font:400 14px/1.5 "IBM Plex Sans", system-ui, sans-serif; text-transform:none; letter-spacing:0; color:var(--text) }
   .oc .opts { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 10px } .oc .opts .btn.on { background:var(--beam); border-color:var(--beam); color:var(--on-beam); font-weight:600 }
   .oc textarea { min-height:70px } .oc .fu textarea { min-height:220px }
+  #convo-mem summary { cursor:pointer; color:var(--muted) } #convo-mem summary b { color:var(--text); font-weight:600 } #convo-mem .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:10px 0 }
+  #convo-mem pre { white-space:pre-wrap; font:12px/1.5 "IBM Plex Mono", monospace; margin:6px 0 0; max-height:360px; overflow:auto; background:var(--bg); border:1px solid var(--line); padding:8px }
   .out { display:inline-block; border-radius:999px; padding:1px 9px; font-size:12px; border:1px solid var(--line-strong); white-space:nowrap }
   .out.good_fit, .out.follow_up { color:var(--scan); border-color:var(--scan) } .out.not_fit, .out.no_show { color:var(--danger); border-color:var(--danger) } .out.rate { color:var(--beam-text); border-color:var(--beam-text) }
   #tplform label { display:flex; flex-direction:column; gap:4px } #tplform label input[type=checkbox] { width:auto } #tplform label:has(input[type=checkbox]) { flex-direction:row; align-items:center; gap:8px; font:inherit; text-transform:none; letter-spacing:0; color:var(--text) }
@@ -94,7 +96,7 @@
   </section>
   <section class="pane" id="convos">
     <div id="convo-list" class="wrap"></div>
-    <div id="convo-view" style="display:none"><button class="btn back" id="back">← all conversations</button><div id="convo-head" class="card"></div><div class="tx" id="tx"></div></div>
+    <div id="convo-view" style="display:none"><button class="btn back" id="back">← all conversations</button><div id="convo-head" class="card"></div><details class="card" id="convo-mem"></details><div class="tx" id="tx"></div></div>
   </section>
   <section class="pane" id="bookings">
     <div id="bk-list-wrap">
@@ -325,6 +327,37 @@ async function openConvo(sid) {
     (t.leads.length ? `<div style="margin-top:6px">${t.leads.map(l => `<span class="chip"><b>${esc(l.status)}</b> ${esc(l.name)} · ${esc(l.email)}${l.company ? ' · ' + esc(String(l.company).split(' · ')[0]) : ''}${l.slot_start ? ' · ' + fmt(l.slot_start) : ''}${l.confirmed_at ? ' · <span class="ok">confirmed</span>' : l.nudged_at ? ' · <span class="warn">reminded</span>' : ''}${l.status === 'handoff' && !l.confirmed_at ? ` <button class="btn" data-confirm="${l.id}" title="Zoom confirmation seen: no reminder email, counts as booked">mark confirmed</button>` : ''}</span>`).join(' ')}</div>` : '');
   $('tx').innerHTML = t.messages.map(m => `<div class="m ${m.role === 'user' ? 'user' : ''}"><div class="meta mono">${m.role === 'user' ? 'visitor' : 'assistant'} · ${fmt(m.ts)}${m.outcome ? ' · ' + esc(m.outcome) : ''}${m.latency_ms ? ' · ' + (m.latency_ms / 1000).toFixed(1) + 's' : ''}${m.feedback === 1 ? ' · <span class="ok">▲ helpful</span>' : m.feedback === -1 ? ' · <span class="bad">▼ not helpful' + (m.feedback_note ? ': ' + esc(m.feedback_note) : '') + '</span>' : ''}</div>${esc(m.text)}${(m.sources || []).length ? `<div class="meta mono" style="margin-top:6px">sources: ${m.sources.map(x => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.url)}</a>`).join(' · ')}</div>` : ''}</div>`).join('');
   $('convo-head').querySelectorAll('button[data-confirm]').forEach(b => b.onclick = async () => { b.disabled = true; try { await api(`/admin/leads/${b.dataset.confirm}/confirm`, { method: 'POST' }); openConvo(sid); } catch (e) { $('status').textContent = e.message; } });
+  loadMemory(sid);
+}
+// ---- working memory of one conversation (app/session_memory.py): what the bot noted, and exactly what the model sees
+const MEM_FORM = [['name', 'booking form'], ['company', 'booking form'], ['notes', 'booking form'], ['guests', 'booking form'], ['handover_message', 'hand-over']];
+async function loadMemory(sid) {
+  const box = $('convo-mem'), open = box.open;
+  let m;
+  try { m = await api(`/admin/memory/${encodeURIComponent(sid)}`); } catch (e) { box.innerHTML = `<summary><b>Memory</b> · ${esc(e.message)}</summary>`; return; }
+  const rows = [];
+  for (const [k, from] of MEM_FORM) { const v = m.form && m.form[k]; if (v && (!Array.isArray(v) || v.length)) rows.push([k, Array.isArray(v) ? v.join(', ') : v, from, '', m.form.at, '']); }
+  for (const [k, f] of Object.entries(m.facts || {})) {
+    if (Array.isArray(f)) rows.push([k, f.join(' · '), 'chat', '', '', '']);
+    else if (f && f.v) rows.push([k, f.v, 'chat', f.turn ?? '', f.ts, f.prev || '']);
+  }
+  const n = rows.length + (m.gist ? 1 : 0);
+  box.innerHTML = `<summary><b>Memory</b> · ${m.forgotten_at ? 'cleared ' + fmt(m.forgotten_at) : n ? n + ' note' + (n > 1 ? 's' : '') : 'nothing noted yet'}${m.extractor ? ` <span class="chip">${esc(m.extractor)}</span>` : ''}</summary>` +
+    (m.gist ? `<p style="margin:10px 0 0">${esc(m.gist)}</p>` : '') +
+    (rows.length ? `<div class="wrap"><table style="margin-top:10px"><thead><tr><th>field</th><th>value</th><th>from</th><th>turn</th><th>when</th></tr></thead><tbody>` +
+      rows.map(([k, v, from, turn, ts, prev]) => `<tr><td class="muted">${esc(k)}</td><td>${esc(v)}${prev ? `<div class="muted" style="font-size:12px">was: ${esc(prev)}</div>` : ''}</td><td class="muted">${esc(from)}</td><td>${esc(turn)}</td><td class="muted">${fmt(ts)}</td></tr>`).join('') + '</tbody></table></div>' : '') +
+    `<div class="row"><button class="btn" id="mem-rebuild" title="Re-read the transcript (rules + the small model)">Rebuild</button>` +
+    `<button class="btn danger" id="mem-clear" title="Empties the bot's notes for this conversation; the transcript, bookings and leads stay">Clear memory (notes only, not the transcript)</button>` +
+    `<span class="status" id="mem-status">cursors: rules ${esc(m.rules_msg_id)} · model ${esc(m.model_msg_id)}${m.model_fail ? ' · model failures ' + esc(m.model_fail) : ''}</span></div>` +
+    `<details><summary>What the model sees</summary><div class="mono muted" style="margin-top:8px">system (facts only)</div><pre>${esc(m.rendered.system || '(nothing)')}</pre>` +
+    `<div class="mono muted" style="margin-top:8px">data message (window full)</div><pre>${esc(m.rendered.data || '(nothing)')}</pre></details>`;
+  box.open = open;
+  $('mem-rebuild').onclick = async () => { const b = $('mem-rebuild'); b.disabled = true; $('mem-status').textContent = 'rebuilding…';
+    try { let r = await api(`/admin/memory/${encodeURIComponent(sid)}/rebuild`, { method: 'POST' });
+      for (let i = 0; r.remaining && i < 20; i++) r = await api(`/admin/memory/${encodeURIComponent(sid)}/rebuild?more=1`, { method: 'POST' });
+      await loadMemory(sid); $('convo-mem').open = true; } catch (e) { $('mem-status').textContent = e.message; b.disabled = false; } };
+  $('mem-clear').onclick = async () => { if (!confirm("Clear the bot's notes for this conversation? The transcript stays.")) return;
+    try { await api(`/admin/memory/${encodeURIComponent(sid)}`, { method: 'DELETE' }); await loadMemory(sid); $('convo-mem').open = true; } catch (e) { $('mem-status').textContent = e.message; } };
 }
 $('back').onclick = loadConvos;
 // ---- bookings + pre-call brief (app/precall.py)
@@ -439,11 +472,18 @@ async function loadGaps() {
   $('down').innerHTML = g.thumbs_down.length ? `<table><thead><tr><th>question</th><th>answer</th><th>note</th><th>when</th></tr></thead><tbody>` + g.thumbs_down.map(d => `<tr class="click" data-sid="${esc(d.session_id)}"><td class="ell">${esc(d.question || '')}</td><td class="ell">${esc(d.answer)}</td><td class="muted">${esc(d.note || '')}</td><td class="muted">${fmt(d.ts)}</td></tr>`).join('') + '</tbody></table>' : '<p class="muted">No thumbs-down yet.</p>';
   $('down').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { document.querySelector('nav button[data-pane="convos"]').click(); openConvo(tr.dataset.sid); });
 }
+const NET_CHIP = {corporate: 'company', consumer: 'home', hosting: 'cloud', privacy: 'VPN·relay', coworking: 'cowork', education: 'uni', government: 'gov', local: 'local'};
+function netChip(it) {  // the network kind (app/network.py); AS number and domain on hover
+  const f = it.net_flags || {}; const name = it.net_kind === 'consumer' && f.mobile ? 'mobile' : NET_CHIP[it.net_kind];
+  if (!name) return '';
+  const tip = [it.asn ? 'AS' + it.asn : '', it.net_domain || ''].filter(Boolean).join(' · ') + (f.dev ? ' · dev IP' : '');
+  return ` <span class="chip" style="padding:0 7px;font-size:11px" title="${esc(tip)}">${esc(name)}</span>`;
+}
 async function loadSessions() {
   const d = await api(`/admin/sessions?days=${days()}&limit=500`); const s = d.summary;
-  $('sess-summary').innerHTML = [`sessions <b>${s.sessions}</b>`, `visitors <b>${s.visitors}</b>`, `messages <b>${s.messages}</b>`, `leads <b>${s.leads}</b>`].map(x => `<span class="chip">${x}</span>`).join('') + s.countries.map(c => `<span class="chip">${esc(c.country)} <b>${c.sessions}</b></span>`).join('') + s.channels.map(c => `<span class="chip">${esc(c.channel)} <b>${c.sessions}</b></span>`).join('');
+  $('sess-summary').innerHTML = [`sessions <b>${s.sessions}</b>`, `visitors <b>${s.visitors}</b>`, `messages <b>${s.messages}</b>`, `leads <b>${s.leads}</b>`].map(x => `<span class="chip">${x}</span>`).join('') + s.countries.map(c => `<span class="chip">${esc(c.country)} <b>${c.sessions}</b></span>`).join('') + s.channels.map(c => `<span class="chip">${esc(c.channel)} <b>${c.sessions}</b></span>`).join('') + (s.by_kind || []).map(k => `<span class="chip" title="network kind">${esc(NET_CHIP[k.kind] || k.kind)} <b>${k.sessions}</b></span>`).join('');
   const tb = $('sess').querySelector('tbody'); tb.innerHTML = d.items.map(it => { let path = ''; try { path = it.page ? new URL(it.page).pathname : ''; } catch { path = it.page || ''; }
-    return `<tr class="click" data-sid="${esc(it.session_id)}"><td>${fmt(it.first_seen)}</td><td>${esc([it.city, it.region, it.country_code].filter(Boolean).join(', ')) || `<span class="muted">${esc(it.geo_status || '')}</span>`}</td><td class="muted ell">${esc(it.isp || '')}</td><td>${esc(it.channel || 'direct')}</td><td class="ell">${it.utm && it.utm.utm_source ? 'utm: ' + esc(it.utm.utm_source) + '/' + esc(it.utm.utm_medium || '-') : esc(it.referrer_host || 'direct')}</td><td class="muted ell">${esc(path)}</td><td class="muted">${it.visits > 1 ? 'returning (' + it.visits + ')' : (it.visitor_id ? 'new' : '-')}</td><td>${it.messages}</td><td class="ok">${it.leads || ''}</td><td class="muted">${esc(it.ip || '')}</td></tr>`; }).join('');
+    return `<tr class="click" data-sid="${esc(it.session_id)}"><td>${fmt(it.first_seen)}</td><td>${esc([it.city, it.region, it.country_code].filter(Boolean).join(', ')) || `<span class="muted">${esc(it.geo_status === 'unknown' ? 'IP hidden' : it.geo_status || '')}</span>`}</td><td class="muted ell">${esc(it.net_org || it.isp || '')}${netChip(it)}</td><td>${esc(it.channel || 'direct')}</td><td class="ell">${it.utm && it.utm.utm_source ? 'utm: ' + esc(it.utm.utm_source) + '/' + esc(it.utm.utm_medium || '-') : esc(it.referrer_host || 'direct')}</td><td class="muted ell">${esc(path)}</td><td class="muted">${it.visits > 1 ? 'returning (' + it.visits + ')' : (it.visitor_id ? 'new' : '-')}</td><td>${it.messages}</td><td class="ok">${it.leads || ''}</td><td class="muted">${esc(it.ip || '')}</td></tr>`; }).join('');
   tb.querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { document.querySelector('nav button[data-pane="convos"]').click(); openConvo(tr.dataset.sid); });
 }
 async function loadGuidance() { const g = await api('/admin/guidance'); $('gtext').value = g.text || ''; $('gtext').maxLength = g.max_chars; }

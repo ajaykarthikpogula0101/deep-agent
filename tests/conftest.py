@@ -44,6 +44,20 @@ def _no_rich_digest(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_working_memory(monkeypatch):
+    """.env sets LLM_API_KEY and several tests call respond() against the live database: without this every such turn
+    would queue a session_memory job (paid extraction calls, rows for 's1' and 's-ui-*'). tests/test_session_memory.py
+    turns it back on explicitly."""
+    from app import session_memory
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "working_memory", False)
+    monkeypatch.setattr(settings, "memory_extract", False)
+    monkeypatch.setattr(session_memory, "update_async", lambda *a, **k: None)
+    monkeypatch.setattr(session_memory, "catch_up_async", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
 def _no_learned_score(monkeypatch):
     """The lead score uses its fixed points in tests: corrections learned from real call outcomes in the database
     (app/outcomes.py) never leak in. tests/test_outcomes.py passes `adjust` explicitly."""

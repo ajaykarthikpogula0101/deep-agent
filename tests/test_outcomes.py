@@ -106,6 +106,31 @@ def test_score_applies_learned_points_and_keeps_the_original():
     assert all("key" in x for x in base["reasons"]) and set(r) <= set(precall.RULES)
 
 
+def test_learning_uses_the_score_at_booking_and_skips_staff_and_tests(monkeypatch):
+    v = precall.VERSION
+    brief = {"version": v, "reasons": [{"key": "visits", "points": 8}],
+             "at_booking": {"version": v, "reasons": [{"key": "business_email", "points": 21, "base": 15}]}}
+    assert outcomes._features(booking(), brief) == {"business_email": 15}
+    assert outcomes._features(booking(), {"version": v, "reasons": [{"key": "visits", "points": 8}]}) == {"visits": 8}
+    monkeypatch.setattr(precall, "gather", lambda *a, **k: sig())   # a v1 brief is scored again by today's rules
+    old = outcomes._features(booking(), {"version": 1, "reasons": [{"key": "visits", "points": 8}]})
+    assert old["business_email"] == 15 and old["buying_topics"] == 25
+    for key in ("internal", "test_traffic"):
+        assert outcomes._features(booking(), {"version": v, "reasons": [{"key": key, "points": -50}, {"key": "soon", "points": 5}]}) == {}
+
+
+def test_calibration_applies_learned_points_with_the_sign_clamp():
+    samples = [({"business_email": 15}, True)] * 10 + [({"business_email": 15, "colleagues": 8}, False)] * 10
+    L = outcomes.calibrate(samples, min_calls=20)
+    assert L["adjust"]["colleagues"] < -8   # more than the rule's 8 points ...
+    assert L["separation"]["rest_after"] == 25.0   # ... yet the rule bottoms out at 0, as precall.score would apply it
+
+
+def test_ask_email_shows_the_score_at_booking():
+    brief = {"score": 40, "label": "warm", "at_booking": {"score": 72, "label": "hot"}}
+    assert "Lead:     Hot lead · 72/100 (at booking)" in outcomes.render_ask(booking(), brief)[2]
+
+
 @pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
 def test_whole_loop_ask_once_rate_on_the_page_draft_and_send(monkeypatch):
     from fastapi.testclient import TestClient

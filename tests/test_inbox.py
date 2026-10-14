@@ -65,6 +65,7 @@ def test_turns_feedback_metrics_and_gaps_round_trip():
     finally:
         with conn() as c:
             c.execute("DELETE FROM messages WHERE session_id = %s", (sid,))
+            c.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))  # the row log_message guarantees
             c.commit()
 
 
@@ -92,6 +93,7 @@ def test_handover_saves_a_lead_and_briefs_the_host_with_the_transcript():
         with conn() as c:
             c.execute("DELETE FROM leads WHERE session_id = %s", (sid,))
             c.execute("DELETE FROM messages WHERE session_id = %s", (sid,))
+            c.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))  # the row log_message guarantees
             c.commit()
 
 
@@ -114,3 +116,51 @@ def test_custom_answers_match_close_questions_only():
         assert hits == 1
     finally:
         assert delete_custom_answer(cid)
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_log_message_guarantees_session_row():
+    from app.db import conn
+
+    sid = f"test-{uuid.uuid4()}"
+    with conn() as c:
+        s1_before = c.execute("SELECT count(*) FROM sessions WHERE session_id = 's1'").fetchone()[0]
+    ids = []
+    try:
+        ids.append(inbox.log_message(sid, "assistant", "x"))
+        ids.append(inbox.log_message("s1", "assistant", "x"))
+        with conn() as c:
+            assert c.execute("SELECT geo_status FROM sessions WHERE session_id = %s", (sid,)).fetchone() == ("unknown",)
+            assert c.execute("SELECT count(*) FROM sessions WHERE session_id = 's1'").fetchone()[0] == s1_before
+    finally:
+        with conn() as c:
+            c.execute("DELETE FROM messages WHERE id = ANY(%s)", ([i for i in ids if i],))
+            c.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))
+            c.commit()
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_backfill_orphans():
+    from app import tracking
+    from app.db import conn
+
+    sid = f"test-{uuid.uuid4()}"
+    try:
+        with conn() as c:  # written directly: log_message would create the row itself
+            c.execute("INSERT INTO messages(ts, session_id, role, text) VALUES (now() - interval '1 day', %s, 'user', 'hi')", (sid,))
+            c.execute("""INSERT INTO leads(ts, name, email, reason, status, session_id)
+                         VALUES (now() - interval '2 days', 'Ada', 'ada@example.test', 'pytest', 'enquiry', %s)""", (sid,))
+            c.commit()
+        assert tracking.backfill_orphans() >= 1
+        with conn() as c:
+            first, msgs, leads, status = c.execute("SELECT first_seen, messages, leads, geo_status FROM sessions WHERE session_id = %s",
+                                                   (sid,)).fetchone()
+            lead_ts, = c.execute("SELECT ts FROM leads WHERE session_id = %s", (sid,)).fetchone()
+        assert (first, msgs, leads, status) == (lead_ts, 1, 1, "unknown")
+        assert tracking.backfill_orphans() == 0
+    finally:
+        with conn() as c:
+            c.execute("DELETE FROM messages WHERE session_id = %s", (sid,))
+            c.execute("DELETE FROM leads WHERE session_id = %s", (sid,))
+            c.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))
+            c.commit()

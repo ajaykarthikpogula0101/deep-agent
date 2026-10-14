@@ -68,5 +68,6 @@ def test_top_questions_counts_answered_questions_across_sessions():
     finally:
         with conn() as c:
             c.execute("DELETE FROM messages WHERE session_id = ANY(%s)", (sids,))
+            c.execute("DELETE FROM sessions WHERE session_id = ANY(%s)", (sids,))  # the rows log_message guarantees
             c.commit()
         sg.invalidate()

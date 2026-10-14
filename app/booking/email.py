@@ -136,6 +136,28 @@ def _current(booking: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
 
+def _refresh_origin(booking: dict[str, Any]) -> None:
+    """The origin line was captured at confirm time, often before the geo lookup finished ('location pending').
+    Re-read it for the host copy and store the newer line on the booking. Never raises."""
+    if not booking.get("session_id"):
+        return
+    try:
+        from app import tracking
+        from app.db import conn
+
+        fresh = tracking.describe_session(booking["session_id"])
+        if not fresh or fresh == booking.get("origin"):
+            return
+        booking["origin"] = fresh
+        if booking.get("id"):
+            with conn() as c:
+                c.execute("UPDATE bookings SET origin = %s WHERE id = %s AND session_id = %s",
+                          (fresh, booking["id"], booking["session_id"]))
+                c.commit()
+    except Exception as e:
+        log.warning("origin refresh failed: %s", e)
+
+
 def send_booking_emails(booking: dict[str, Any], mailer=None, with_brief: bool = False) -> None:
     """Visitor confirmation + host 'New booking', both with the .ics invite, queued on the background mailer.
     `with_brief`: the host copy waits on a worker thread for the pre-call brief (app/precall.py) and carries it; the
@@ -155,6 +177,7 @@ def send_booking_emails(booking: dict[str, Any], mailer=None, with_brief: bool =
     def host(brief: dict | None) -> None:
         from app import precall
 
+        _refresh_origin(booking)
         s, b = templates.render_booking_host(booking, tpl)
         if brief:
             s += f" · {precall.headline(brief)}" if brief.get("label") in ("hot", "warm") else ""

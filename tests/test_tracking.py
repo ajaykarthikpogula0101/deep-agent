@@ -1,6 +1,7 @@
 """Session origin tracking: the pure helpers are tested hermetically; the DB round-trip runs only when Postgres is up."""
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -98,9 +99,11 @@ def test_session_round_trip_without_network(monkeypatch):
     def cleanup():
         with conn() as c:
             c.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))
-            c.execute("DELETE FROM ip_geo WHERE ip = %s", (ip,))  # a cached real lookup would bypass the stub
+            c.execute("DELETE FROM ip_geo WHERE ip = %s", (ip,))
+            c.execute("DELETE FROM ip_net WHERE net = %s", (mask_ip(ip),))  # a cached real lookup would bypass the stub
             c.commit()
 
+    monkeypatch.setattr(tracking.settings, "net_rdns", False)
     cleanup()
     try:
         res = tracking.start_session(sid, vid, ip, "pytest/1.0", "https://deependhq.com/pillars?utm_source=newsletter&utm_medium=email",
@@ -146,3 +149,396 @@ def test_returning_visitor_and_private_ip(monkeypatch):
         with conn() as c:
             c.execute("DELETE FROM sessions WHERE session_id = ANY(%s)", (sids,))
             c.commit()
+
+
+# ---------------------------------------------------------------- ensure_session: the single write path
+IPWHO = {"success": True, "country": "India", "country_code": "IN", "region": "Karnataka", "city": "Bengaluru",
+         "latitude": 12.97, "longitude": 77.59, "connection": {"isp": "Jio"}, "timezone": {"id": "Asia/Kolkata"}}
+
+
+def _drain():
+    tracking._executor.shutdown(wait=True)  # waits for every worker, unlike submit(...).result()
+    tracking._executor = type(tracking._executor)(max_workers=2)
+
+
+def _row(sid, cols="visitor_id, ip, user_agent, page, channel, geo_status, messages, leads, city"):
+    from app.db import conn
+
+    with conn() as c:
+        r = c.execute(f"SELECT {cols} FROM sessions WHERE session_id = %s", (sid,)).fetchone()
+    return dict(zip([x.strip() for x in cols.split(",")], r)) if r else None
+
+
+def _drop(*sids):
+    from app.db import conn
+
+    with conn() as c:
+        c.execute("DELETE FROM sessions WHERE session_id = ANY(%s)", (list(sids),))
+        c.commit()
+
+
+def _count_submits(monkeypatch) -> list:
+    calls: list = []
+    monkeypatch.setattr(tracking._executor, "submit", lambda *a, **k: calls.append(a))
+    return calls
+
+
+def test_valid_sid_and_clean_vid():
+    assert tracking.valid_sid("test-1234") and tracking.valid_sid("a" * 64)
+    assert not any(tracking.valid_sid(s) for s in ("s1", "", None, "a" * 65, "bad id 123", "<script>x"))
+    assert tracking.clean_vid(" vis_1-a ") == "vis_1-a" and tracking.clean_vid("x") == "x"
+    assert tracking.clean_vid("<b>x") is None and tracking.clean_vid("") is None and tracking.clean_vid("v" * 65) is None
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_ensure_session_creates_row_with_visitor_and_geo(monkeypatch):
+    from app.db import conn
+
+    monkeypatch.setattr(tracking, "_fetch_geo", lambda ip: normalise_geo("ipwho", IPWHO))
+    monkeypatch.setattr(tracking.settings, "tracking_enabled", True)
+    sid, vid, ip = f"test-{uuid.uuid4()}", f"vis-{uuid.uuid4()}", "49.207.200.10"
+    with conn() as c:
+        c.execute("DELETE FROM ip_net WHERE net = %s", (mask_ip(ip),))  # a cached real lookup would bypass the stub
+        c.commit()
+    try:
+        assert tracking.ensure_session(sid, visitor_id=vid, ip=ip, user_agent="pytest",
+                                       page="https://deependhq.com/pricing?utm_source=linkedin",
+                                       referrer="https://www.linkedin.com/") is True
+        _drain()
+        r = _row(sid)
+        assert r["visitor_id"] == vid and r["page"] == "https://deependhq.com/pricing?utm_source=linkedin"
+        assert r["channel"] == "social" and r["geo_status"] == "ok" and r["city"] == "Bengaluru"
+    finally:
+        _drop(sid)
+        with conn() as c:
+            c.execute("DELETE FROM ip_net WHERE net = %s", (mask_ip(ip),))
+            c.commit()
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_ensure_session_upgrades_direct_row_when_beacon_arrives_late(monkeypatch):
+    monkeypatch.setattr(tracking.settings, "tracking_enabled", True)
+    sid, vid = f"test-{uuid.uuid4()}", f"vis-{uuid.uuid4()}"
+    try:
+        tracking.touch(sid, "127.0.0.1", "pytest")
+        r = _row(sid)
+        assert (r["channel"], r["page"], r["messages"]) == ("direct", None, 1)
+        res = tracking.start_session(sid, vid, "127.0.0.1", "pytest", "https://deependhq.com/", "https://www.linkedin.com/",
+                                     "Asia/Kolkata", "en", "1440x900")
+        assert set(res) == {"ok", "tracked", "channel", "visit_number"}
+        assert res["ok"] and res["tracked"] and res["channel"] == "social" and res["visit_number"] == 1
+        _drain()
+        r = _row(sid)
+        assert (r["channel"], r["messages"], r["visitor_id"], r["page"]) == ("social", 1, vid, "https://deependhq.com/")
+    finally:
+        _drop(sid)
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_ensure_session_keeps_first_values_and_counts(monkeypatch):
+    monkeypatch.setattr(tracking.settings, "tracking_enabled", True)
+    _count_submits(monkeypatch)
+    sid, junk = f"test-{uuid.uuid4()}", f"test-{uuid.uuid4()}"
+    try:
+        assert tracking.ensure_session(sid, visitor_id="vis-first", page="https://deependhq.com/a", ip="unknown") is True
+        assert tracking.ensure_session(sid, visitor_id="vis-second", page="https://deependhq.com/b", message=True) is False
+        tracking.ensure_session(sid, lead=True)
+        r = _row(sid)
+        assert (r["visitor_id"], r["page"], r["messages"], r["leads"]) == ("vis-first", "https://deependhq.com/a", 1, 1)
+        assert r["ip"] is None and r["geo_status"] == "unknown"  # the 'unknown' string is never stored
+        tracking.attach_visitor(junk, "<b>x")
+        assert _row(junk) is None  # a junk visitor id alone writes nothing
+        tracking.ensure_session(junk, visitor_id=tracking.clean_vid("<b>x"))
+        assert _row(junk)["visitor_id"] is None
+        assert tracking.ensure_session("s1", message=True) is None  # invalid ids are skipped before any SQL
+    finally:
+        _drop(sid, junk)
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_ensure_session_respects_tracking_disabled(monkeypatch):
+    monkeypatch.setattr(tracking.settings, "tracking_enabled", False)
+    calls = _count_submits(monkeypatch)
+    sid, vid = f"test-{uuid.uuid4()}", f"vis-{uuid.uuid4()}"
+    try:
+        assert tracking.ensure_session(sid, visitor_id=vid, ip="49.207.200.10", user_agent="ua", page="https://x/",
+                                       referrer="https://www.linkedin.com/", client_tz="UTC", lang="en", screen="1x1",
+                                       message=True) is True
+        r = _row(sid, "visitor_id, ip, user_agent, page, referrer, client_tz, lang, screen, geo_status, messages")
+        assert r["visitor_id"] == vid and r["geo_status"] == "disabled" and r["messages"] == 1
+        assert all(r[k] is None for k in ("ip", "user_agent", "page", "referrer", "client_tz", "lang", "screen"))
+        assert calls == []
+    finally:
+        _drop(sid)
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_got_ip_triggers_enrich_once(monkeypatch):
+    monkeypatch.setattr(tracking.settings, "tracking_enabled", True)
+    calls = _count_submits(monkeypatch)
+    sid, vid, ip = f"test-{uuid.uuid4()}", f"vis-{uuid.uuid4()}", "49.207.200.10"
+    try:
+        tracking.ensure_session(sid, visitor_id=vid)
+        assert _row(sid)["geo_status"] == "unknown" and calls == []
+        tracking.ensure_session(sid, ip=ip)
+        assert len(calls) == 1 and calls[0][1:] == (sid, ip)
+        r = _row(sid)
+        assert (r["ip"], r["geo_status"]) == (ip, "pending")
+        tracking.ensure_session(sid, ip=ip)
+        assert len(calls) == 1
+    finally:
+        _drop(sid)
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_purged_row_is_not_regeolocated(monkeypatch):
+    from app.db import conn
+
+    monkeypatch.setattr(tracking.settings, "tracking_enabled", True)
+    calls = _count_submits(monkeypatch)
+    sid = f"test-{uuid.uuid4()}"
+    try:
+        with conn() as c:  # as purge() leaves a geolocated row after TRACK_RETENTION_DAYS
+            c.execute("INSERT INTO sessions(session_id, channel, geo_status, city) VALUES (%s, 'direct', 'ok', 'Bengaluru')", (sid,))
+            c.commit()
+        assert tracking.ensure_session(sid, ip="8.8.8.8") is False
+        r = _row(sid)
+        assert (r["ip"], r["geo_status"], r["city"]) == (None, "ok", "Bengaluru") and calls == []
+    finally:
+        _drop(sid)
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_attach_lead_creates_missing_row():
+    from app.db import conn
+
+    sid = f"test-{uuid.uuid4()}"
+    with conn() as c:
+        lead_id = c.execute("""INSERT INTO leads(name, email, reason, status) VALUES ('Ada', 'ada@example.test', 'pytest', 'enquiry')
+                               RETURNING id""").fetchone()[0]
+        s1_before = c.execute("SELECT count(*) FROM sessions WHERE session_id = 's1'").fetchone()[0]
+        c.commit()
+    try:
+        tracking.attach_lead(sid, lead_id)
+        assert _row(sid)["leads"] == 1
+        with conn() as c:
+            assert c.execute("SELECT session_id FROM leads WHERE id = %s", (lead_id,)).fetchone()[0] == sid
+        tracking.attach_lead("s1", lead_id)
+        with conn() as c:
+            assert c.execute("SELECT count(*) FROM sessions WHERE session_id = 's1'").fetchone()[0] == s1_before
+    finally:
+        _drop(sid)
+        with conn() as c:
+            c.execute("DELETE FROM leads WHERE id = %s", (lead_id,))
+            c.commit()
+
+
+# ---------------------------------------------------------------- the network behind the IP
+def test_normalise_geo_network_keys():
+    g = normalise_geo("ipwho", dict(IPWHO, connection={"asn": 15169, "org": "Google LLC", "isp": "Google LLC", "domain": "google.com"}))
+    assert (g["asn"], g["as_org"], g["net_domain"], g["org_scope"], g["provider"]) == (15169, "Google LLC", "google.com", "asn", "ipwho")
+    assert g["isp"] == "Google LLC" and g["city"] == "Bengaluru"
+    g = normalise_geo("ipinfo", {"country": "US", "city": "Mountain View", "loc": "37.38,-122.08", "org": "AS15169 Google LLC",
+                                 "hostname": "dns.google", "ip": "8.8.8.8"})
+    assert (g["asn"], g["as_org"], g["isp"]) == (15169, "Google LLC", "AS15169 Google LLC")
+    assert "hostname" not in g and g["rdns_domain"] == "dns.google" and "8.8.8.8" not in str(g)
+    g = normalise_geo("ipapi", {"status": "success", "country": "India", "countryCode": "IN", "city": "Mumbai", "isp": "Reliance Jio",
+                                "as": "AS55836 Reliance Jio Infocomm Limited", "asname": "RELIANCEJIO-IN", "org": "",
+                                "mobile": True, "proxy": False, "hosting": False, "reverse": "49.200.207.49.jio.example"})
+    assert (g["asn"], g["flags"]["mobile"], g["flags"]["proxy"], g["org_scope"]) == (55836, True, False, "netblock")
+    assert g["as_org"] == "Reliance Jio Infocomm Limited" and "hostname" not in g and "reverse" not in g
+    g = normalise_geo("ipapiis", {"ip": "1.2.3.4", "is_mobile": False, "is_vpn": False, "is_proxy": True, "is_tor": False,
+                                  "is_datacenter": False,
+                                  "company": {"name": "Infosys Limited", "type": "business", "network": "1.2.3.0 - 1.2.3.255"},
+                                  "asn": {"asn": 4755, "org": "TATA Communications", "domain": "tatacommunications.com", "type": "isp"},
+                                  "location": {"country": "India", "country_code": "in", "state": "Karnataka", "city": "Bengaluru",
+                                               "latitude": 12.9, "longitude": 77.6, "timezone": "Asia/Kolkata"}})
+    assert (g["status"], g["type"], g["org"], g["org_scope"], g["asn"], g["country_code"]) == \
+        ("ok", "business", "Infosys Limited", "netblock", 4755, "IN")
+    assert g["flags"] == {"mobile": False, "proxy": True, "hosting": False} and "1.2.3" not in str(g)
+    assert normalise_geo("ipapiis", {"location": {}})["status"] == "failed"
+
+
+def test_client_ip_walks_forwarded_for_and_ignores_untrusted_peers():
+    assert client_ip({"x-forwarded-for": "1.2.3.4, 49.207.200.10"}, "10.0.0.2", trust_proxy=True) == "49.207.200.10"
+    assert client_ip({"x-forwarded-for": "1.2.3.4, 49.207.200.10, 10.0.0.5"}, "10.0.0.2", trust_proxy=True) == "49.207.200.10"
+    assert client_ip({"x-forwarded-for": "10.0.0.7, 10.0.0.5"}, "10.0.0.2", trust_proxy=True) == "10.0.0.7"
+    assert client_ip({"x-real-ip": "8.8.8.8"}, "49.207.200.10", trust_proxy=True) == "49.207.200.10"
+    assert client_ip({"cf-connecting-ip": "17.0.0.1"}, "49.207.200.10", trust_proxy=True) == "49.207.200.10"
+
+
+def test_geolocate_unknown_and_format_network():
+    assert tracking.geolocate("unknown")["status"] == "unknown"
+    assert tracking.format_network({"net_kind": "consumer", "net_org": "Reliance Jio", "net_flags": {"mobile": True}}) == \
+        "Reliance Jio · mobile network"
+    assert tracking.format_network({"net_kind": "local"}) == "local test network (no lookup)"
+    assert tracking.format_network({"net_kind": None, "isp": "Jio"}) == ""
+    assert tracking.format_network({"net_kind": "corporate", "net_org": "Infosys Limited", "net_flags": '{"dev": true}'},
+                                   "matches their company") == "Infosys · company network · matches their company [dev test IP]"
+
+
+def _fresh_provider_state(monkeypatch, chain="ipwho", cap=300):
+    monkeypatch.setattr(tracking.settings, "geoip_provider", chain)
+    monkeypatch.setattr(tracking.settings, "geoip_daily_cap", cap)
+    monkeypatch.setattr(tracking, "_quota", {})
+    monkeypatch.setattr(tracking, "_cooldown", {})
+    monkeypatch.setattr(tracking, "_errors", {})
+
+
+def _ok_payload(provider="ipwho", **conn_):
+    return normalise_geo("ipwho", dict(IPWHO, connection={"isp": "Jio", **conn_})) | {"provider": provider}
+
+
+class _Nets:
+    """Dedicated /24s for one test; skips if any already holds a cached lookup (never touch rows we did not write)."""
+    def __init__(self, *ips):
+        from app.db import conn
+
+        self.nets = [mask_ip(i) for i in ips]
+        with conn() as c:
+            if c.execute("SELECT count(*) FROM ip_net WHERE net = ANY(%s)", (self.nets,)).fetchone()[0]:
+                pytest.skip("test /24 already cached")
+
+    def drop(self):
+        from app.db import conn
+
+        with conn() as c:
+            c.execute("DELETE FROM ip_net WHERE net = ANY(%s)", (self.nets,))
+            c.commit()
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_geolocate_caches_per_net_without_the_ip(monkeypatch):
+    from app.db import conn
+
+    _fresh_provider_state(monkeypatch)
+    calls = []
+    monkeypatch.setattr(tracking, "_fetch_one", lambda p, ip: calls.append((p, ip)) or _ok_payload(p, asn=55836))
+    a, b, bad = "49.207.233.10", "49.207.233.99", "49.207.234.10"
+    nets = _Nets(a, bad)
+    try:
+        assert tracking.geolocate(a)["status"] == "ok" and tracking.geolocate(b)["status"] == "ok"
+        assert calls == [("ipwho", a)]
+        with conn() as c:
+            assert c.execute("SELECT net, status FROM ip_net WHERE net = %s", ("49.207.233.0",)).fetchone() == ("49.207.233.0", "ok")
+            assert c.execute("SELECT count(*) FROM ip_net WHERE data::text LIKE %s OR data::text LIKE %s",
+                             (f"%{a}%", f"%{b}%")).fetchone()[0] == 0
+        monkeypatch.setattr(tracking, "_fetch_one", lambda p, ip: calls.append((p, ip)) or tracking._failed(p, "error"))
+        g = tracking.geolocate(bad)
+        assert g["status"] == "failed" and g["reason"] == "error" and len(calls) == 2
+        with conn() as c:
+            assert c.execute("SELECT retry_after > now() FROM ip_net WHERE net = '49.207.234.0'").fetchone()[0] is True
+        assert tracking.geolocate(bad)["reason"] == "error" and len(calls) == 2  # inside the retry window: no call
+    finally:
+        nets.drop()
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_rate_limit_cooldown_and_daily_cap(monkeypatch):
+    _fresh_provider_state(monkeypatch, chain="ipwho,ipinfo")
+    calls = []
+
+    def fetch(p, ip):
+        calls.append(p)
+        if p == "ipwho":
+            return tracking._failed(p, "rate_limited") | {"retry_in": 900}
+        return _ok_payload(p)
+
+    monkeypatch.setattr(tracking, "_fetch_one", fetch)
+    ips = ["49.207.235.10", "49.207.236.10", "49.207.237.10", "49.207.238.10"]
+    nets = _Nets(*ips)
+    try:
+        assert tracking.geolocate(ips[0])["provider"] == "ipinfo" and calls == ["ipwho", "ipinfo"]
+        assert tracking.geolocate(ips[1])["provider"] == "ipinfo" and calls == ["ipwho", "ipinfo", "ipinfo"]  # ipwho paused
+        _fresh_provider_state(monkeypatch, chain="ipinfo", cap=1)
+        calls.clear()
+        assert tracking.geolocate(ips[2])["status"] == "ok" and calls == ["ipinfo"]
+        g = tracking.geolocate(ips[3])
+        assert (g["status"], g["reason"], calls) == ("failed", "quota", ["ipinfo"])
+    finally:
+        nets.drop()
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_enrich_writes_network_columns_and_dev_ip(monkeypatch):
+    monkeypatch.setattr(tracking.settings, "tracking_enabled", True)
+    monkeypatch.setattr(tracking.settings, "track_ip_mode", "masked")
+    monkeypatch.setattr(tracking.settings, "net_rdns", False)
+    _fresh_provider_state(monkeypatch)
+    monkeypatch.setattr(tracking, "_fetch_one", lambda p, ip: _ok_payload(p, asn=55836, org="Reliance Jio Infocomm Limited",
+                                                                           domain="jio.com"))
+    ip, dev_ip = "49.207.239.10", "49.207.240.10"
+    nets = _Nets(ip, dev_ip)
+    sids = [f"test-{uuid.uuid4()}" for _ in range(3)]
+    cols = "ip, geo_status, asn, net_org, net_domain, net_kind, net_flags, geo_at"
+    try:
+        tracking.attach_visitor(sids[0], f"vis-{uuid.uuid4()}")  # a row with no IP yet
+        assert _row(sids[0], "ip, geo_status")["ip"] is None
+        tracking.ensure_session(sids[0], ip=ip)
+        _drain()
+        r = _row(sids[0], cols)
+        assert (r["ip"], r["geo_status"], r["asn"], r["net_org"], r["net_domain"], r["net_kind"]) == \
+            ("49.207.239.0", "ok", 55836, "Reliance Jio Infocomm Limited", "jio.com", "consumer")
+        assert r["net_flags"]["provider"] == "ipwho" and r["net_flags"]["dev"] is False and r["geo_at"] is not None
+        assert "49.207" not in json.dumps(r["net_flags"])
+        # format_origin is unchanged by the network; the network is its own line
+        assert tracking.describe_session(sids[0]).startswith("Bengaluru, Karnataka, IN · Jio · direct")
+        assert tracking.describe_network(sids[0])["net_kind"] == "consumer"
+        # GEOIP_DEV_IP: only against a local database
+        monkeypatch.setattr(tracking.settings, "geoip_dev_ip", dev_ip)
+        monkeypatch.setattr(tracking.settings, "database_url", "postgresql://u:p@127.0.0.1:5432/x")
+        tracking.ensure_session(sids[1], ip="127.0.0.1")
+        _drain()
+        r = _row(sids[1], cols)
+        assert (r["geo_status"], r["net_kind"], r["net_flags"]["dev"]) == ("ok", "consumer", True)
+        assert "[dev test IP]" in tracking.format_network(r)
+        monkeypatch.setattr(tracking.settings, "database_url", "postgresql://u:p@db.example.com:5432/x")
+        tracking.ensure_session(sids[2], ip="127.0.0.1")
+        _drain()
+        r = _row(sids[2], cols)
+        assert (r["geo_status"], r["net_kind"], r["net_flags"]["dev"]) == ("private", "local", False)
+        assert tracking.format_network(r) == "local test network (no lookup)"
+    finally:
+        _drop(*sids)
+        nets.drop()
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_retry_pending_picks_up_stuck_rows(monkeypatch):
+    from app.db import conn
+
+    monkeypatch.setattr(tracking.settings, "tracking_enabled", True)
+    calls = _count_submits(monkeypatch)
+    sid = f"test-{uuid.uuid4()}"
+    try:
+        with conn() as c:
+            c.execute("""INSERT INTO sessions(session_id, ip, channel, geo_status, first_seen)
+                         VALUES (%s, '49.207.241.10', 'direct', 'failed', now() - interval '1 hour')""", (sid,))
+            c.commit()
+        assert tracking.retry_pending() >= 1
+        assert any(a[1:] == (sid, "49.207.241.10") for a in calls)
+    finally:
+        _drop(sid)
+
+
+@pytest.mark.skipif(not _db_up(), reason="Postgres not reachable")
+def test_purge_keeps_places_only_for_organisations():
+    from app.db import conn
+
+    sids = {k: f"test-{uuid.uuid4()}" for k in ("consumer", "unknown", "corporate")}
+    try:
+        with conn() as c:
+            for kind, sid in sids.items():
+                c.execute("""INSERT INTO sessions(session_id, ip, channel, geo_status, city, lat, country, net_org, net_kind, first_seen)
+                             VALUES (%s, '49.207.242.10', 'direct', 'ok', 'Pune', 18.5, 'India', %s, %s,
+                                     now() - make_interval(days => %s))""",
+                          (sid, f"Org {kind}", None if kind == "unknown" else kind, tracking.settings.track_retention_days + 5))
+            c.commit()
+        r = tracking.purge(session_ids=list(sids.values()))
+        assert r["sessions_scrubbed"] == 3 and r["places_scrubbed"] == 2 and r["geo_cache_dropped"] == 0
+        for kind, sid in sids.items():
+            row = _row(sid, "ip, city, lat, country, net_org")
+            assert row["ip"] is None and row["country"] == "India" and row["net_org"] == f"Org {kind}"
+            assert (row["city"], row["lat"]) == (("Pune", 18.5) if kind == "corporate" else (None, None))
+    finally:
+        _drop(*sids.values())

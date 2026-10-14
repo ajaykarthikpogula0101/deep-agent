@@ -23,8 +23,9 @@
   const api = location.origin;
   // version query keeps browsers from reusing an older build of the component
   const v = (await (await fetch(api + '/healthz', { cache: 'no-store' })).json()).version;
-  await import(`${api}/static/deep-assistant.js?v=${encodeURIComponent(v)}`);
+  // set api before the element upgrades, so its first render keys the session under it and sends /track and /me
   document.getElementById('assistant').setAttribute('api', api);
+  await import(`${api}/static/deep-assistant.js?v=${encodeURIComponent(v)}`);
   document.getElementById('ver').textContent = 'assistant v' + v;
 </script>
 </body>

@@ -24,7 +24,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.14.7';
+const VERSION = '2026.10.15.1';
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
@@ -487,7 +487,7 @@ class DeepAssistant extends HTMLElement {
     else if (name === 'mode') { this._applyMode(); this._applyOpen(); }
     else if (name === 'token' || name === 'user-name' || name === 'user-email') this._loadMe().then(() => { this._refreshBadge(); this._refreshWelcome(); });
     else if (name === 'title' || name === 'subtitle') this._applyCopy();
-    else if (name === 'api') { this._health(); this._loadConfig(); }
+    else if (name === 'api') { this._adoptApi(); this._health(); this._loadConfig(); }
     else if (name === 'tabs') this._applyTabs();
     else if (name === 'privacy-url') this._applyFooter();
     else if (name === 'theme') this._syncThemeItem();
@@ -706,10 +706,24 @@ class DeepAssistant extends HTMLElement {
     this._me = next;
   }
   _firstName() { return (this._me && this._me.name) ? String(this._me.name).trim().split(/\s+/)[0] : ''; }
+  // A session counts as tracked only once the server stored the beacon (a 403/429/failed /track retries later; /chat and
+  // /booking/confirm carry the same fields until then).
   _track() {
-    if (!this.api || store.get(this._key('tracked')) === this._sid) return;
-    const body = { session_id: this._sid, visitor_id: this._vid, page: location.href, referrer: document.referrer || null, timezone: this.tz, lang: navigator.language || null, screen: screen && screen.width ? `${screen.width}x${screen.height}` : null };
-    fetch(this._url('/track'), { method: 'POST', headers: this._headers(), body: JSON.stringify(body), keepalive: true }).then(() => store.set(this._key('tracked'), this._sid)).catch(() => {});
+    if (!this.api || this._tracked()) return Promise.resolve();
+    const sid = this._sid;
+    return fetch(this._url('/track'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ session_id: sid, visitor_id: this._vid, timezone: this.tz, ...this._beaconData() }), keepalive: true })
+      .then((r) => r.ok ? r.json() : null).then((d) => { if (d && d.ok) store.set(this._key('tracked'), sid); }).catch(() => {});
+  }
+  _tracked() { return store.get(this._key('tracked')) === this._sid; }
+  _beaconData() { return { page: location.href, referrer: document.referrer || null, lang: navigator.language || null, screen: screen && screen.width ? `${screen.width}x${screen.height}` : null }; }
+  // The host set `api` after the element rendered (index.html, demo.html used to): key the sid under the real api and
+  // start what an empty api skipped. A live conversation is never swapped.
+  _adoptApi() {
+    if (!this.api) return;
+    const kept = store.get(this._key('sid'));
+    if (kept && kept !== this._sid && !this._transcript.length && !this._busy) { this._sid = kept; this._restore(); }
+    else { store.set(this._key('sid'), this._sid); if (this._transcript.length) this._persist(); }
+    this._track(); this._loadMe().then(() => { this._refreshWelcome(); this._refreshBadge(); });
   }
   // ---------------------------------------------------------------- welcome + page context
   _pageContext() {
@@ -951,7 +965,7 @@ class DeepAssistant extends HTMLElement {
   // One card per bot message walks through type -> time -> details -> review -> done. The state lives on the card, so
   // going back keeps every choice; nothing is booked until POST /booking/confirm answers "confirmed" / "pending_zoom".
   async startBooking(prefer, label) {
-    if (this._busy) return; this.showView('chat'); this._clearFollowups();
+    if (this._busy) return; this._track(); this.showView('chat'); this._clearFollowups();  // _track: a retry point for a lost beacon
     const text = label || 'Book a meeting', intro = 'Happy to set that up. Pick the meeting that fits best and I\'ll show you the open times.';
     const user = this._add('user', '', Date.now()); this._setText(user, text);
     const bot = this._add('bot', '', Date.now()); this._setText(bot, intro);
@@ -1105,8 +1119,8 @@ class DeepAssistant extends HTMLElement {
   async _bkConfirm(f, btn, stat) {
     const back = f.card.querySelector('.bk-back'); const lock = (on) => { btn.disabled = on; btn.classList.toggle('loading', on); btn.textContent = on ? 'Booking…' : 'Confirm booking'; if (back) back.disabled = on; };
     lock(true); stat.className = 'note sstat'; stat.textContent = this._cfg.booking_mode === 'browser' ? 'Booking it on Zoom for you. This can take a minute or two; please keep this open…' : 'Checking the time with Zoom and booking…';
-    const s = f.schedule, w = f.who || {}; let res = null, status = 0;
-    try { const r = await fetch(this._url('/booking/confirm'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ schedule_slug: s.slug, start: f.slot.start_iso, name: w.name, email: w.email, company: w.company, notes: w.notes, timezone: this.tz, attendees: w.attendees || [] }) }); status = r.status; res = r.ok ? await r.json() : null; } catch {}
+    const s = f.schedule, w = f.who || {}; let res = null, status = 0; const sid = this._sid, beacon = this._tracked() ? undefined : this._beaconData();
+    try { const r = await fetch(this._url('/booking/confirm'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ schedule_slug: s.slug, start: f.slot.start_iso, name: w.name, email: w.email, company: w.company, notes: w.notes, timezone: this.tz, attendees: w.attendees || [], beacon }) }); status = r.status; res = r.ok ? await r.json() : null; if (beacon && r.ok) store.set(this._key('tracked'), sid); } catch {}
     const fail = (msg) => { lock(false); stat.className = 'note sstat warn'; stat.textContent = msg; };
     if (status === 429) return fail('Too many booking attempts. Please wait a minute and try again. Nothing was booked.');
     if (!res) return fail("Couldn't reach the server. Nothing was booked. Please try again.");
@@ -1557,9 +1571,11 @@ class DeepAssistant extends HTMLElement {
     this._controller = new AbortController(); const me = this._me || {};
     const fail = (msg) => { failed = true; this._setText(bot, msg); bot.classList.add('err'); };
     try {
+      const beacon = this._tracked() ? undefined : this._beaconData();  // the /track fields until the server has them
       const r = await fetch(this._url('/chat'), { method: 'POST', signal: this._controller.signal, headers: this._headers(),
-        body: JSON.stringify({ message: text || 'Please look at the attached file.', history: this._history, timezone: this.tz, attachments: files.map((a) => a.id), user_name: me.signed_in ? undefined : (me.name || undefined), user_email: me.signed_in ? undefined : (me.email || undefined) }) });
+        body: JSON.stringify({ message: text || 'Please look at the attached file.', history: this._history, timezone: this.tz, attachments: files.map((a) => a.id), user_name: me.signed_in ? undefined : (me.name || undefined), user_email: me.signed_in ? undefined : (me.email || undefined), beacon }) });
       if (!r.ok) { fail(this._errorText(r.status)); this._emit('error', { error: 'http_' + r.status }); return; }
+      if (beacon) store.set(this._key('tracked'), sid);  // the server stored it before the stream started
       if (!this._online) { this._online = true; }
       const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';
       while (true) {

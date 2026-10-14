@@ -169,22 +169,36 @@ questions they typed (greetings and booking commands such as "book a call" left 
 on, channel and referrer, location (from the IP), questions the assistant could not answer, messages left for Deep,
 earlier bookings and cancellations, the company read off their email domain (section 7), their booking note and guests.
 
-**The score** (`score`, 0–100, fixed rules so every point is explained; base 10):
+**The score** (`score`, 0–100, fixed rules so every point is explained; base 10, no caps per group). Every rule
+belongs to one of four groups, shown in the brief as `Profile:  Fit 4 · Intent 12 · Engagement 0 · Risk −13 (2 flags)`:
 
-| Signal | Points |
-|---|---|
-| company email / personal email | +15 / 0 |
-| asked about pricing, a trial or sample data, contracts and terms, implementation and timelines | +20 for the first topic, +5 each more (max 30) |
-| questions typed: 6+ / 3–5 / 1–2 | +15 / +10 / +4 |
-| visits: 3+ / 2 | +15 / +8 |
-| booking note: detailed (60+ chars) / short | +10 / +5 |
-| bringing colleagues | +8, +2 each more (max 15) |
-| came from a campaign / from search or an AI assistant | +5 / +3 |
-| asked to talk to a person | +5 |
-| call within 3 days of booking · booked with Deep before | +5 · +5 |
-| cancelled a call before · moved this call | −10 · −3 |
-| asked about jobs · reads like a vendor pitch | −25 · −15 |
+| Group | Signal | Points |
+|---|---|---|
+| risk (checked first) | staff or test address (`SCORE_INTERNAL_DOMAINS`, `SCORE_INTERNAL_EMAILS`, `HOST_EMAIL` with any +tag); a staff booking with an outside business guest is flagged instead | −50 |
+| | test booking (note, name or company like "test booking", or 5+ bookings from the address) | −30 |
+| | competitor address, booker or guest (`SCORE_COMPETITOR_DOMAINS`) · throwaway inbox (mailinator, yopmail, ...) | −20 · −20 |
+| | domain one typo off a free-mail provider (gmial.com): scored as personal email, flagged | 0 |
+| fit | company email / university email (.edu, .ac.xx, or the homepage says university or college) / personal email | +15 / +3 / 0 |
+| | typed company matches the email domain or homepage · typed a company with a personal email (unverified) | +5 · +3 |
+| | network matches the typed company / the email domain / another company's network (docs/TRACKING.md, `NET_SCORE`) | +10 / +5 / +3 |
+| | guests: company emails +8, +2 each more; free-mail guests +4, +1 each more (max 15; the booker and staff not counted) · a personal-email booker brings a company-email guest | up to +15 · +5 |
+| | target country (`SCORE_TARGET_COUNTRIES`, off by default) · 1–4 earlier calls that already took place | +5 · +5 |
+| intent | call type (`SCORE_CALL_TYPES`: demo 10, GTM 8, discovery 0; unknown slugs by keyword, or 5 for 30+ minutes) | 0–10 |
+| | asked about pricing, a trial or sample data, contracts and terms, implementation and timelines | +20 for the first topic, +5 each more (max 30) |
+| | described the data they need (only when no buying topic) | +5 |
+| | booking note: 2+ specifics (data, numbers, region or industry, timeline, buying words) / 1 specific or 8+ words | +10 / +5 |
+| | call within 3 days / within a week · asked for a person · campaign / search · a key page (`SCORE_KEY_PAGES`) | +5 / +2 · +5 · +5 / +3 · +5 |
+| engagement | questions typed: 6+ / 3–5 / 1–2 · visits: 3+ / 2 · 5+ minutes on the site | +15 / +10 / +4 · +15 / +8 · +3 |
+| risk | personal email claiming a well-known brand nothing confirms (not when the network or a guest's domain does) | −10 |
+| | placeholder company (xyz, n/a, -) · no real name · name and personal email differ | −5 · −5 · −3 |
+| | call 3+ weeks out · cancelled before · missed a call before · moved this call | −3 · −10 · −10 · −3 |
+| | asked about jobs · reads like a vendor pitch | −25 · −15 |
+| | 0-point notes the learner can move: typed company differs from the email's, another upcoming call, typed instructions to the assistant, network kinds | 0 |
 
+Risk rules that need a look (brand claim, placeholder, name, internal, competitor, ...) also add a **flag**: flags lead
+the brief's WATCH OUT section, and the model may add one caution of its own. A company the visitor only typed is shown
+as "says they are from X", never as fact; a business email's company is "from their website" only when the homepage was
+actually read. Each brief keeps `at_booking`, the score as it was when they booked; refreshes never overwrite it.
 Hot is 60+ (`HOT_LEAD_SCORE`), warm 35+, else cold.
 
 **The written part** (`compose`): one model call (`PRECALL_MODEL`, default `CHAT_MODEL`; `PRECALL_MODEL_TIMEOUT` 25 s)
@@ -284,6 +298,9 @@ rate among the calls that had it is smoothed toward p (as if 5 more calls at p) 
 `40 × (rate − p)` points, capped at ±20, and 0 for a rule seen in fewer than 3 calls. The corrections apply to every
 score once `SCORE_LEARN_MIN` (20) calls are rated (`SCORE_LEARNING`); before that Console → Bookings shows what they
 would be. Each reason in a brief keeps its original points (`base`) next to the learned ones, so the change is visible.
+A correction never flips a rule's sign (a bonus bottoms out at 0, a penalty tops out at 0). Learning reads each call's
+score at booking (`brief.at_booking`) when it was made by the current rules (`precall.VERSION`), else scores it again;
+staff and test bookings (`internal`, `test_traffic`) are left out.
 The card also shows how far apart good calls and the rest score, before and after learning.
 
 **Weekly digest**: a "Results" section with the week's calls by outcome and the source that brought the most good

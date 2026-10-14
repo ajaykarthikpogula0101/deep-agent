@@ -96,7 +96,7 @@ def render_ask(booking: dict[str, Any], brief: dict[str, Any] | None = None) -> 
     base = (f"Your {v['title']} with {who} has ended. How did it go? One tap records it: the assistant drafts the follow-up "
             f"email for you and learns which leads turn into good calls.\n\n"
             f"Name:     {v['name']}\nEmail:    {v['email']}\nCompany:  {v['company']}\nCall:     {v['title']}\nWhen:     {v['date']}\n"
-            + (f"Lead:     {precall.headline(brief)} (at booking)\n" if brief else ""))
+            + (f"Lead:     {precall.headline(brief.get('at_booking') or brief)} (at booking)\n" if brief else ""))
     buttons = [(label, link(int(booking["id"]), key)) for key, label in OUTCOMES.items()]
     text = base + "\n" + "\n".join(f"{label}: {url}" for label, url in buttons) + "\n"
     return subject, templates._tidy(text), templates._tidy(base), buttons
@@ -281,15 +281,19 @@ def send_followup(b: dict[str, Any], subject: str, body: str, mailer=None) -> di
 
 # ---------------------------------------------------------------- 4. learning
 def _features(b: dict[str, Any], brief: dict[str, Any] | None) -> dict[str, int]:
-    """Rule key -> its points before any learning, as scored for this booking. The stored brief when it has keys,
-    else the booking is scored again from what is known now."""
+    """Rule key -> its points before any learning, as scored for this booking: the score at booking (or the stored
+    brief) when it was made by this version of the rules, else the booking is scored again from what is known now.
+    {} for staff and test bookings, which never teach the score."""
     from app import precall
 
-    reasons = (brief or {}).get("reasons") or []
-    if reasons and all("key" in r for r in reasons):
-        return {r["key"]: int(r.get("base", r["points"])) for r in reasons}
-    sc = precall.score(precall.gather(b.get("email"), b.get("session_id"), b), adjust={})
-    return {r["key"]: int(r["points"]) for r in sc["reasons"]}
+    snap = (brief or {}).get("at_booking") or brief or {}
+    reasons = snap.get("reasons") or []
+    if snap.get("version") == precall.VERSION and reasons and all("key" in r for r in reasons):
+        f = {r["key"]: int(r.get("base", r["points"])) for r in reasons}
+    else:
+        sc = precall.score(precall.gather(b.get("email"), b.get("session_id"), b), adjust={})
+        f = {r["key"]: int(r["points"]) for r in sc["reasons"]}
+    return {} if "internal" in f or "test_traffic" in f else f
 
 
 def calibrate(samples: list[tuple[dict[str, int], bool]], min_calls: int | None = None) -> dict[str, Any]:
@@ -312,7 +316,7 @@ def calibrate(samples: list[tuple[dict[str, int], bool]], min_calls: int | None 
         table.append({"key": k, "rule": precall.RULES.get(k, k), "calls": nk, "good": ak, "good_rate": round(ak / nk, 2) if nk else None, "adjust": adj})
 
     def total(f: dict[str, int], adj: dict[str, int]) -> int:
-        return max(0, min(100, 10 + sum(v + adj.get(k, 0) for k, v in f.items())))
+        return max(0, min(100, 10 + sum(precall.apply_adjust(v, adj.get(k, 0)) for k, v in f.items())))
 
     def mean(xs: list[int]) -> float | None:
         return round(sum(xs) / len(xs), 1) if xs else None
@@ -338,7 +342,9 @@ def learn(save: bool = True) -> dict[str, Any]:
     samples = []
     for b in books:
         try:
-            samples.append((_features(b, briefs.get(int(b["id"]))), b["outcome"] in GOOD))
+            f = _features(b, briefs.get(int(b["id"])))
+            if f:  # staff and test bookings never teach the score
+                samples.append((f, b["outcome"] in GOOD))
         except Exception as e:
             log.warning("learning: booking %s skipped: %s", b.get("id"), e)
     out = calibrate(samples)

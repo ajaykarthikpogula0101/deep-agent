@@ -56,7 +56,6 @@ el.ask('What does Lake B2B do?')</pre></div>
   </main>
 </div>
 <script type="module">
-  import './static/deep-assistant.js';
   const api = location.origin;
   const panel = document.getElementById('panel'), launcher = document.getElementById('launcher'), log = document.getElementById('events');
   panel.setAttribute('api', api); launcher.setAttribute('api', api);
@@ -65,6 +64,8 @@ el.ask('What does Lake B2B do?')</pre></div>
     document.addEventListener('deep-assistant:' + n, (e) => { const d = { ...e.detail }; if (d.answer) d.answer = d.answer.slice(0, 60) + '…';
       lines.unshift(`${new Date().toLocaleTimeString()}  ${e.target.id}  ${n}  ${JSON.stringify(d)}`); log.textContent = lines.slice(0, 30).join('\n'); });
   }
+  // a static import is hoisted and would upgrade both elements with api="": load the component once api is set
+  await import('./static/deep-assistant.js?v=' + encodeURIComponent((await (await fetch(api + '/healthz', { cache: 'no-store' })).json()).version));
   fetch(api + '/demo/token').then(r => r.ok ? r.json() : null).then(d => { if (d && d.token) { launcher.setToken(d.token); document.getElementById('who').textContent = d.note || 'launcher token: Ada Lovelace (sample)'; } }).catch(() => {});
   document.getElementById('open').onclick = () => launcher.open();
   document.getElementById('ask').onclick = () => { launcher.open(); launcher.ask('What did Deep ship this week?'); };

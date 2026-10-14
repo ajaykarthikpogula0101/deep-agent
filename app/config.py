@@ -70,8 +70,18 @@ class Settings(BaseSettings):
 
     # Session origin tracking (app/tracking.py)
     tracking_enabled: bool = Field(default=True, alias="TRACKING_ENABLED")
-    geoip_provider: str = Field(default="ipwho", alias="GEOIP_PROVIDER")  # ipwho | ipinfo | ipapi | none
+    # ipwho | ipinfo | ipapi | ipapiis | mmdb | none, or a comma chain such as mmdb,ipwho
+    geoip_provider: str = Field(default="ipwho", alias="GEOIP_PROVIDER")
     geoip_token: str = Field(default="", alias="GEOIP_TOKEN")  # ipinfo only
+    geoip_mmdb_dir: str = Field(default="", alias="GEOIP_MMDB_DIR")  # GeoLite2-City.mmdb + GeoLite2-ASN.mmdb; needs maxminddb
+    geoip_daily_cap: int = Field(default=300, alias="GEOIP_DAILY_CAP")  # per provider per UTC day, in-process
+    geoip_fail_retry_min: int = Field(default=60, alias="GEOIP_FAIL_RETRY_MIN")  # a failed /24 is not looked up again before this
+    geoip_dev_ip: str = Field(default="", alias="GEOIP_DEV_IP")  # honoured only with a localhost DATABASE_URL
+    # peers whose forwarding headers are believed; add Cloudflare's ranges if Cloudflare connects to the app directly
+    trusted_proxies: str = Field(default="127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7",
+                                 alias="TRUSTED_PROXIES")
+    net_rdns: bool = Field(default=False, alias="NET_RDNS")  # reverse DNS on public IPs (background, 1 s cap)
+    net_score: bool = Field(default=True, alias="NET_SCORE")  # the network rules in the lead score
     track_ip_mode: str = Field(default="full", alias="TRACK_IP_MODE")  # full | masked (/24, /48)
     track_retention_days: int = Field(default=90, alias="TRACK_RETENTION_DAYS")
 
@@ -107,12 +117,34 @@ class Settings(BaseSettings):
     outcome_ask_after_minutes: int = Field(default=20, alias="OUTCOME_ASK_AFTER_MINUTES")
     score_learning: bool = Field(default=True, alias="SCORE_LEARNING")
     score_learn_min: int = Field(default=20, alias="SCORE_LEARN_MIN")
+    # lead score inputs (app/precall.py), all comma lists
+    score_call_types: str = Field(default="lakeb2b-product-walkthrough-use-case-demo:10,gtm-strategy-session-data-ai-revenue-acceleration:8,"
+                                          "discovery-call:0", alias="SCORE_CALL_TYPES")  # slug:points; unknown slugs fall back to keywords/duration
+    score_internal_domains: str = Field(default="championsmail.com,lakeb2b.com,ampliz.com,spanglobalservices.com,deependhq.com",
+                                        alias="SCORE_INTERNAL_DOMAINS")  # staff/test: -50, never a lead, never learned from
+    score_internal_emails: str = Field(default="", alias="SCORE_INTERNAL_EMAILS")  # extra exact addresses (+tags ignored); HOST_EMAIL is always internal
+    score_competitor_domains: str = Field(default="zoominfo.com,apollo.io,lusha.com,cognism.com,seamless.ai,uplead.com,rocketreach.co,"
+                                                  "clearbit.com,6sense.com,leadiq.com,datanyze.com,kaspr.io", alias="SCORE_COMPETITOR_DOMAINS")
+    score_target_countries: str = Field(default="", alias="SCORE_TARGET_COUNTRIES")  # ISO2 from sessions.country_code, e.g. US,GB; empty = rule off
+    score_brands: str = Field(default="", alias="SCORE_BRANDS")  # extra brand names for the brand-claim check
+    score_key_pages: str = Field(default="/pricing,/plans,/contact,/request-demo,/demo", alias="SCORE_KEY_PAGES")  # path prefixes
     link_secret: str = Field(default="", alias="LINK_SECRET")  # signs one-tap email links; empty = derived from ADMIN_TOKEN
     enrich_enabled: bool = Field(default=True, alias="ENRICH_ENABLED")
     suggestions_days: int = Field(default=30, alias="SUGGESTIONS_DAYS")
     multilingual: bool = Field(default=True, alias="MULTILINGUAL")
     voice_languages: str = Field(default="auto,en,hi,te,ta,bn,es,fr,de", alias="VOICE_LANGUAGES")  # call view language picker
     visitor_memory: bool = Field(default=True, alias="VISITOR_MEMORY")  # return-visitor memory in the greeting and prompt
+    # Working memory (docs/MEMORY_VOICE.md): CURRENT CONVERSATION facts per session; HISTORY stays under VISITOR_MEMORY
+    working_memory: bool = Field(default=True, alias="WORKING_MEMORY")
+    memory_extract: bool = Field(default=True, alias="MEMORY_EXTRACT")                # small-model extraction at the window edge, catch-up, precall, rebuild; false = rules only
+    memory_model: str = Field(default="", alias="MEMORY_MODEL")                       # empty = CHAT_MODEL
+    memory_model_timeout: int = Field(default=8, alias="MEMORY_MODEL_TIMEOUT")        # seconds per extraction call (no retries); rules only after this
+    memory_model_max_tokens: int = Field(default=300, alias="MEMORY_MODEL_MAX_TOKENS")  # raise to 800+ for a reasoning model such as gpt-oss-120b
+    memory_max_chars: int = Field(default=1200, alias="MEMORY_MAX_CHARS")            # cap for the CURRENT CONVERSATION block
+    memory_history_max_chars: int = Field(default=1400, alias="MEMORY_HISTORY_MAX_CHARS")  # cap for the HISTORY block
+    memory_history_sessions: int = Field(default=4, alias="MEMORY_HISTORY_SESSIONS")  # earlier conversations shown and caught up
+    memory_stale_days: int = Field(default=90, alias="MEMORY_STALE_DAYS")             # need/buying facts older than this: "may be out of date"
+    memory_retention_days: int = Field(default=365, alias="MEMORY_RETENTION_DAYS")    # session_memory rows older than this are purged (tombstones kept)
     outreach_enabled: bool = Field(default=True, alias="OUTREACH_ENABLED")  # proactive outreach rules (docs/OUTREACH.md)
     # Answer cards (docs/UI_CARDS.md): one optional openui-lang block per answer, rendered by static/deep-ui.js
     ui_cards_enabled: bool = Field(default=True, alias="UI_CARDS_ENABLED")
