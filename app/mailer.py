@@ -86,6 +86,12 @@ class Mailer:
                                  "ref": job.get("ref"), "at": datetime.now(timezone.utc).isoformat()})
         if not ok:
             log.error("mail %s to %s GAVE UP after %d attempts: %s", job["kind"], job["to"], RETRIES, job["subject"])
+            try:  # visible in the database (events kind 'mail_failed'), not only in the server console
+                from app.db import log_event
+
+                log_event("mail_failed", None, {"kind": job["kind"], "to": job["to"], "ref": job.get("ref"), "error": err or None})
+            except Exception:
+                pass
         return ok
 
     def wait(self, timeout: float = 30) -> None:

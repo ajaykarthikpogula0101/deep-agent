@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import smtplib
 from email.message import EmailMessage
+from email.utils import formatdate, make_msgid, parseaddr
 from typing import Any, Callable
 
 from app import templates
@@ -47,6 +48,9 @@ def _send(to: str, subject: str, body: str, reply_to: str | None = None, html: s
     msg["Subject"] = subject
     msg["From"] = settings.email_from
     msg["To"] = to
+    # Date and Message-ID: spam filters (Gmail's among them) mark mail without them; smtplib adds neither
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain=(parseaddr(settings.email_from)[1].rpartition("@")[2] or "localhost"))
     if reply_to:
         msg["Reply-To"] = reply_to
     msg.set_content(body)

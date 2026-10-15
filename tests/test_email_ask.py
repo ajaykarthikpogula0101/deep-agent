@@ -349,3 +349,26 @@ def test_score_counts_a_typed_message_never_an_open_or_a_chip():
         assert r["points"] == 3 and precall.CLASS["email_ask_chat"] == "observed"
     finally:
         rows.cleanup()
+
+
+def test_every_email_has_date_message_id_and_the_configured_sender(monkeypatch):
+    """Spam filters mark mail without Date / Message-ID (smtplib adds neither); the sender is EMAIL_FROM, logged in as
+    SMTP_USER, never anything else."""
+    from app.booking import email as mail
+
+    captured = []
+
+    class FakeSMTP:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def starttls(self): pass
+        def login(self, *a): pass
+        def send_message(self, msg): captured.append(msg)
+
+    monkeypatch.setattr(settings, "smtp_host", "smtp.test")
+    monkeypatch.setattr(settings, "email_from", "Deep <host@example.test>")
+    monkeypatch.setattr(mail.smtplib, "SMTP", FakeSMTP)
+    assert mail._send("ada@example.test", "s", "Hi", html="<p>Hi</p>")
+    msg = captured[0]
+    assert msg["From"] == "Deep <host@example.test>" and msg["Date"] and msg["Message-ID"].endswith("@example.test>")
