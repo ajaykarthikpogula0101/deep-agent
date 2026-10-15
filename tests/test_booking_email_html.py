@@ -418,7 +418,8 @@ def test_visitor_extras_host_card_phone_agenda_and_footer_address(monkeypatch):
     """2026-10-15: the host row (name, title, optional https photo), joining by phone when the meeting ID is known,
     "What to expect" for the call type, the postal address in the footer, and an honest next step without a Zoom link."""
     h = html(CONFIRMED)
-    assert ">Host<" in h and "Founder &amp; CEO, Champions Group" in h and "/host.png" in h       # the bundled photo
+    assert ">Host<" in h and "Founder &amp; CMO, Champions Group" in h and "/host.png" in h       # the bundled photo
+    assert 'href="https://www.linkedin.com/in/sreedeep-surapaneni"' in h and ">LinkedIn</a>" in h
     assert ">By phone<" in h and 'href="https://zoom.us/zoomconference"' in h and "meeting ID 812 3456 7890" in h
     assert "What to expect" in h and "Clear next steps, if there is a fit" in h                     # by the slug (discovery-call)
     assert ">By phone<" not in html(PENDING) and "Join from the button below" in h

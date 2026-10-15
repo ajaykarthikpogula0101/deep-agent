@@ -620,8 +620,12 @@ def _host_row(v: dict[str, str]) -> list[tuple[str, str]]:
     photo = safe_url(settings.host_photo_url)
     if not photo.startswith("https://"):
         photo = _src(image_base({}, "hosted"), HOST_PHOTO) if (ASSETS / HOST_PHOTO).is_file() else ""
+    linkedin = safe_url(settings.host_linkedin_url)
     text = (f'<div class="dm-ink" style="{_font(15, 22, 600)}">{esc(name)}</div>'
-            + (f'<div class="dm-mut" style="{_font(13, 18, 400, MUTE)}">{esc(title)}</div>' if title else ""))
+            + (f'<div class="dm-mut" style="{_font(13, 18, 400, MUTE)}">{esc(title)}</div>' if title else "")
+            + (f'<div style="padding-top:6px"><a href="{esc(linkedin)}" class="btn2" style="display:inline-block;'
+               f'border:1px solid {LINE_STRONG};border-radius:4px;padding:2px 8px;{_font(12, 18, 600, "#0A66C2")}'
+               f'text-decoration:none">LinkedIn</a></div>' if linkedin else ""))
     if not photo:
         return [("Host", text)]
     img = (f'<img src="{esc(photo)}" width="40" height="40" alt="{esc(name)}" style="display:block;width:40px;height:40px;'

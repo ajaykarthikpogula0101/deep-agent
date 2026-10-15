@@ -223,7 +223,7 @@ sample data.
 Visitor and guest emails (not the host's) now carry:
 
 - **Host** as the first row of the details panel: `HOST_NAME_SHORT`'s name (template `host_name`), `HOST_TITLE`
-  (default "Founder & CEO, Champions Group") and, when `HOST_PHOTO_URL` is a public https image, a round 40 px photo.
+  (default "Founder & CMO, Champions Group"), a LinkedIn button (`HOST_LINKEDIN_URL`) and, when `HOST_PHOTO_URL` is a public https image, a round 40 px photo.
   Not in cancelled emails.
 - **By phone**, for a confirmed call whose Zoom meeting ID is known: "Call a local Zoom number" (zoom.us/zoomconference),
   then the meeting ID. Calls confirmed on Zoom's own page (the browser booking) have no ID here; Zoom's own invitation

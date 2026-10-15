@@ -195,7 +195,8 @@ class Settings(BaseSettings):
     host_name_short: str = Field(default="Deep", alias="HOST_NAME_SHORT")
     # the host card in visitor and guest emails: title under the name, and a square photo (public https URL, >= 96 px)
     host_full_name: str = Field(default="Sreedeep Surapaneni", alias="HOST_FULL_NAME")   # the host card's name
-    host_title: str = Field(default="Founder & CEO, Champions Group", alias="HOST_TITLE")
+    host_title: str = Field(default="Founder & CMO, Champions Group", alias="HOST_TITLE")
+    host_linkedin_url: str = Field(default="https://www.linkedin.com/in/sreedeep-surapaneni", alias="HOST_LINKEDIN_URL")
     host_photo_url: str = Field(default="", alias="HOST_PHOTO_URL")
     # postal address in every booking email's footer (mail providers trust mail that carries one); empty = no line
     email_postal_address: str = Field(default="Champions Square, Opp. Decathlon, Sarjapur Main Road, Carmelaram, Bengaluru 560035, India",
