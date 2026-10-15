@@ -33,6 +33,32 @@ CALL_DESCRIPTIONS = [
     ("strategy", "A working session on go-to-market: data, AI and revenue acceleration."),
 ]
 
+# "What to expect" in the visitor and guest emails: three lines per call type, matched like CALL_DESCRIPTIONS
+CALL_AGENDA = [
+    ("discovery", ["A short introduction: your goals and where you are today",
+                   "Where Deep and the Champions Group companies can help",
+                   "Clear next steps, if there is a fit"]),
+    ("walkthrough", ["A live walkthrough of LakeB2B's data and workflows",
+                     "Applied to your own use case and target market",
+                     "Time for your questions and next steps"]),
+    ("demo", ["A live walkthrough of LakeB2B's data and workflows",
+              "Applied to your own use case and target market",
+              "Time for your questions and next steps"]),
+    ("gtm", ["Your go-to-market goals, pipeline and current tools",
+             "Where data and AI can speed up revenue",
+             "A concrete plan to take away"]),
+    ("strategy", ["Your go-to-market goals, pipeline and current tools",
+                  "Where data and AI can speed up revenue",
+                  "A concrete plan to take away"]),
+]
+
+
+def agenda(slug: str | None, name: str | None = None) -> list[str]:
+    """The three "What to expect" lines for a call type ([] when none matches)."""
+    hay = f"{slug or ''} {name or ''}".lower()
+    return next((list(lines) for key, lines in CALL_AGENDA if key in hay), [])
+
+
 _cache: dict[tuple, tuple[float, dict[str, Any]]] = {}
 _lock = threading.Lock()
 

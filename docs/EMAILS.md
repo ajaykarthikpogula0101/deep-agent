@@ -217,3 +217,21 @@ The Ledger system was restyled to read like a large SaaS product's mail rather t
 Test in real mail apps (Outlook, iCloud Mail, Apple Mail, Gmail): `python scripts/send_test_emails.py you@outlook.com
 you@icloud.com` sends the whole set (visitor, guest and host copies) to those inboxes only, with "[test]" subjects and
 sample data.
+
+## Added 2026-10-15 (night): host card, joining by phone, what to expect, footer address
+
+Visitor and guest emails (not the host's) now carry:
+
+- **Host** as the first row of the details panel: `HOST_NAME_SHORT`'s name (template `host_name`), `HOST_TITLE`
+  (default "Founder & CEO, Champions Group") and, when `HOST_PHOTO_URL` is a public https image, a round 40 px photo.
+  Not in cancelled emails.
+- **By phone**, for a confirmed call whose Zoom meeting ID is known: "Call a local Zoom number" (zoom.us/zoomconference),
+  then the meeting ID. Calls confirmed on Zoom's own page (the browser booking) have no ID here; Zoom's own invitation
+  carries their numbers.
+- **What to expect**: three lines per call type (`app/booking/availability.CALL_AGENDA`, matched on the schedule slug,
+  then name) in the confirmation, the reminder, and the guest invitation and reminder.
+- **Footer address**: `EMAIL_POSTAL_ADDRESS` as a line in every booking email's footer, when set.
+
+Fix: a confirmed booking without a Zoom link (every browser booking) said "Join with the Zoom link above" with no link
+above. Its next step is now "Zoom sends the meeting link in its own invitation; join from there at the scheduled time."
+(text part and HTML; the golden snapshot changed for exactly those two messages).

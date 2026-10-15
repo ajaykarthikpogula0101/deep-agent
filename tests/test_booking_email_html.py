@@ -399,3 +399,24 @@ def test_buttons_and_time_change_components():
     assert ">Was<" in w and ">Now<" in w and "line-through" in w and "&lt;old&gt;" in w
     assert E.notice("") == "" and "&lt;b&gt;" in E.notice("<b>")
     assert ">Cancelled</span>" in E.pills([("off", "")]) and E.pills([("move", ""), ("wait", "")]).count("&middot;") == 1
+
+
+def test_visitor_extras_host_card_phone_agenda_and_footer_address(monkeypatch):
+    """2026-10-15: the host row (name, title, optional https photo), joining by phone when the meeting ID is known,
+    "What to expect" for the call type, the postal address in the footer, and an honest next step without a Zoom link."""
+    h = html(CONFIRMED)
+    assert ">Host<" in h and "Founder &amp; CEO, Champions Group" in h and "<img" not in h          # no photo set: text only
+    assert ">By phone<" in h and 'href="https://zoom.us/zoomconference"' in h and "meeting ID 812 3456 7890" in h
+    assert "What to expect" in h and "Clear next steps, if there is a fit" in h                     # by the slug (discovery-call)
+    assert ">By phone<" not in html(PENDING) and "Join from the button below" in h
+    monkeypatch.setattr(settings, "host_photo_url", "https://cdn.example.com/deep.jpg")
+    monkeypatch.setattr(settings, "host_title", "<b>CMO</b>")
+    monkeypatch.setattr(settings, "email_postal_address", "1 Example Road, Bengaluru <560001>")
+    h = html(CONFIRMED)
+    assert '<img src="https://cdn.example.com/deep.jpg" width="40" height="40" alt="Deep"' in h and "&lt;b&gt;CMO&lt;/b&gt;" in h
+    assert "1 Example Road, Bengaluru &lt;560001&gt;" in h
+    monkeypatch.setattr(settings, "host_photo_url", "http://insecure.example/deep.jpg")
+    assert "<img" not in html(CONFIRMED)                                                          # https only
+    browser = html(dict(CONFIRMED, join_url="", zoom_meeting_id=None, meeting_id=None, passcode="", method="browser"))
+    assert "Zoom sends the meeting link in its own invitation" in browser and "Join from the button below" not in browser
+    assert "Join Zoom meeting" not in browser and ">By phone<" not in browser

@@ -193,6 +193,11 @@ class Settings(BaseSettings):
     email_assets_url: str = Field(default="https://cdn.jsdelivr.net/gh/ajaykarthikpogula0101/deep-agent@main/static/email",
                                   alias="EMAIL_ASSETS_URL")
     host_name_short: str = Field(default="Deep", alias="HOST_NAME_SHORT")
+    # the host card in visitor and guest emails: title under the name, and a square photo (public https URL, >= 96 px)
+    host_title: str = Field(default="Founder & CEO, Champions Group", alias="HOST_TITLE")
+    host_photo_url: str = Field(default="", alias="HOST_PHOTO_URL")
+    # postal address in every booking email's footer (mail providers trust mail that carries one); empty = no line
+    email_postal_address: str = Field(default="", alias="EMAIL_POSTAL_ADDRESS")
     demo_user_name: str = Field(default="Ada Lovelace", alias="DEMO_USER_NAME")
     demo_user_email: str = Field(default="ada@lovelace.org", alias="DEMO_USER_EMAIL")
 

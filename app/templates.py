@@ -184,6 +184,8 @@ NEXT_STEP = {
     "handover": "{host_name} will reply to this email address.",
     "nudge": "Confirm it here, your details are already filled in: {link}",
     "confirmed": "Join with the Zoom link above at the scheduled time.",
+    # confirmed on Zoom's own page (browser booking): the meeting link comes in Zoom's invitation, not in ours
+    "confirmed_nolink": "Zoom sends the meeting link in its own invitation; join from there at the scheduled time.",
     "pending_zoom": "One last step: confirm the time on Zoom here, your details are already filled in: {link}",
     "cancelled": "",
 }
@@ -294,7 +296,10 @@ def build_vars(lead: dict[str, Any], tpl: dict[str, str] | None = None) -> dict[
     v["method_line"] = METHOD_LINE.get(lead.get("method") or "", "")
     v["headline"] = render(HEADLINE.get(status, ""), v)
     # a moved or reminded booking keeps the next step of its real state (confirmed / still to confirm on Zoom)
-    v["next_step"] = render(NEXT_STEP.get(lead.get("booking_status") or status, ""), v)
+    step = lead.get("booking_status") or status
+    if step == "confirmed" and not v["join_url"]:
+        step = "confirmed_nolink"
+    v["next_step"] = render(NEXT_STEP.get(step, ""), v)
     return v
 
 

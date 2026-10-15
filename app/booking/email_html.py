@@ -122,7 +122,9 @@ def _copy(audience: str, confirmed: bool, v: dict[str, str], tpl: dict[str, str]
         return {"eyebrow": "", "heading": f"Your call with {host} is confirmed",
                 "intro": [f"Hi {first},", f"Your {title} is booked. The details are below, and a calendar invite is attached."],
                 "intro2": "",
-                "status": "Join from the button below at the scheduled time. Reply to this email if anything changes.",
+                "status": ("Join from the button below at the scheduled time. Reply to this email if anything changes."
+                           if v.get("join_url") else
+                           "Zoom sends the meeting link in its own invitation; join from there at the scheduled time."),
                 "preheader": f"{title} on {v['date_visitor']}. Join details and calendar invite inside."}
     if audience == "visitor":
         return {"eyebrow": "", "heading": "Confirm your time on Zoom",
@@ -433,7 +435,7 @@ def buttons(actions: list[tuple[str, str] | None]) -> str:
 def footer(brand: str, note: str, sent_line: str = "") -> str:
     """Brand, one helpful line, the site. (`sent_line` is kept for callers; the design leaves the machine line out.)"""
     site = (settings.site_base_url or "").replace("https://", "").replace("http://", "").rstrip("/")
-    lines = [(t, w) for t, w in ((brand, 600), (note, 400), (site, 400)) if t]
+    lines = [(t, w) for t, w in ((brand, 600), (note, 400), ((settings.email_postal_address or "").strip(), 400), (site, 400)) if t]
     return "".join(f'<div class="dm-mut" style="{_font(12, 18, w, MUTE)}padding-top:{6 if i else 0}px;text-align:center">'
                    f'{esc(t)}</div>' for i, (t, w) in enumerate(lines))
 
@@ -601,6 +603,46 @@ def _visitor_time(booking: dict[str, Any], start_utc: Any) -> list[tuple[str, st
     return [("Visitor time", esc(f"{fmt_date(vs)} · {fmt_time(vs)}"))]
 
 
+def _host_row(v: dict[str, str]) -> list[tuple[str, str]]:
+    """Who they meet: the photo (HOST_PHOTO_URL, https only; round, 40 px) beside the name and HOST_TITLE."""
+    name = v.get("host_name") or "Deep"
+    title = (settings.host_title or "").strip()
+    photo = safe_url(settings.host_photo_url)
+    text = (f'<div class="dm-ink" style="{_font(15, 22, 600)}">{esc(name)}</div>'
+            + (f'<div class="dm-mut" style="{_font(13, 18, 400, MUTE)}">{esc(title)}</div>' if title else ""))
+    if not photo.startswith("https://"):
+        return [("Host", text)]
+    img = (f'<img src="{esc(photo)}" width="40" height="40" alt="{esc(name)}" style="display:block;width:40px;height:40px;'
+           f'border:0;border-radius:20px;object-fit:cover">')
+    return [("Host", f'<table {_TABLE}><tr><td width="40" valign="middle" style="width:40px;padding-right:12px">{img}</td>'
+                     f'<td valign="middle">{text}</td></tr></table>')]
+
+
+def _phone_row(booking: dict[str, Any], confirmed: bool) -> list[tuple[str, str]]:
+    """Joining by phone, when the meeting ID is known: Zoom's list of local numbers, then the ID. (A call confirmed on
+    Zoom's own page has no ID here; Zoom's invitation carries its numbers.)"""
+    mid = booking.get("meeting_id") or booking.get("zoom_meeting_id")
+    if not confirmed or not mid:
+        return []
+    return [("By phone", f'Call a {_a("https://zoom.us/zoomconference", "local Zoom number", 500)}, then enter meeting ID '
+                         f'{esc(mid)}')]
+
+
+def expect_section(lines: list[str]) -> str:
+    """"What to expect": the call type's three lines (app/booking/availability.agenda)."""
+    if not lines:
+        return ""
+    items = "".join(f'<li style="margin:0 0 6px">{esc(t)}</li>' for t in lines)
+    return (f'<div class="dm-ink" style="{_font(15, 22, 700)}">What to expect</div>'
+            f'<ul class="dm-body" style="margin:8px 0 0;padding:0 0 0 20px;{_font(15, 23, 400, BODY)}">{items}</ul>')
+
+
+def _expect(booking: dict[str, Any]) -> str:
+    from app.booking.availability import agenda
+
+    return expect_section(agenda(booking.get("schedule_slug"), booking.get("schedule_name")))
+
+
 def _calendar(booking: dict[str, Any], v: dict[str, str], start: datetime | None, confirmed: bool, guest: bool = False) -> str:
     """The "Add to calendar" line for a confirmed call. A guest never gets the .ics link: it carries the booker's
     manage token."""
@@ -701,8 +743,9 @@ def _render_visitor_confirmation(booking: dict[str, Any], tpl: dict[str, str], n
         (0, pills([(state, STATE_WORD[state])])),
         (12, h1(copy["heading"])),
         (12, lead(copy["intro"] + [copy["intro2"]])),
-        (24, event_card(v["title"], state, booking_rows(booking, "visitor", confirmed, start), start=start,
-                        duration=booking.get("duration_min"), when=v["date_visitor"])),
+        (24, event_card(v["title"], state, _host_row(v) + booking_rows(booking, "visitor", confirmed, start)
+                        + _phone_row(booking, confirmed), start=start, duration=booking.get("duration_min"), when=v["date_visitor"])),
+        (28, _expect(booking)),
         (24, status_note(copy["status"], state)),
         (20, buttons([cta]) if cta and cta_ok else ""),
         (16, cal),
@@ -823,7 +866,7 @@ def _letter(booking: dict[str, Any], *, tpl: dict[str, str], v: dict[str, str], 
             eyebrow: str, states: list[tuple[str, str]], tz: ZoneInfo, now: datetime | None, recipient: str,
             actions: list[tuple[str, str] | None], pending: bool, cancelled: bool = False, moved: bool = False,
             old: tuple[str, ...] | None = None, brief: str = "", pre_extra: str = "", when: str = "",
-            ask: dict[str, Any] | None = None) -> str:
+            ask: dict[str, Any] | None = None, expect: bool = False) -> str:
     """One lifecycle email: pills, the heading (what the simple card showed as its title), the text part's opening
     paragraphs, the event card, its closing paragraphs (the next step as a note in the state colour), the buttons the
     send function chose, the sign-off, and for the host's day-before email the brief."""
@@ -850,11 +893,15 @@ def _letter(booking: dict[str, Any], *, tpl: dict[str, str], v: dict[str, str], 
         if was:
             change = (was, (fmt_date(start), fmt_time(start)), f"{booking['duration_min']} minutes" if booking.get("duration_min") else "")
     rows: list[tuple[str, str]] = []
+    if audience != "host" and not cancelled:
+        rows += _host_row(v)
     if audience == "host" and start:
         rows += _visitor_time(booking, booking.get("start_utc"))
     if start and not cancelled:
         rows.append(("Platform", esc(_platform(booking))))
     rows += _join_rows(booking, confirmed)
+    if audience != "host":
+        rows += _phone_row(booking, confirmed)
     if audience == "host" and ("name" in facts or "email" in facts):
         rows += _attendee(booking)
     for label, value, more in parts["facts"]:
@@ -877,7 +924,7 @@ def _letter(booking: dict[str, Any], *, tpl: dict[str, str], v: dict[str, str], 
                            when=when if not start and not any(k in facts for k in ("when", "now", "was")) else "")
 
     # the closing paragraphs: the next step (and the guest's "held" line) as a note in the state colour
-    notes = {GUEST_HELD} | {templates.render(templates.NEXT_STEP[k], v) for k in ("pending_zoom", "confirmed", "nudge", "handoff")}
+    notes = {GUEST_HELD} | {templates.render(templates.NEXT_STEP[k], v) for k in ("pending_zoom", "confirmed", "confirmed_nolink", "nudge", "handoff")}
     note_state = "wait" if pending and not cancelled else state
     outro = [(16, status_note(linkify(" ".join(p)), note_state, rich=True) if " ".join(p) in notes else _prose([p]))
              for p in parts["outro"]]
@@ -894,6 +941,7 @@ def _letter(booking: dict[str, Any], *, tpl: dict[str, str], v: dict[str, str], 
         (12, h1(heading)),
         (12, _prose(parts["intro"], 16, 24)),
         (24, card_html),
+        (28, _expect(booking) if expect and not cancelled else ""),
         *outro,
         (24, buttons(actions)),
         (16, cal),
@@ -961,7 +1009,7 @@ def render_reminder(booking: dict[str, Any], subject: str, body: str, tpl: dict[
     heading = "Confirm your time on Zoom" if pending else f"Your call with {v.get('host_name') or 'Deep'} is {_soon(word)}"
     return _letter(booking, tpl=tpl, v=v, audience="visitor", heading=heading, body=body, eyebrow="Reminder",
                    states=[("soon", word)] + ([("wait", "")] if pending else []), tz=tz, now=now, recipient=to,
-                   actions=list(actions), pending=pending, ask=ask)
+                   actions=list(actions), pending=pending, ask=ask, expect=True)
 
 
 def render_host_brief(booking: dict[str, Any], subject: str, body: str, brief: str, tpl: dict[str, str] | None = None,
@@ -1012,7 +1060,8 @@ def render_guest(booking: dict[str, Any], guest: dict[str, str], kind: str, subj
     return _letter(dict(booking, attendees=[]), tpl=tpl, v=v, audience="guest", heading=heading, body=body,
                    eyebrow=GUEST_EYEBROW.get(kind, "Reminder"), states=states, tz=tz, now=now,
                    recipient=guest.get("email") or "", actions=list(actions), pending=pending, cancelled=cancelled,
-                   moved=kind == "moved", old=(fmt_date(prev), fmt_time(prev)) if prev and kind == "moved" else None, ask=ask)
+                   moved=kind == "moved", old=(fmt_date(prev), fmt_time(prev)) if prev and kind == "moved" else None, ask=ask,
+                   expect=kind in ("booked", "reminder"))
 
 
 # ---------------------------------------------------------------- the pre-call brief (host emails)
