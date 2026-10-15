@@ -52,6 +52,27 @@ def reschedule(booking_id: int, start_utc: datetime, end_utc: datetime, run: dic
     return n > 0
 
 
+def set_zoom_link(booking_id: int, join_url: str, meeting_id: str | None, passcode: str | None) -> bool:
+    """The join link read from Zoom's invitation (app/booking/zoom_mail.py); never overwrites a link already stored."""
+    with conn() as c:
+        n = c.execute(
+            """UPDATE bookings SET join_url = %s, zoom_meeting_id = COALESCE(zoom_meeting_id, %s), passcode = COALESCE(passcode, %s)
+               WHERE id = %s AND join_url IS NULL""", (join_url, meeting_id, passcode, booking_id)).rowcount
+        c.commit()
+    return n > 0
+
+
+def missing_zoom_link(days: int = 3, limit: int = 20) -> list[dict[str, Any]]:
+    """Recent, upcoming browser bookings still without a join link."""
+    with conn() as c:
+        rows = c.execute(
+            f"""SELECT {", ".join(COLS)} FROM bookings
+                WHERE method = 'browser' AND status = 'confirmed' AND join_url IS NULL AND start_utc > now()
+                  AND created_at > now() - make_interval(days => %s)
+                ORDER BY created_at DESC LIMIT %s""", (days, limit)).fetchall()
+    return [dict(zip(COLS, r)) for r in rows]
+
+
 def list_for_visitor(visitor_id: str | None, user_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
     """Every booking made in a chat session of this browser (visitor id) or signed-in user, newest start first."""
     if not visitor_id and not user_id:

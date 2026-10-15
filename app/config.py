@@ -233,6 +233,13 @@ class Settings(BaseSettings):
     jev_browser_path: str = Field(default="", alias="JEV_BROWSER_PATH")  # Chrome/Edge binary; empty = auto-detect
     jev_cdp_url: str = Field(default="", alias="JEV_CDP_URL")  # an already running browser (http://127.0.0.1:9222); empty = the app keeps one
     jev_persistent_browser: bool = Field(default=True, alias="JEV_PERSISTENT_BROWSER")  # false = the worker launches a browser per run
+    # The Zoom link for browser bookings (app/booking/zoom_mail.py): the worker adds this mailbox as an attendee on Zoom, and
+    # the app reads Zoom's invitation there over IMAP for the join link, meeting ID and passcode. No Zoom credentials.
+    zoom_link_from_email: bool = Field(default=True, alias="ZOOM_LINK_FROM_EMAIL")
+    zoom_link_mailbox: str = Field(default="", alias="ZOOM_LINK_MAILBOX")  # empty = SMTP_USER
+    zoom_link_imap_host: str = Field(default="imap.gmail.com", alias="ZOOM_LINK_IMAP_HOST")
+    zoom_link_imap_password: str = Field(default="", alias="ZOOM_LINK_IMAP_PASSWORD")  # empty = SMTP_PASSWORD
+    zoom_link_wait_seconds: int = Field(default=90, alias="ZOOM_LINK_WAIT_SECONDS")  # how long the confirmation emails wait for it
 
     # Email
     smtp_host: str = Field(default="", alias="SMTP_HOST")

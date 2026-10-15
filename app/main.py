@@ -27,7 +27,7 @@ from fastapi.responses import Response
 from app import conversations, digest, email_ask, gaps, geoip_update, guidance, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking, visitors
 from app.booking import availability as avail
 from app.booking import browser_booking
-from app.booking import email_html, flow, ics
+from app.booking import email_html, flow, ics, zoom_mail
 from app.booking.service import BookingService
 from app.booking.email import send_host_brief, send_test
 from app import chat as chat_mod
@@ -108,6 +108,9 @@ def _startup() -> None:
     if "mmdb" in chain and tracking.mmdb_problem():
         log.warning("GEOIP_PROVIDER includes mmdb but %s; it is skipped%s", tracking.mmdb_problem(),
                     " until the download finishes" if geoip_update.configured() else " (set MAXMIND_LICENSE_KEY to download them)")
+    if settings.browser_booking_enabled and zoom_mail.enabled():  # every 10 min: join links Zoom emailed late (app/booking/zoom_mail.py)
+        _scheduler.add_job(zoom_mail.backfill, CronTrigger.from_crontab("*/10 * * * *", timezone=settings.host_timezone),
+                           id="zoom_link_backfill", replace_existing=True, misfire_grace_time=600)
     if settings.digest_enabled:  # weekly digest to the host (app/digest.py)
         _scheduler.add_job(digest.run, CronTrigger.from_crontab(settings.digest_cron, timezone=settings.host_timezone),
                            id="weekly_digest", replace_existing=True, misfire_grace_time=6 * 3600)

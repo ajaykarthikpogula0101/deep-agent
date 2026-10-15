@@ -11,7 +11,7 @@ gives Deep a brief on every lead before the call.
 ![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-483%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-497%20passing-2EA44F)
 
 [Features](#features) · [Features in detail](#features-in-detail) · [Quick start](#quick-start) ·
 [Configuration](#configuration) · [Visitor tracking and IP lookup](#visitor-tracking-and-ip-lookup) ·
@@ -138,6 +138,11 @@ Zoom's API when Server-to-Server credentials are set together with `ZOOM_ENABLE_
 `ZOOM_HOST_USER_ID` (Meetings API); otherwise a browser worker books on the public page (`BROWSER_BOOKING_ENABLED`),
 and when none of these is on or all fail, the time is held and the visitor confirms on Zoom with their details already
 filled in. One email address can hold at most `BOOKING_MAX_ACTIVE_PER_EMAIL` upcoming bookings.
+
+Zoom's public pages never show the join link, so for browser bookings the worker adds one mailbox of ours as a guest
+on Zoom (`ZOOM_LINK_MAILBOX`, default `SMTP_USER`), and the app reads Zoom's invitation there over IMAP: the join link,
+meeting ID and passcode go on the booking, and the confirmation emails (which wait up to `ZOOM_LINK_WAIT_SECONDS` for
+it) carry the Join button and the phone row. No Zoom credentials ([BROWSER_BOOKING](docs/BROWSER_BOOKING.md#the-join-link-appbookingzoom_mailpy-2026-10-15)).
 
 The visitor gets a confirmation email with the join link and an `.ics` invite; guests get their own short note.
 Moving or cancelling works from the chat ("reschedule my call") and from the email's **View booking details** button,
@@ -562,6 +567,7 @@ All settings live in `.env`. `.env.example` lists the usual options with a comme
 | `ZOOM_BOOKING_BASE`, `ZOOM_*` | | Deep's scheduler page; S2S OAuth credentials for the official API ([ZOOM_SETUP](docs/ZOOM_SETUP.md)) |
 | `HOST_TIMEZONE`, `HOST_HOURS`, `BOOKING_DAYS_AHEAD`, `BOOKING_MAX_ACTIVE_PER_EMAIL` | `Asia/Kolkata`, inferred, `14`, `2` | the in-chat picker |
 | `BROWSER_BOOKING_ENABLED`, `JEV_*`, `TYPESAFE_*` | `false` | booking on the public Zoom page by a browser worker ([BROWSER_BOOKING](docs/BROWSER_BOOKING.md)) |
+| `ZOOM_LINK_FROM_EMAIL`, `ZOOM_LINK_MAILBOX`, `ZOOM_LINK_IMAP_*`, `ZOOM_LINK_WAIT_SECONDS` | `true`, SMTP account, `imap.gmail.com`, `90` | the join link for browser bookings, read from Zoom's invitation |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM` | | outgoing mail |
 | `HOST_EMAIL` | `deep@championsmail.com` | Deep's inbox: briefs, alerts, digest, outcome questions. Every host email links the host booking page |
 | `EMAIL_ASSETS_URL` | jsDelivr copy of `static/email` | public https folder for email images; empty = embed them in each message. No current email uses images |
@@ -738,7 +744,7 @@ with a MaxMind key, downloads the GeoLite2 files in the background if they are m
 ## Tests
 
 ```bash
-pytest                                        # 483 passed, 2 skipped; no network (the database tests skip without Postgres)
+pytest                                        # 497 passed, 2 skipped; no network (the database tests skip without Postgres)
 python -m app.tracking 49.207.200.10 'Acme' a@acme.com   # one IP through GEOIP_PROVIDER and the network rules, no database
 python -m app.geoip_update                    # download or refresh the GeoLite2 files (needs MAXMIND_LICENSE_KEY)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)

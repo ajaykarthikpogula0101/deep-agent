@@ -9,7 +9,8 @@ confirm() is the only place a booking is made, and it runs when the visitor clic
      link ("pending_zoom": the visitor finishes on Zoom)
 reschedule() moves an active booking (browser-made bookings through the scheduler's own reschedule link; hand-offs by
 updating our held time); cancel() also drives the scheduler's cancel link for browser-made bookings.
-  4. store the lead and the booking, queue both confirmation emails with the .ics invite (app/mailer.py)
+  4. store the lead and the booking, queue both confirmation emails with the .ics invite (app/mailer.py); a browser
+     booking's emails first wait briefly for the join link from Zoom's own invitation (app/booking/zoom_mail.py)
 Side effects are injectable (Deps) so the whole flow is testable without Postgres, SMTP or Zoom.
 """
 from __future__ import annotations
@@ -22,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from app.booking import availability as avail
-from app.booking import browser_booking
+from app.booking import browser_booking, zoom_mail
 from app.booking.service import BookingService, _EMAIL_RE, _origin_line, looks_like_placeholder
 from app.booking.zoom import AvailabilityError, InvalidTimeError, Schedule, Slot, SlotTakenError, ZoomOfficialClient, parse_start, parse_tz
 from app.config import settings
@@ -204,6 +205,7 @@ def _book_on_zoom(service: BookingService, schedule: Schedule, start_utc: dateti
             out["error"] = str(e)[:200]
     if browser_booking.available():
         guests = [a["email"] for a in req.attendees]
+        guests += zoom_mail.extra_attendee(req.email, guests)  # Zoom's invitation, with the join link, reaches us too
         res = browser_booking.book(schedule.booking_link or f"{settings.zoom_booking_base}/{schedule.slug}", start_utc, req.name, req.email,
                                    req.notes or req.company or "", **({"attendees": guests} if guests else {}))
         out["run"] = browser_booking.summary(res)
@@ -327,9 +329,9 @@ def confirm(service: BookingService, req: ConfirmRequest, deps: Deps | None = No
     booking["meeting_id"] = booking.get("zoom_meeting_id")
     avail.invalidate(schedule.slug)
 
-    # 5. emails (background, retried) + event
+    # 5. emails (background, retried) + event; a browser booking's emails first wait for Zoom's join link (zoom_mail)
     try:
-        deps.mail(booking)
+        zoom_mail.after_booking(booking, deps.mail)
     except Exception as e:
         log.error("booking emails failed to queue: %s", e)
     try:

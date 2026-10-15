@@ -112,6 +112,27 @@ Facts about Zoom's pages the worker relies on:
   "Cancel Appointment" button).
 * Zoom's page drew its slots in about 3 s in the morning and 20 to 35 s in the evening; the worker waits for them.
 
+### The join link (app/booking/zoom_mail.py, 2026-10-15)
+
+Zoom's public pages never show the join link: the confirmation page, the manage page and the data behind it
+(`/zscheduler/v1/attendees/<token>`, `location` empty) all leave it out. It only travels in the invitation Zoom sends
+to every attendee. So, with `ZOOM_LINK_FROM_EMAIL=true` (default):
+
+1. the worker adds one mailbox of ours (`ZOOM_LINK_MAILBOX`, default `SMTP_USER`) as an **additional attendee** on the
+   Zoom booking, next to the visitor's own guests (not when it is the booker's own address);
+2. the confirmation emails wait on a thread (up to `ZOOM_LINK_WAIT_SECONDS`, default 90 s; the chat answer does not
+   wait) while the app reads that mailbox over IMAP (read-only, `BODY.PEEK`; the Gmail app password of SMTP works);
+3. Zoom's invitation is matched to the booking by its calendar start time (one host, one call per time) or, without a
+   calendar part, by the booker's email; only messages after the booking count, never cancellations, never our own
+   emails (the host copy lands in the same mailbox);
+4. the join link, meeting ID and passcode are stored on the row, and the emails go out with the Join button and the
+   phone row. Without an invitation in time they go out as before ("Zoom sends the meeting link in its own invitation").
+5. every 10 minutes `zoom_link_backfill` stores links that arrived late, so the reminders carry them.
+
+The visitor sees this mailbox as a guest on Zoom's invitation: use a dedicated address such as `bookings@` for go-live.
+**Zoom's own attendee emails must stay on**: they are how the link reaches this mailbox. Turning them off in Zoom
+stops the link too.
+
 ### Speed
 
 browser-harness keeps one daemon per name, bound to the browser it first connected to, and a fresh daemon costs 11 to

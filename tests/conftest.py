@@ -30,6 +30,7 @@ def _no_browser_booking(monkeypatch):
     monkeypatch.setattr(settings, "browser_booking_dry_run", True)
     monkeypatch.setattr(browser_booking, "available", lambda: False)
     monkeypatch.setattr(browser_booking, "_ensure_browser", lambda: "")
+    monkeypatch.setattr(settings, "zoom_link_from_email", False)  # never reads a real mailbox (tests/test_zoom_mail.py)
 
 
 @pytest.fixture(autouse=True)
