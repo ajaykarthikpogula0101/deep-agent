@@ -383,7 +383,7 @@ def test_the_logo_is_the_only_image_hosted_or_inside_the_message(monkeypatch):
     alt text is the brand, so it reads with images blocked; another brand gets its name as text."""
     h = html(CONFIRMED)
     assert imgs(h) == ["host.png", "logo.png"] and f'src="{settings.email_assets_url}/logo.png"' in h and 'alt="Champions Group"' in h
-    assert f'src="{settings.email_assets_url}/host.png"' in h and 'alt="Deep"' in h
+    assert f'src="{settings.email_assets_url}/host.png"' in h and 'alt="Sreedeep Surapaneni"' in h and ">Sreedeep Surapaneni</div>" in h
     assert (E.ASSETS / "logo.png").is_file() and (E.ASSETS / "host.png").is_file() and E.inline_images(h) == []
     monkeypatch.setattr(settings, "email_assets_url", "")
     h = html(CONFIRMED)
@@ -426,7 +426,7 @@ def test_visitor_extras_host_card_phone_agenda_and_footer_address(monkeypatch):
     monkeypatch.setattr(settings, "host_title", "<b>CMO</b>")
     monkeypatch.setattr(settings, "email_postal_address", "1 Example Road, Bengaluru <560001>")
     h = html(CONFIRMED)
-    assert '<img src="https://cdn.example.com/deep.jpg" width="40" height="40" alt="Deep"' in h and "&lt;b&gt;CMO&lt;/b&gt;" in h
+    assert '<img src="https://cdn.example.com/deep.jpg" width="40" height="40" alt="Sreedeep Surapaneni"' in h and "&lt;b&gt;CMO&lt;/b&gt;" in h
     assert "1 Example Road, Bengaluru &lt;560001&gt;" in h
     monkeypatch.setattr(settings, "host_photo_url", "http://insecure.example/deep.jpg")
     assert "insecure.example" not in html(CONFIRMED) and "/host.png" in html(CONFIRMED)          # https only: else the bundled photo

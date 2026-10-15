@@ -615,7 +615,7 @@ def _visitor_time(booking: dict[str, Any], start_utc: Any) -> list[tuple[str, st
 def _host_row(v: dict[str, str]) -> list[tuple[str, str]]:
     """Who they meet: the photo (round, 40 px) beside the name and HOST_TITLE. The photo is HOST_PHOTO_URL (https only),
     else static/email/host.png like the logo (EMAIL_ASSETS_URL, else inside the message)."""
-    name = v.get("host_name") or "Deep"
+    name = (settings.host_full_name or "").strip() or v.get("host_name") or "Deep"
     title = (settings.host_title or "").strip()
     photo = safe_url(settings.host_photo_url)
     if not photo.startswith("https://"):
