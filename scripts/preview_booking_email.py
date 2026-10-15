@@ -184,7 +184,9 @@ def main() -> None:
     templates.get_templates = lambda: dict(templates.DEFAULTS)
     rows = []
     for stem, num, label, audience, item in cases(Capture()):
-        (out / f"{stem}.html").write_text(item["html"] or "", encoding="utf-8")
+        # the logo from this checkout (the CDN copy appears once the file is pushed)
+        page = (item["html"] or "").replace(f'{settings.email_assets_url.rstrip("/")}/logo.png', "../static/email/logo.png")
+        (out / f"{stem}.html").write_text(page.replace("cid:logo.png@cg", "../static/email/logo.png"), encoding="utf-8")
         kb = len((item["html"] or "").encode()) / 1024
         rows.append(f'<tr><td>{html.escape(num)}</td><td><a href="{stem}.html">{html.escape(label)}</a></td><td>{html.escape(audience)}</td>'
                     f'<td>{html.escape(item["to"])}</td><td>{html.escape(item["subject"])}</td><td>{kb:.0f} KB</td></tr>')

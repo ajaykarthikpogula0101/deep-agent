@@ -50,7 +50,7 @@ def never_confirmed(h: str) -> bool:
 
 
 def ledger(h: str) -> bool:
-    return 'class="card dm-card"' in h and "#F28C28" not in h and "<img" not in h
+    return 'class="card dm-card"' in h and "#F28C28" not in h and h.count("<img") == 1 and "logo.png" in h   # the logo only
 
 
 def pills(h: str) -> list[str]:

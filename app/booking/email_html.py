@@ -287,10 +287,18 @@ def preheader(text: str) -> str:
             f'{esc(text)}</div><div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{"&#847;&zwnj;&nbsp;" * 40}</div>')
 
 
+LOGO = "logo.png"   # static/email/logo.png: the Champions Group logo (130 x 82), shown at 104 x 66
+
+
 def header(brand: str, eyebrow: str = "") -> str:
-    """The brand wordmark in Champions Orange above the card. (`eyebrow` is kept for callers; the heading states the
-    email's purpose instead.)"""
-    return f'<div style="{_font(18, 24, 700, ACCENT)}letter-spacing:-0.2px">{esc(brand)}</div>'
+    """The Champions Group logo above the card: from EMAIL_ASSETS_URL, else inside the message (cid). Its alt text is
+    the brand in Champions Orange, so it still reads with images blocked. Another brand gets its name as text.
+    (`eyebrow` is kept for callers; the heading states the email's purpose instead.)"""
+    if "champions" not in (brand or "").lower() or not (ASSETS / LOGO).is_file():
+        return f'<div style="{_font(18, 24, 700, ACCENT)}letter-spacing:-0.2px">{esc(brand)}</div>'
+    src = _src(image_base({}, "hosted"), LOGO)
+    return (f'<img src="{esc(src)}" width="104" height="66" alt="{esc(brand)}" style="display:block;width:104px;height:66px;'
+            f'border:0;outline:none;text-decoration:none;{_font(18, 24, 700, ACCENT)}">')
 
 
 def pills(items: list[tuple[str, str]]) -> str:

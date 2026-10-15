@@ -29,5 +29,5 @@ def test_every_lifecycle_email_has_the_new_html_and_the_other_visitor_emails_sta
             assert m["html"] and "dm-card" not in m["html"], case
         else:
             h = m["html"]
-            assert h and 'class="card dm-card"' in h and "<img" not in h and "#F28C28" not in h, (case, m["to"])
+            assert h and 'class="card dm-card"' in h and h.count("<img") == 1 and "logo.png" in h and "#F28C28" not in h, (case, m["to"])
             assert len(h.encode()) < 100_000, case

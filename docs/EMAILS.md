@@ -235,3 +235,12 @@ Visitor and guest emails (not the host's) now carry:
 Fix: a confirmed booking without a Zoom link (every browser booking) said "Join with the Zoom link above" with no link
 above. Its next step is now "Zoom sends the meeting link in its own invitation; join from there at the scheduled time."
 (text part and HTML; the golden snapshot changed for exactly those two messages).
+
+## Added 2026-10-15 (night): the Champions Group logo, the Bengaluru address
+
+- The header is the Champions Group logo (`static/email/logo.png`, 130 x 82, shown at 104 x 66) instead of the text
+  wordmark: served from `EMAIL_ASSETS_URL` (jsDelivr over this public repo), else carried inside the message as a cid:
+  part. Its alt text is the brand in Champions Orange, so it reads with images blocked. A brand without "Champions" in
+  `brand_default` gets its name as text. It is the only image in the emails.
+- `EMAIL_POSTAL_ADDRESS` defaults to the Bengaluru corporate office: Champions Square, Opp. Decathlon, Sarjapur Main
+  Road, Carmelaram, Bengaluru 560035, India (from championsgroup's contact page; other offices can be set later).
