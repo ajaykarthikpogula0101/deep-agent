@@ -191,3 +191,29 @@ Console **Send test** shows the panel with question-only links (prefilled on the
 `EMAIL_ASK_ENABLED`, `EMAIL_ASK_TARGET` (`assistant` = `PUBLIC_BASE_URL/ask`, `site` = deependhq.com's widget),
 `EMAIL_ASK_TTL_DAYS`, `EMAIL_ASK_AUTOSEND`, `EMAIL_ASK_BIND_HISTORY`. How the chat and the memory use it: README,
 "Ask Deep from a booking email", and docs/MEMORY_VOICE.md.
+
+## Changed 2026-10-15 (late): Champions Group look, no booking-page button for visitors
+
+The Ledger system was restyled to read like a large SaaS product's mail rather than a template:
+
+- **Brand**: the Champions Group wordmark in Champions Orange (#F26722) above a white card with a thin orange top rule;
+  ink (#1A1A1A) text, neutral greys, orange only for the one button and links. No monogram tile, no violet.
+- **State**: a short coloured word above the heading ("Confirmed", "Action needed: confirm on Zoom", "Cancelled",
+  "Rescheduled", "Tomorrow", "Invitation"), no badges or glyphs. Next steps are plain paragraphs, not tinted boxes.
+- **Headings**: short and human ("Your call has been rescheduled", "Your call with Deep is tomorrow", "Ada Lovelace
+  invited you to a call with Deep"); the subject line stays the subject.
+- **Details**: the call in one bordered panel: calendar leaf, date and time, then Platform / Join / Attendee / Guests.
+- **Visitor emails have no "View booking details" button and no manage-page link** in the HTML: the Ask Deep panel
+  answers questions and moves or cancels the call. The button is "Join Zoom meeting" once confirmed, "Confirm on Zoom"
+  while held. The plain-text part (the editable template) still carries the manage link. Host emails are unchanged.
+- **Add to calendar**: Google, Outlook and Apple (the signed .ics) under the button of confirmed visitor emails;
+  guests get Google and Outlook only (the .ics link carries the booker's manage token).
+- **Footer**: brand, "Questions about your booking? Reply to this email and Deep's team will get back to you.", the
+  site. The "Sent from X to Y · time" line is gone.
+- Text change: the confirmed next step reads "Join with the Zoom link above at the scheduled time." (was "...when it's
+  time. Nothing else to do."); everything else in the text parts, subjects, recipients and attachments is unchanged
+  (tests/test_email_golden.py).
+
+Test in real mail apps (Outlook, iCloud Mail, Apple Mail, Gmail): `python scripts/send_test_emails.py you@outlook.com
+you@icloud.com` sends the whole set (visitor, guest and host copies) to those inboxes only, with "[test]" subjects and
+sample data.

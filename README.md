@@ -744,6 +744,7 @@ python -m app.geoip_update                    # download or refresh the GeoLite2
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)
 python scripts/verify_zoom.py                 # check Zoom S2S credentials once they are in .env
 python scripts/preview_booking_email.py       # every booking email as HTML in email_preview/ (index.html), no SMTP
+python scripts/send_test_emails.py you@outlook.com you@icloud.com   # the whole set to real inboxes ([test] subjects, sample data)
 node scripts/browser_check_widget.mjs http://127.0.0.1:8080 out   # the widget in a real headless browser
 cd tools/openui && npm ci && npm test         # answer-card parser, renderer and email renderer
 ```

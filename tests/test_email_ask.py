@@ -103,7 +103,7 @@ def test_panel_in_visitor_and_guest_emails_never_the_hosts():
             if to == settings.host_email:
                 assert "Ask Deep" not in h and "/ask#" not in h, (fn.__name__, subject)
             else:
-                assert ">Ask Deep<" in h and "/ask#t=" in h and "Open the assistant" in h, (fn.__name__, to)
+                assert "s assistant anything</a>" in h and "/ask#t=" in h, (fn.__name__, to)
                 assert "/ask#" not in body                       # the text part is untouched
                 tokens = {_tok(u)[0] for u in re.findall(r'href="(https://assistant\.example\.com/ask#[^"]+)"', h)}
                 assert len(tokens) == 1
@@ -137,7 +137,7 @@ def test_ask_panel_escapes_and_drops_unsafe_links():
     h = E.ask_panel({"heading": "<i>Hi</i>", "line": "x", "chips": [("<b>q</b>", "https://a.example/ask#q=prep"),
                                                                    ("bad", "javascript:alert(1)")], "open": "data:text/html,x"})
     assert "&lt;i&gt;Hi&lt;/i&gt;" in h and "&lt;b&gt;q&lt;/b&gt;" in h and "javascript:" not in h and "data:" not in h
-    assert "Open the assistant" not in h and E.ask_panel(None) == ""
+    assert "assistant anything" not in h and E.ask_panel(None) == ""
 
 
 def test_about_booking_questions_skip_the_refusal_gate():

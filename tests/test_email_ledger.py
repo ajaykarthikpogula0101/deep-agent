@@ -63,9 +63,10 @@ def test_cancelled_emails_are_calm_have_no_join_link_and_the_right_buttons():
     mail.send_cancel_emails(dict(CONF, status="cancelled", zoom_note="Cancelled here; please also cancel the event in Zoom Scheduler."), mailer=m)
     v, h, g = m.one("cancel_visitor")[3]["html"], m.one("cancel_host")[3]["html"], m.one("attendee_cancelled", "charles@babbage.org")[3]["html"]
     for x in (v, h, g):
-        assert ledger(x) and pills(x) == ["st-off"] and "&#8211;&nbsp;Cancelled" in x and "line-through" not in x
+        assert ledger(x) and pills(x) == ["st-off"] and ">Cancelled</span>" in x and "line-through" not in x
         assert JOIN not in x and "Join meeting" not in x and "Join Zoom" not in x and "Passcode" not in x
-        assert 'bgcolor="#9AA2BD"' in x                                               # the slate strip on the tile
+        assert "color:#6B6B6B;mso-line-height-rule:exactly;text-transform:uppercase" in x   # the tile's month greyed out
+        assert "Add to calendar" not in x
     assert "Your call with Deep is cancelled" in v and "Thanks for letting us know." in v and "Wed, 07 Oct 2026" in v and "9:30 AM EDT" in v
     assert v.count('href="https://www.example.com"') == 2 and "Book a new time" in v      # VML + link
     assert 'href="https://scheduler.zoom.us/sreedeep"' in v                              # the booking link in the text, still a link
@@ -85,7 +86,7 @@ def test_moved_emails_show_before_and_after_and_follow_the_pending_state():
     mail.send_reschedule_emails(dict(CONF, previous_start_utc=prev, old_label_visitor="Tue 06 Oct, 10:00 (America/New_York)"), mailer=m)
     v, h, g = m.one("reschedule_visitor")[3]["html"], m.one("reschedule_host")[3]["html"], m.one("attendee_moved", "charles@babbage.org")[3]["html"]
     for x in (v, h, g):
-        assert ledger(x) and pills(x) == ["st-move"] and ">Was<" in x and ">Now<" in x and 'bgcolor="#5546F7"' in x
+        assert ledger(x) and pills(x) == ["st-move"] and ">Was<" in x and ">Now<" in x and "border-left:3px solid #F26722" in x
     assert "Tue, 06 Oct 2026" in v and "10:00 AM EDT" in v and "9:30 AM EDT" in v           # visitor time zone, both sides
     assert "7:30 PM IST" in h and "7:00 PM IST" in h and "rescheduled on Zoom Scheduler" in h  # host time zone
     assert v.count(f'href="{H.escape(JOIN)}"') >= 3 and "Join Zoom" in v                     # Join row + button (VML + link)
@@ -108,10 +109,10 @@ def test_reminder_pill_follows_the_dates_and_the_button_the_state():
     now = datetime(2026, 10, 6, 15, 0, tzinfo=timezone.utc)            # 11:00 in New York, the call is tomorrow 09:30
     s, b = templates.render_booking_visitor(dict(CONF, status="reminder", booking_status="confirmed"))
     h = E.render_reminder(CONF, s, b, now=now, pending=False, actions=[("Join Zoom", JOIN)])
-    assert ledger(h) and pills(h) == ["st-soon"] and "&#9679;&nbsp;Tomorrow" in h and "Join Zoom" in h
+    assert ledger(h) and pills(h) == ["st-soon"] and ">Tomorrow</span>" in h and "Join Zoom" in h and "is tomorrow</h1>" in h
     assert "A quick reminder that your LakeB2B Discovery Call with Deep is tomorrow." in h
-    assert "&nbsp;Today" in E.render_reminder(CONF, s, b, now=now + timedelta(hours=20), pending=False, actions=[])
-    assert "&nbsp;Upcoming" in E.render_reminder(CONF, s, b, now=now - timedelta(days=3), pending=False, actions=[])
+    assert ">Today</span>" in E.render_reminder(CONF, s, b, now=now + timedelta(hours=20), pending=False, actions=[])
+    assert ">Upcoming</span>" in E.render_reminder(CONF, s, b, now=now - timedelta(days=3), pending=False, actions=[])
     m = M()
     mail.send_reminder_email(dict(PEND), mailer=m)
     v, g = m.one("reminder_visitor")[3]["html"], m.one("attendee_reminder", "mary@somerville.org")[3]["html"]
@@ -136,8 +137,8 @@ def test_host_day_before_brief_agrees_with_its_subject_and_carries_the_brief(mon
         precall.send_host_reminder(dict(CONF, start_utc=start, end_utc=start + timedelta(minutes=15)), mailer=m)
         to, subject, body, kw = m.items[0]
         h = kw["html"]
-        assert ledger(h) and f"&nbsp;{word}</td>" in h and ("today" in subject) == (word == "Today")
-        assert E.esc(subject) in h and "PRE-CALL BRIEF" in h and "WHY THIS SCORE" in h and "<ul" in h and "#257A4D" in h
+        assert ledger(h) and f">{word}</span>" in h and ("today" in subject) == (word == "Today")
+        assert f"is {word.lower()}</h1>" in h and "PRE-CALL BRIEF" in h and "WHY THIS SCORE" in h and "<ul" in h and "#257A4D" in h
         assert ">Visitor time<" in h and "EDT" in h and "IST" in h                                  # both time zones
         assert "Open booking page" in h and "Join Zoom" in h and 'href="mailto:ada@lovelace.org"' in h
         assert h.index("Open booking page") < h.index("PRE-CALL BRIEF")                            # the buttons above the brief
@@ -163,7 +164,7 @@ def test_nudge_gets_an_html_part_with_the_wanted_time_and_the_same_prefilled_lin
     subject, body, h = sent[0]
     assert ledger(h) and pills(h) == ["st-wait"] and "LakeB2B Discovery Call" in h and "Thu, 08 Oct 2026" in h and "8:00 AM EDT" in h
     assert h.count(f'href="{H.escape(lead["handoff_url"])}"') >= 3 and "Confirm on Zoom" in h and never_confirmed(h)
-    assert "wasn&#x27;t completed" in h and E.esc(subject) in h
+    assert "wasn&#x27;t completed" in h and "Your time isn’t reserved yet</h1>" in h
     for status in ("handoff", "handover"):                                  # the other callers stay text only
         sent.clear()
         mail.send_visitor_confirmation(dict(templates.SAMPLE_LEAD, status=status))
@@ -177,12 +178,13 @@ def test_guest_invitation_is_written_to_the_guest_and_follows_the_state():
         mail.send_booking_emails(dict(b), mailer=m)
         g = m.one("attendee_booked", "mary@somerville.org")
         h = g[3]["html"]
-        assert ledger(h) and pills(h) == (["st-inv", "st-wait"] if pending else ["st-inv"]) and "You’re invited" in h
+        assert ledger(h) and pills(h) == (["st-inv", "st-wait"] if pending else ["st-inv"]) and ">Invitation</span>" in h
+        assert "invited you to a call with Deep</h1>" in h and "/ics?t=" not in h        # a guest never gets the booker's token
         assert "Hi Mary," in h and "Ada Lovelace added you to a call with Deep." in h and "With Ada Lovelace, Charles Babbage" in text(h)
         assert "Your booking" not in h and "View booking details" not in h and CONF["manage_url"] not in h and "/host/booking" not in h
         assert g[3]["attachments"][0][0] == "invite.ics"
         if pending:
-            assert "The time is held while it is confirmed on Zoom" in h and 'bgcolor="#E8A317"' in h
+            assert "The time is held while it is confirmed on Zoom" in h and 'class="st-wait"' in h
             assert never_confirmed(h.replace("while it is confirmed on Zoom", ""))           # the held line is the only "confirmed"
             assert "Join" not in text(h) and "zoom.us/j/" not in h
         else:
@@ -213,9 +215,12 @@ def test_every_link_in_the_text_part_is_clickable_in_the_html_and_nothing_leaks(
         h = s["html"]
         if not h or "dm-card" not in h:
             continue
-        # #1 pending keeps its approved 2026-10-14 shape: only "Confirm on Zoom", not the manage link of the text part
-        skip_manage = s["kind"] == "booking_visitor" and 'class="st-wait"' in h
+        # visitor and guest HTML leave out the text part's manage link (2026-10-15: the Ask Deep panel moves or cancels
+        # the call); the host emails keep every link
+        skip_manage = not ((s["kind"] or "").endswith("_host") or e["case"] == "send_test:host_booking")
         hrefs = {H.unescape(u) for u in re.findall(r'href="([^"]+)"', h)}
+        if skip_manage:
+            assert not any("/manage" in u for u in hrefs), (e["case"], e["to"])
         for url in re.findall(r"https?://[^\s<>\"']+", e["body"]):
             url = url.rstrip(".,;:!?)")
             if skip_manage and "/manage" in url:
@@ -258,9 +263,9 @@ def test_a_failing_render_falls_back_to_the_simple_card_and_the_mail_still_goes(
 def test_send_test_kinds_use_the_new_design(monkeypatch):
     seen = {}
     monkeypatch.setattr(mail, "_send", lambda to, subject, body, reply_to=None, html=None, attachments=None: seen.update(html=html) or True)
-    want = {"host_booking": "New booking confirmed", "visitor_confirmed": "Your booking is confirmed",
-            "visitor_cancelled": "is cancelled", "visitor_rescheduled": "has moved", "visitor_reminder": "Reminder:",
-            "visitor_nudge": "Still want to talk with Deep?"}
+    want = {"host_booking": "New booking confirmed", "visitor_confirmed": "Your call with Deep is confirmed",
+            "visitor_cancelled": "is cancelled", "visitor_rescheduled": "has moved", "visitor_reminder": "A quick reminder",
+            "visitor_nudge": "Your time isn’t reserved yet"}
     for kind, words in want.items():
         assert mail.send_test(kind)["ok"]
         assert ledger(seen["html"]) and words in seen["html"], kind

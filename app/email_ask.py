@@ -88,9 +88,9 @@ def questions(kind: str, pending: bool) -> list[str]:
     return []
 
 
-HEADING = {"vx": "Want to pick this up again?", "gx": "Questions about this?", "gb": "Questions before the call?",
+HEADING = {"vx": "Want to find another time?", "gx": "Questions about this call?", "gb": "Questions before the call?",
            "gm": "Questions before the call?", "gr": "Questions before the call?"}
-LINE = "Deep's assistant already knows this booking. Tap a question or ask your own."
+LINE = "Deep’s assistant has the details of this booking and answers straight away."
 
 
 # ---------------------------------------------------------------- tokens

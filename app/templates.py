@@ -183,7 +183,7 @@ NEXT_STEP = {
     "enquiry": "Zoom's scheduler was unavailable for a moment, so {host_name} has your details and will confirm the time by email.",
     "handover": "{host_name} will reply to this email address.",
     "nudge": "Confirm it here, your details are already filled in: {link}",
-    "confirmed": "Join with the Zoom link above when it's time. Nothing else to do.",
+    "confirmed": "Join with the Zoom link above at the scheduled time.",
     "pending_zoom": "One last step: confirm the time on Zoom here, your details are already filled in: {link}",
     "cancelled": "",
 }

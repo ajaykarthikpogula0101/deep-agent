@@ -25,19 +25,20 @@ def html(booking, audience="visitor"):
 
 def test_confirmed_visitor_email_says_confirmed_and_links_the_meeting_and_the_booking_page():
     h = html(CONFIRMED)
-    assert "Your booking is confirmed" in h and "&nbsp;Confirmed</td>" in h and 'class="st-ok"' in h
-    assert "Awaiting Zoom confirmation" not in h and 'class="st-wait"' not in h
-    assert "Hi Harsha," in h and "Your GTM Strategy Session: Data, AI &amp; Revenue Acceleration has been scheduled." in h
+    assert "Your call with Deep is confirmed" in h and ">Confirmed</span>" in h and 'class="st-ok"' in h
+    assert "Action needed: confirm on Zoom" not in h and 'class="st-wait"' not in h
+    assert "Hi Harsha," in h and "Your GTM Strategy Session: Data, AI &amp; Revenue Acceleration is booked." in h
     assert "Fri, 09 Oct 2026" in h and "6:30 PM IST" in h and "(45 minutes)" in h
     assert 'href="https://zoom.us/j/81234567890?pwd=sample"' in h and "Join meeting" in h
-    assert f'href="{CONFIRMED["manage_url"]}"' in h and "View booking details" in h
+    # 2026-10-15: no booking-page button for visitors (the Ask Deep panel answers and moves the call); Join is the button
+    assert CONFIRMED["manage_url"] not in h and "View booking details" not in h and "Join Zoom meeting" in h
     assert "ID 812 3456 7890 · Passcode 742913" in h
 
 
 def test_pending_visitor_email_never_claims_confirmation_and_points_to_the_zoom_confirmation():
     h = html(PENDING)
     assert "confirmed" not in re.sub(r"<[^>]+>", " ", h).lower().replace("confirmation", "")   # no "is confirmed" anywhere
-    assert "Awaiting Zoom confirmation" in h and 'class="st-wait"' in h and "Confirm your booking on Zoom" in h
+    assert "Action needed: confirm on Zoom" in h and 'class="st-wait"' in h and "Confirm your time on Zoom" in h
     assert "Join meeting" not in h and "zoom.us/j/" not in h
     link = 'href="https://scheduler.zoom.us/sreedeep/gtm?firstname=Harsha&amp;email=harsha%40example.com"'
     assert h.count(link) == 2 and "Confirm on Zoom →" not in h       # only the button (Outlook VML + everyone else)
@@ -46,21 +47,21 @@ def test_pending_visitor_email_never_claims_confirmation_and_points_to_the_zoom_
 
 def test_pending_host_email_is_a_request_with_the_true_follow_up(monkeypatch):
     h = html(PENDING, "host")
-    assert "New booking request" in h and "Awaiting Zoom confirmation" in h and "Your booking is confirmed" not in h
+    assert "New booking request" in h and "Action needed: confirm on Zoom" in h and "is confirmed" not in h
     assert "The visitor is still required to confirm the booking on Zoom." in h and "24 hours" in h
     assert "scheduler.zoom.us" not in h                     # the visitor's prefilled link is theirs, not the host's
     assert "View booking details" not in h and ">Notes<" in h and "B2B data for EU fintech" in h   # no host_url: no button
     assert PENDING["manage_url"] not in h                    # never the visitor's page (it has a Cancel button)
     u = "https://assistant.deependhq.com/host/booking/42?t=hosttoken"
     assert f'href="{u}"' in html(dict(PENDING, host_url=u), "host") and "View booking details" in html(dict(PENDING, host_url=u), "host")
-    assert f"to {settings.host_email}" in h
+    assert f"to {settings.host_email}" not in h               # no "Sent from X to Y" machine line (2026-10-15)
     monkeypatch.setattr(settings, "nudge_enabled", False)
     assert "24 hours" not in html(PENDING, "host")          # no reminder promised when reminders are off
 
 
 def test_confirmed_host_email():
     h = html(CONFIRMED, "host")
-    assert "New booking confirmed" in h and "&nbsp;Confirmed</td>" in h and 'class="st-ok"' in h and "Join meeting" in h
+    assert "New booking confirmed" in h and ">Confirmed</span>" in h and 'class="st-ok"' in h and "Join meeting" in h
     assert "Lovelace Analytical Engines (lovelace.org)" in h  # enrichment detail line, host only
     assert "Lovelace Analytical Engines (lovelace.org)" not in html(CONFIRMED)
 
@@ -121,7 +122,7 @@ def test_send_booking_emails_uses_the_branded_html_and_falls_back_when_it_fails(
     mail.send_booking_emails(PENDING, mailer=m)
     by_to = {s[0]: s for s in sent}
     visitor, host = by_to["harsha@example.com"], by_to[settings.host_email]
-    assert "Confirm your booking on Zoom" in visitor[3]["html"] and "New booking request" in host[3]["html"]
+    assert "Confirm your time on Zoom" in visitor[3]["html"] and "New booking request" in host[3]["html"]
     assert visitor[2].startswith("Hi Harsha,") and visitor[3]["attachments"][0][0] == "invite.ics"   # text part + invite unchanged
 
     sent.clear()
@@ -197,7 +198,7 @@ def test_host_email_button_opens_the_host_page_and_visitor_keeps_manage():
     assert f'href="{u}"' in h and "View booking details" in h and CONFIRMED["manage_url"] not in h
     assert "View booking details" not in html(CONFIRMED, "host")      # SAMPLE_BOOKING carries no host_url
     v = html(dict(CONFIRMED, host_url=u))                             # the visitor's button stays their manage page
-    assert f'href="{CONFIRMED["manage_url"]}"' in v and u not in v
+    assert CONFIRMED["manage_url"] not in v and u not in v and "View booking details" not in v   # Join is the visitor's button
     assert "host_url" not in templates.SAMPLE_BOOKING
 
 
@@ -216,7 +217,8 @@ def test_booking_emails_carry_the_host_link(monkeypatch):
     guests = [s for s in sent if s[0] == "charles@babbage.org"]
     assert "/host/booking/42?t=" in host[3]["html"] and "View booking details" in host[3]["html"]
     assert "Booking page: https://assistant.example.com/host/booking/42?t=" in host[2] and "Where:    Bengaluru" in host[2]
-    assert "/booking/42/manage" in visitor[3]["html"] and "/host/booking" not in visitor[3]["html"] + visitor[2]
+    assert "/booking/42/manage" in visitor[2] and "/booking/42/manage" not in visitor[3]["html"]      # text part keeps it
+    assert "/host/booking" not in visitor[3]["html"] + visitor[2]
     assert guests and all("/host/booking" not in g[3]["html"] + g[2] for g in guests)
     assert "host_url" not in b                                         # attach() never mutates the booking
 
@@ -305,18 +307,20 @@ def _text(h):
 
 def test_visitor_confirmation_states_differ_in_pill_tile_note_and_button():
     c, p = html(CONFIRMED), html(PENDING)
-    # confirmed: green pill and strip, the meeting link + ID, the ready note, the manage page as the button
-    assert 'class="st-ok"' in c and 'bgcolor="#1AA179"' in c and 'bgcolor="#E8A317"' not in c
-    assert ">Join<" in c and "Join meeting</a>" in c and "Your Zoom meeting is ready." in c
-    assert c.count(f'href="{CONFIRMED["manage_url"]}"') == 2                      # the button only (VML + link)
-    # pending: amber pill and strip, no meeting at all, the held note, the prefilled Zoom link as the only button
-    assert 'class="st-wait"' in p and 'bgcolor="#E8A317"' in p and 'bgcolor="#1AA179"' not in p and 'class="st-ok"' not in p
+    # confirmed: green state word, the meeting link + ID, Join Zoom as the button, Add to calendar
+    assert 'class="st-ok"' in c and 'class="st-wait"' not in c
+    assert ">Join<" in c and "Join meeting</a>" in c and "Join from the button below at the scheduled time." in c
+    assert c.count('href="https://zoom.us/j/81234567890?pwd=sample"') >= 3                # Join row + button (VML + link)
+    assert CONFIRMED["manage_url"] not in c and "Add to calendar" in c and "calendar.google.com/calendar/render?" in c
+    assert "outlook.live.com/calendar" in c and 'href="https://assistant.deependhq.com/booking/42/ics?t=sample"' in c
+    # pending: orange "action needed", no meeting at all, the held note, the prefilled Zoom link as the only button
+    assert 'class="st-wait"' in p and 'class="st-ok"' not in p and "Add to calendar" not in p
     assert ">Join<" not in p and ">Meeting<" not in p and "Passcode" not in p and "ID 812" not in p
-    assert "Your time is held but not final yet." in p and "Your GTM Strategy Session: Data, AI &amp; Revenue Acceleration time is held for you." in p
+    assert "Your meeting link is sent as soon as you confirm." in p and "We’re holding this time for your GTM Strategy Session" in p
     assert PENDING["manage_url"] not in p and "View booking details" not in p
-    # pending without a prefilled link: the manage page is the button (as before), still never "confirmed"
+    # pending without a prefilled link: no button at all (no booking page for visitors), still never "confirmed"
     no_link = html(dict(PENDING, handoff_url=""))
-    assert f'href="{PENDING["manage_url"]}"' in no_link and "Confirm on Zoom" not in no_link
+    assert PENDING["manage_url"] not in no_link and "Confirm on Zoom" not in no_link and "v:roundrect" not in no_link
     assert "confirmed" not in _text(no_link).lower().replace("confirmation", "")
     assert "v:roundrect" not in html(dict(PENDING, handoff_url="", manage_url=""))      # nothing to link: no button
 
@@ -331,7 +335,7 @@ def test_visitor_confirmation_keeps_the_copy_word_for_word():
             assert E.esc(copy[key]) in h, key
         assert all(E.esc(t) in h for t in copy["intro"])
         assert f"<title>{E.esc(copy['heading'])}</title>" in h
-        assert E.esc(E.FOOTER_NOTE["visitor"]) in h and "to harsha@example.com · Fri, 09 Oct 2026, 6:12 PM" in h
+        assert E.esc(E.FOOTER_NOTE["visitor"]) in h and "Sent from" not in h and "deependhq.com</div>" in h
 
 
 def test_visitor_confirmation_event_card_facts():
@@ -364,7 +368,9 @@ def test_visitor_confirmation_design_system_markup():
     assert "Inter" not in h and "fonts.googleapis" not in h and "<img" not in h and "url(" not in h
     assert "#101E50" not in h and "Strategy · Growth · Impact" not in h            # nothing of the previous design
     pre = re.search(r"<body[^>]*>\s*<div[^>]*>(.*?)</div>", h, flags=re.S).group(1)
-    assert pre == E.esc("GTM Strategy Session: Data, AI & Revenue Acceleration is confirmed for Fri 09 Oct, 18:30 (Asia/Kolkata).")
+    assert pre == E.esc("GTM Strategy Session: Data, AI & Revenue Acceleration on Fri 09 Oct, 18:30 (Asia/Kolkata). "
+                        "Join details and calendar invite inside.")
+    assert "#5546F7" not in h and "#F26722" in h                                  # Champions Orange, not the old violet
 
 
 def test_visitor_confirmation_has_no_images_in_any_delivery_mode(monkeypatch):
@@ -379,7 +385,7 @@ def test_visitor_confirmation_has_no_images_in_any_delivery_mode(monkeypatch):
 def test_visitor_brand_monogram_and_brand_are_escaped():
     tpl = dict(templates.DEFAULTS, brand_default="<b>Acme</b> & Co")
     h = E.render(CONFIRMED, "visitor", tpl, now=NOW)
-    assert "<b>Acme" not in h and "&lt;b&gt;Acme&lt;/b&gt; &amp; Co" in h and ">&lt;</td>" in h
+    assert "<b>Acme" not in h and "&lt;b&gt;Acme&lt;/b&gt; &amp; Co" in h and ">&lt;</td>" not in h   # a wordmark, no monogram
 
 
 def test_buttons_and_time_change_components():
@@ -392,4 +398,4 @@ def test_buttons_and_time_change_components():
     w = E.time_change("Tue 06 Oct, 10:00 <old>", "Wed 07 Oct, 09:30")
     assert ">Was<" in w and ">Now<" in w and "line-through" in w and "&lt;old&gt;" in w
     assert E.notice("") == "" and "&lt;b&gt;" in E.notice("<b>")
-    assert "&nbsp;Cancelled</td>" in E.pills([("off", "")]) and E.pills([("move", ""), ("wait", "")]).count('class="pgap"') == 1
+    assert ">Cancelled</span>" in E.pills([("off", "")]) and E.pills([("move", ""), ("wait", "")]).count("&middot;") == 1

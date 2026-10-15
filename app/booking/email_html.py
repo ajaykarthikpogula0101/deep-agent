@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import html
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -117,17 +117,20 @@ def _copy(audience: str, confirmed: bool, v: dict[str, str], tpl: dict[str, str]
     first, name, title = v["first_name"], v["name"] or "A visitor", v["title"]
     reminder = (settings.nudge_enabled and tpl.get("visitor_nudge_enabled", "true").strip().lower() in ("true", "1", "yes", "on"))
     hours = settings.nudge_after_hours
+    host = v.get("host_name") or "Deep"
     if audience == "visitor" and confirmed:
-        return {"eyebrow": "New booking confirmation", "heading": "Your booking is confirmed",
-                "intro": [f"Hi {first},", f"Your {title} has been scheduled."], "intro2": "We’re excited to have you on board!",
-                "status": "Your Zoom meeting is ready. Join with the link below when it’s time; the calendar invite is attached.",
-                "preheader": f"{title} is confirmed for {v['date_visitor']}."}
+        return {"eyebrow": "", "heading": f"Your call with {host} is confirmed",
+                "intro": [f"Hi {first},", f"Your {title} is booked. The details are below, and a calendar invite is attached."],
+                "intro2": "",
+                "status": "Join from the button below at the scheduled time. Reply to this email if anything changes.",
+                "preheader": f"{title} on {v['date_visitor']}. Join details and calendar invite inside."}
     if audience == "visitor":
-        return {"eyebrow": "Booking request", "heading": "Confirm your booking on Zoom",
-                "intro": [f"Hi {first},", f"Your {title} time is held for you."],
-                "intro2": "Confirm it on Zoom to make it final. Your details are already filled in.",
-                "status": "Your time is held but not final yet. Once you confirm it on Zoom, the meeting link is sent to you.",
-                "preheader": f"One last step: confirm {title} on Zoom."}
+        return {"eyebrow": "", "heading": "Confirm your time on Zoom",
+                "intro": [f"Hi {first},", f"We’re holding this time for your {title}. Confirm it on Zoom to finish booking; "
+                                          "your details are already filled in."],
+                "intro2": "",
+                "status": "Your meeting link is sent as soon as you confirm.",
+                "preheader": f"One step left: confirm {title} on Zoom."}
     if confirmed:
         return {"eyebrow": "New booking confirmation", "heading": "New booking confirmed",
                 "intro": [f"{name} booked a {title}."], "intro2": "Zoom created the meeting and the calendar invite is attached.",
@@ -141,8 +144,7 @@ def _copy(audience: str, confirmed: bool, v: dict[str, str], tpl: dict[str, str]
 
 
 FOOTER_NOTE = {
-    "visitor": "This email was sent by Champions Group. If you have any questions or need to reschedule, please reach out to "
-               "your host by replying to this email.",
+    "visitor": "Questions about your booking? Reply to this email and Deep’s team will get back to you.",
     "host": "This email was sent by the Champions Group website assistant. Reply to this email to reach the visitor directly.",
 }
 
@@ -185,32 +187,34 @@ def _img(base: str, name: str, w: int, h: int | None = None, alt: str = "", styl
 
 # ================================================================ Ledger: the design system
 # ---------------------------------------------------------------- tokens
+# Champions Group brand: white surfaces, ink text, Champions Orange for the one action and the wordmark; greys stay
+# neutral. A state is a short coloured word above the heading, never a badge.
 SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif"
-CANVAS, SURFACE, SUBTLE = "#F6F7FC", "#FFFFFF", "#F0F2F9"
-INK, BODY, MUTE = "#151B32", "#3D4560", "#68718A"
-LINE, LINE_STRONG = "#E4E7F2", "#CDD2E3"
-ACCENT, ACCENT_TEXT = "#5546F7", "#4537E8"          # fill (with white text) / link text
+CANVAS, SURFACE, SUBTLE = "#F5F5F5", "#FFFFFF", "#FAFAFA"
+INK, BODY, MUTE = "#1A1A1A", "#3F3F46", "#6B6B6B"
+LINE, LINE_STRONG = "#E5E7EB", "#D4D4D8"
+ACCENT, ACCENT_TEXT = "#F26722", "#C2410C"          # Champions Orange (fills, white text) / its darker shade for links
 MAX_W = 600
 
-# state -> (class, glyph, pill text, pill fill, date-tile strip, pill outline)
+# state -> (class, unused, text colour, unused, unused, unused): the shape older callers index into
 STATES: dict[str, tuple[str, str, str, str, str, str]] = {
-    "ok":   ("st-ok",   "&#9679;", "#0A7350", "#E7F6F0", "#1AA179", ""),
-    "wait": ("st-wait", "&#9675;", "#8A5A00", "#FFF4E5", "#E8A317", ""),
-    "off":  ("st-off",  "&#8211;", "#4A5268", "#F0F2F9", "#9AA2BD", ""),
-    "move": ("st-move", "&#9679;", "#4537E8", "#EEECFF", "#5546F7", ""),
-    "soon": ("st-soon", "&#9679;", "#1D5FA8", "#E8F1FB", "#3B82D6", ""),
-    "inv":  ("st-inv",  "&#9679;", "#4537E8", "#FFFFFF", "#5546F7", "#CDC8FF"),
+    "ok":   ("st-ok",   "", "#15803D", "", "", ""),
+    "wait": ("st-wait", "", "#C2410C", "", "", ""),
+    "off":  ("st-off",  "", "#6B6B6B", "", "", ""),
+    "move": ("st-move", "", "#1A1A1A", "", "", ""),
+    "soon": ("st-soon", "", "#1A1A1A", "", "", ""),
+    "inv":  ("st-inv",  "", "#C2410C", "", "", ""),
 }
-STATE_WORD = {"ok": "Confirmed", "wait": "Awaiting Zoom confirmation", "off": "Cancelled", "move": "Rescheduled",
-              "soon": "Upcoming", "inv": "You’re invited"}
+STATE_WORD = {"ok": "Confirmed", "wait": "Action needed: confirm on Zoom", "off": "Cancelled", "move": "Rescheduled",
+              "soon": "Upcoming", "inv": "Invitation"}
 
 # dark mode, by class: (selector, background, text colour, border colour)
 _DARK = [
-    (".dm-bg", "#0F1324", "", ""), (".dm-card", "#171C33", "", "#2A3152"), (".dm-sub", "#1E2440", "", ""),
-    (".dm-ink", "", "#ECEEF8", ""), (".dm-body", "", "#C5CAE0", ""), (".dm-mut", "", "#9AA2BD", ""),
-    (".dm-link", "", "#A79FFF", ""), (".dm-line", "", "", "#2A3152"), (".btn2", "#171C33", "#ECEEF8", "#3A4266"),
-    (".st-ok", "#10322A", "#4FD1A5", ""), (".st-wait", "#3A2A0C", "#F5C26B", ""), (".st-off", "#232A45", "#B4BAD0", ""),
-    (".st-move", "#2A2659", "#A79FFF", ""), (".st-soon", "#14304F", "#8CC0F5", ""), (".st-inv", "#171C33", "#A79FFF", "#3A4266"),
+    (".dm-bg", "#111111", "", ""), (".dm-card", "#1B1B1B", "", "#2E2E2E"), (".dm-sub", "#222222", "", "#2E2E2E"),
+    (".dm-ink", "", "#F4F4F5", ""), (".dm-body", "", "#D4D4D8", ""), (".dm-mut", "", "#A1A1AA", ""),
+    (".dm-link", "", "#FF8544", ""), (".dm-line", "", "", "#2E2E2E"), (".btn2", "#1B1B1B", "#F4F4F5", "#3F3F46"),
+    (".st-ok", "", "#4ADE80", ""), (".st-wait", "", "#FF8544", ""), (".st-off", "", "#A1A1AA", ""),
+    (".st-move", "", "#F4F4F5", ""), (".st-soon", "", "#F4F4F5", ""), (".st-inv", "", "#FF8544", ""),
     (".ev-ok", "", "#5FC48E", ""), (".ev-warn", "", "#F5A35C", ""),
 ]
 
@@ -219,7 +223,7 @@ CSS_BASE = (
     "table{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt}"
     "a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important}"
     "@media only screen and (max-width:620px){"
-    ".wrap{padding:24px 16px 32px!important}.card{padding:24px!important}"
+    ".wrap{padding:24px 12px 32px!important}.card{padding:28px 20px!important}.evp{padding:16px!important}"
     ".h1{font-size:22px!important;line-height:28px!important}"
     ".stack,.bcell,.pcell,.btn{display:block!important}.stack,.bcell,.btnt{width:100%!important}"
     ".stack{text-align:left!important}.hdr-r{padding-top:8px!important}"
@@ -281,37 +285,28 @@ def preheader(text: str) -> str:
             f'{esc(text)}</div><div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{"&#847;&zwnj;&nbsp;" * 40}</div>')
 
 
-def header(brand: str, eyebrow: str) -> str:
-    """Monogram tile + brand on the left, the email's eyebrow label on the right (stacks on mobile)."""
-    mono = esc((brand or "?").strip()[:1].upper())
-    return (f'<table {_TABLE} width="100%"><tr>'
-            f'<td class="stack" valign="middle"><table {_TABLE} style="border-collapse:separate"><tr>'
-            f'<td width="28" height="28" align="center" valign="middle" bgcolor="{ACCENT}" style="width:28px;height:28px;'
-            f'background-color:{ACCENT};border-radius:7px;{_font(14, 28, 600, "#FFFFFF")}">{mono}</td>'
-            f'<td width="8" style="width:8px;font-size:0;line-height:0">&nbsp;</td>'
-            f'<td valign="middle" class="dm-ink" style="{_font(15, 20, 600)}">{esc(brand)}</td></tr></table></td>'
-            f'<td class="stack hdr-r" align="right" valign="middle" style="text-align:right">{label(eyebrow)}</td></tr></table>')
+def header(brand: str, eyebrow: str = "") -> str:
+    """The brand wordmark in Champions Orange above the card. (`eyebrow` is kept for callers; the heading states the
+    email's purpose instead.)"""
+    return f'<div style="{_font(18, 24, 700, ACCENT)}letter-spacing:-0.2px">{esc(brand)}</div>'
 
 
 def pills(items: list[tuple[str, str]]) -> str:
-    """One status pill per (state, word); a second one sits after an 8px gap and stacks on mobile."""
-    cells = []
-    for i, (state, word) in enumerate(items):
-        cls, glyph, fg, bg, _strip, outline = STATES[state]
-        border = f"border:1px solid {outline};" if outline else ""
-        if i:
-            cells.append('<td class="pgap" width="8" style="width:8px;font-size:0;line-height:0">&nbsp;</td>')
-        cells.append(f'<td class="pcell" valign="middle"><table {_TABLE} style="border-collapse:separate"><tr>'
-                     f'<td class="{cls}" bgcolor="{bg}" style="background-color:{bg};{border}border-radius:999px;padding:4px 10px;'
-                     f'{_font(12, 16, 600, fg)}white-space:nowrap">{glyph}&nbsp;{esc(word or STATE_WORD[state])}</td></tr></table></td>')
-    return f'<table {_TABLE}><tr>{"".join(cells)}</tr></table>'
+    """The email's state above the heading, as words in the state colour: "Confirmed", "Rescheduled · Action needed".
+    (The name stays from the earlier badge design.)"""
+    words = []
+    for state, word in items:
+        cls, _g, fg, *_ = STATES[state]
+        words.append(f'<span class="{cls}" style="color:{fg}">{esc(word or STATE_WORD[state])}</span>')
+    sep = f'<span class="dm-mut" style="color:{MUTE}">&nbsp;&middot;&nbsp;</span>'
+    return f'<div style="{_font(13, 18, 600, MUTE)}">{sep.join(words)}</div>'
 
 
 def h1(text: str) -> str:
     """The heading; a long one (a lifecycle email's subject line) is set a step smaller."""
     if len(text or "") > 48:
-        return f'<h1 class="dm-ink" style="margin:0;{_font(21, 28, 600)}letter-spacing:-0.2px">{esc(text)}</h1>'   # no mobile bump
-    return f'<h1 class="h1 dm-ink" style="margin:0;{_font(26, 32, 600)}letter-spacing:-0.3px">{esc(text)}</h1>'
+        return f'<h1 class="dm-ink" style="margin:0;{_font(20, 28, 700)}letter-spacing:-0.2px">{esc(text)}</h1>'   # no mobile bump
+    return f'<h1 class="h1 dm-ink" style="margin:0;{_font(24, 32, 700)}letter-spacing:-0.3px">{esc(text)}</h1>'
 
 
 def lead(paragraphs: list[str]) -> str:
@@ -320,13 +315,13 @@ def lead(paragraphs: list[str]) -> str:
                    for i, t in enumerate(p for p in paragraphs if p))
 
 
-def notice(text: str, bar: str = "#9AA2BD", *, rich: bool = False) -> str:
-    """A calm callout: subtle panel with a 3px bar (slate for late updates, the state colour for a status note).
-    `rich`: `text` is already-escaped HTML (a sentence with its links, see linkify)."""
+def notice(text: str, bar: str = "", *, rich: bool = False) -> str:
+    """A late update ("the visitor has already cancelled") in a quiet grey panel. `rich`: `text` is already-escaped HTML.
+    (`bar` is kept for callers; the design has no coloured bars.)"""
     if not text:
         return ""
-    return (f'<table {_TABLE} width="100%" class="dm-sub" bgcolor="{SUBTLE}" style="background-color:{SUBTLE}"><tr>'
-            f'<td width="3" bgcolor="{bar}" style="width:3px;background-color:{bar};font-size:0;line-height:0">&nbsp;</td>'
+    return (f'<table {_TABLE} width="100%" class="dm-sub dm-line" bgcolor="{SUBTLE}" style="background-color:{SUBTLE};'
+            f'border:1px solid {LINE};border-radius:6px;border-collapse:separate"><tr>'
             f'<td class="dm-ink" style="padding:12px 16px;{_font(14, 21, 400)}">{text if rich else esc(text)}</td></tr></table>')
 
 
@@ -334,18 +329,19 @@ _callout = notice   # for callers whose own parameter is called `notice`
 
 
 def status_note(text: str, state: str, *, rich: bool = False) -> str:
-    return notice(text, STATES[state][4], rich=rich)
+    """What happens next, as a plain paragraph (15/23, body colour)."""
+    if not text:
+        return ""
+    return f'<p class="dm-body" style="margin:0;{_font(15, 23, 400, BODY)}">{text if rich else esc(text)}</p>'
 
 
 def date_tile(start: datetime, state: str) -> str:
-    """56px live-text calendar tile: a 3px strip in the state colour, then month, day and weekday."""
-    strip, off = STATES[state][4], state == "off"
+    """56px live-text calendar leaf: month in Champions Orange (grey once cancelled), the day, the weekday."""
+    off = state == "off"
     month_color, month_cls = (MUTE, "dm-mut") if off else (ACCENT_TEXT, "dm-link")
     return (f'<table {_TABLE} width="56" style="width:56px;border-collapse:separate">'
-            f'<tr><td height="3" bgcolor="{strip}" style="height:3px;background-color:{strip};font-size:0;line-height:0;'
-            f'mso-line-height-rule:exactly;border-radius:6px 6px 0 0">&nbsp;</td></tr>'
-            f'<tr><td class="dm-sub" bgcolor="{SUBTLE}" align="center" style="background-color:{SUBTLE};padding:8px 0 9px;'
-            f'border-radius:0 0 6px 6px;text-align:center">'
+            f'<tr><td class="dm-card dm-line" bgcolor="{SURFACE}" align="center" style="background-color:{SURFACE};border:1px solid {LINE};'
+            f'border-radius:8px;padding:7px 0 8px;text-align:center">'
             f'<div class="{month_cls}" style="{_font(11, 14, 700, month_color)}text-transform:uppercase;letter-spacing:0.6px">'
             f'{esc(start.strftime("%b").upper())}</div>'
             f'<div class="{"dm-mut" if off else "dm-ink"}" style="{_font(22, 26, 700, MUTE if off else INK)}">{start.day}</div>'
@@ -399,7 +395,7 @@ def event_card(title: str, state: str, rows: list[tuple[str, str]], *, start: da
                duration: Any = None, when: str = "", change: tuple | None = None) -> str:
     """The call: its title, the date tile with the time (or the before-and-after block for a move), then the facts.
     Without a start time there is no tile; a known label shows as a 'When' row instead."""
-    parts = [f'<div class="dm-ink" style="{_font(17, 24, 600)}">{esc(title)}</div>']
+    parts = [f'<div class="dm-ink" style="{_font(16, 24, 700)}">{esc(title)}</div>']
     if start:
         right = time_change(*change) if change else time_lines(start, duration, muted=state == "off")
         parts.append(f'<table {_TABLE} width="100%" style="margin-top:12px"><tr><td width="56" valign="top" style="width:56px;padding-top:12px">'
@@ -410,8 +406,8 @@ def event_card(title: str, state: str, rows: list[tuple[str, str]], *, start: da
     facts = kv_table(rows)
     if facts:
         parts.append(f'<div style="padding-top:16px">{facts}</div>')
-    return (f'<table {_TABLE} width="100%" class="dm-line" style="border-top:1px solid {LINE};border-bottom:1px solid {LINE}">'
-            f'<tr><td style="padding:24px 0">{"".join(parts)}</td></tr></table>')
+    return (f'<table {_TABLE} width="100%" class="dm-line" style="border:1px solid {LINE};border-radius:8px;border-collapse:separate">'
+            f'<tr><td class="evp" style="padding:20px 24px">{"".join(parts)}</td></tr></table>')
 
 
 def buttons(actions: list[tuple[str, str] | None]) -> str:
@@ -426,17 +422,20 @@ def buttons(actions: list[tuple[str, str] | None]) -> str:
         cells.append(
             f'<td class="bcell" style="padding:0 8px 0 0">'
             f'<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{uu}" '
-            f'style="height:44px;v-text-anchor:middle;width:{w}px" arcsize="18%" strokecolor="{stroke}" fillcolor="{fill}"><w:anchorlock/>'
+            f'style="height:44px;v-text-anchor:middle;width:{w}px" arcsize="14%" strokecolor="{stroke}" fillcolor="{fill}"><w:anchorlock/>'
             f'<center style="color:{color};font-family:\'Segoe UI\',Arial,sans-serif;font-size:15px;font-weight:600">{tt}</center></v:roundrect><![endif]-->'
             f'<!--[if !mso]><!--><a href="{uu}" class="btn{" btn2" if i else ""}" style="display:inline-block;background-color:{fill};'
-            f'border:1px solid {stroke};border-radius:8px;color:{color};font-family:{SANS};font-size:15px;line-height:20px;font-weight:600;'
+            f'border:1px solid {stroke};border-radius:6px;color:{color};font-family:{SANS};font-size:15px;line-height:20px;font-weight:600;'
             f'padding:12px 22px;text-decoration:none">{tt}</a><!--<![endif]--></td>')
     return f'<table {_TABLE} class="btnt"><tr>{"".join(cells)}</tr></table>' if cells else ""
 
 
-def footer(brand: str, note: str, sent_line: str) -> str:
-    return "".join(f'<div class="dm-mut" style="{_font(12, 18, 600 if i == 0 else 400, MUTE)}padding-top:{4 if i else 0}px;text-align:center">'
-                   f'{esc(t)}</div>' for i, t in enumerate((brand, note, sent_line)) if t)
+def footer(brand: str, note: str, sent_line: str = "") -> str:
+    """Brand, one helpful line, the site. (`sent_line` is kept for callers; the design leaves the machine line out.)"""
+    site = (settings.site_base_url or "").replace("https://", "").replace("http://", "").rstrip("/")
+    lines = [(t, w) for t, w in ((brand, 600), (note, 400), (site, 400)) if t]
+    return "".join(f'<div class="dm-mut" style="{_font(12, 18, w, MUTE)}padding-top:{6 if i else 0}px;text-align:center">'
+                   f'{esc(t)}</div>' for i, (t, w) in enumerate(lines))
 
 
 def sent_line(recipient: str, sent: datetime) -> str:
@@ -453,9 +452,8 @@ def brief_section(text: str) -> str:
 
 
 def ask_panel(ask: dict[str, Any] | None) -> str:
-    """Ask Deep (app/email_ask.panel): a label, a heading, one line, one-tap questions as outlined chips (one per row, so
-    they fit at 375px) and "Open the assistant". Plain bordered cells with the text as the link: no VML, no images, and
-    dark mode through the existing classes. Only safe http(s) links; nothing when there are none."""
+    """Ask Deep (app/email_ask.panel): a quiet grey panel, a heading, one line, the questions as a list of links (each
+    row a full-width tap target) and "Ask Deep's assistant anything". No images, no VML; only safe http(s) links."""
     if not ask:
         return ""
     chips = [(t, safe_url(u)) for t, u in ask.get("chips") or [] if safe_url(u)]
@@ -463,17 +461,39 @@ def ask_panel(ask: dict[str, Any] | None) -> str:
     if not chips and not opener:
         return ""
     rows = "".join(
-        f'<table {_TABLE} style="border-collapse:separate;margin:0 0 8px"><tr><td class="btn2" bgcolor="{SURFACE}" '
-        f'style="background-color:{SURFACE};border:1px solid {LINE_STRONG};border-radius:999px;padding:8px 14px">'
-        f'<a href="{esc(u)}" class="dm-ink" style="{_font(14, 20, 500)}text-decoration:none">{esc(t)}</a></td></tr></table>'
+        f'<tr><td class="dm-line" style="border-top:1px solid {LINE};padding:11px 0">'
+        f'<a href="{esc(u)}" class="dm-ink" style="{_font(15, 22, 500)}text-decoration:none;display:block">{esc(t)}'
+        f'<span class="dm-link" style="color:{ACCENT_TEXT};font-weight:700">&nbsp;&rsaquo;</span></a></td></tr>'
         for t, u in chips)
-    more = (f'<div style="padding-top:8px"><a href="{esc(opener)}" class="dm-link" style="{_font(14, 20, 600, ACCENT_TEXT)}'
-            f'text-decoration:none">Open the assistant</a></div>' if opener else "")
-    return (f'<table {_TABLE} width="100%"><tr><td class="dm-line" style="border-top:1px solid {LINE};padding-top:24px">'
-            f'{label("Ask Deep")}'
-            f'<div class="dm-ink" style="{_font(17, 24, 600)}padding-top:4px">{esc(ask.get("heading") or "")}</div>'
-            f'<div class="dm-body" style="{_font(14, 21, 400, BODY)}padding:4px 0 16px">{esc(ask.get("line") or "")}</div>'
-            f'{rows}{more}</td></tr></table>')
+    more = (f'<div style="padding-top:14px"><a href="{esc(opener)}" class="dm-link" style="{_font(14, 20, 600, ACCENT_TEXT)}'
+            f'text-decoration:none">Ask Deep&rsquo;s assistant anything</a></div>' if opener else "")
+    return (f'<table {_TABLE} width="100%" class="dm-sub dm-line" bgcolor="{SUBTLE}" style="background-color:{SUBTLE};'
+            f'border:1px solid {LINE};border-radius:8px;border-collapse:separate"><tr><td class="evp" style="padding:20px 24px">'
+            f'<div class="dm-ink" style="{_font(16, 24, 700)}">{esc(ask.get("heading") or "")}</div>'
+            f'<div class="dm-body" style="{_font(14, 21, 400, BODY)}padding:4px 0 12px">{esc(ask.get("line") or "")}</div>'
+            f'<table {_TABLE} width="100%">{rows}</table>{more}</td></tr></table>')
+
+
+def calendar_links(title: str, start_utc: Any, duration: Any, location: str = "", details: str = "",
+                   ics_url: str = "") -> str:
+    """"Add to calendar: Google · Outlook · Apple" for a confirmed call: Google's and Outlook.com's add-event pages
+    (prefilled; nothing is sent to us) and, for Apple Calendar or Outlook desktop, the signed .ics link when there is one."""
+    if not isinstance(start_utc, datetime) or not start_utc.tzinfo:
+        return ""
+    from urllib.parse import urlencode
+
+    end = start_utc + timedelta(minutes=int(duration or 30))
+    a, b = start_utc.astimezone(timezone.utc), end.astimezone(timezone.utc)
+    google = "https://calendar.google.com/calendar/render?" + urlencode(
+        {"action": "TEMPLATE", "text": title, "dates": f"{a:%Y%m%dT%H%M%SZ}/{b:%Y%m%dT%H%M%SZ}", "details": details,
+         "location": location})
+    outlook = "https://outlook.live.com/calendar/0/deeplink/compose?" + urlencode(
+        {"path": "/calendar/action/compose", "rru": "addevent", "subject": title, "startdt": a.strftime("%Y-%m-%dT%H:%M:%SZ"),
+         "enddt": b.strftime("%Y-%m-%dT%H:%M:%SZ"), "body": details, "location": location})
+    links = [("Google", google), ("Outlook", outlook)] + ([("Apple", ics_url)] if safe_url(ics_url) else [])
+    sep = f'<span class="dm-mut" style="color:{MUTE}">&nbsp;&middot;&nbsp;</span>'
+    return (f'<div class="dm-mut" style="{_font(13, 20, 400, MUTE)}">Add to calendar:&nbsp; '
+            + sep.join(_a(safe_url(u), t, 600) for t, u in links) + "</div>")
 
 
 def card_stack(blocks: list[tuple[int, str]]) -> str:
@@ -508,8 +528,8 @@ def shell(*, title: str, pre: str, brand: str, eyebrow: str, card: str, foot: st
 <tr><td class="wrap" align="center" style="padding:32px 24px 48px">
 <!--[if mso]><table {_TABLE} width="{MAX_W}"><tr><td><![endif]-->
 <table {_TABLE} width="100%" style="max-width:{MAX_W}px;width:100%;border-collapse:separate">
-<tr><td style="padding:0 0 16px;text-align:left">{header(brand, eyebrow)}</td></tr>
-<tr><td class="card dm-card" bgcolor="{SURFACE}" style="background-color:{SURFACE};border:1px solid {LINE};border-radius:14px;padding:40px;text-align:left">{card}</td></tr>
+<tr><td style="padding:0 4px 20px;text-align:left">{header(brand, eyebrow)}</td></tr>
+<tr><td class="card dm-card" bgcolor="{SURFACE}" style="background-color:{SURFACE};border:1px solid {LINE};border-top:3px solid {ACCENT};border-radius:8px;padding:40px;text-align:left">{card}</td></tr>
 <tr><td align="center" style="padding:24px 8px 0">{foot}</td></tr>
 </table>
 <!--[if mso]></td></tr></table><![endif]-->
@@ -579,6 +599,17 @@ def _visitor_time(booking: dict[str, Any], start_utc: Any) -> list[tuple[str, st
         return []
     vs = start_utc.astimezone(_tz(vtz))
     return [("Visitor time", esc(f"{fmt_date(vs)} · {fmt_time(vs)}"))]
+
+
+def _calendar(booking: dict[str, Any], v: dict[str, str], start: datetime | None, confirmed: bool, guest: bool = False) -> str:
+    """The "Add to calendar" line for a confirmed call. A guest never gets the .ics link: it carries the booker's
+    manage token."""
+    if not confirmed or not start:
+        return ""
+    join = safe_url(booking.get("join_url"))
+    return calendar_links(f"{v['title']} with {v.get('host_name') or 'Deep'}", booking.get("start_utc"), booking.get("duration_min"),
+                          location=join, details=f"Join Zoom: {join}" if join else "",
+                          ics_url="" if guest else (booking.get("ics_url") or ""))
 
 
 def booking_rows(booking: dict[str, Any], audience: str, confirmed: bool, start: datetime | None) -> list[tuple[str, str]]:
@@ -659,19 +690,22 @@ def _render_visitor_confirmation(booking: dict[str, Any], tpl: dict[str, str], n
     start = _start(booking.get("start_utc"), tz)
     state = "ok" if confirmed else "wait"
 
-    # the visitor's button: their manage page; while they still have to confirm, the prefilled Zoom link
+    # the visitor's button: Join Zoom once the meeting exists; while they still have to confirm, the prefilled Zoom link.
+    # No "view booking details": the Ask Deep panel answers questions and moves or cancels the call
     confirm_url = safe_url(booking.get("handoff_url")) if not confirmed else ""
-    manage = safe_url(booking.get("manage_url"))
-    cta = ("Confirm on Zoom", confirm_url) if confirm_url else (("View booking details", manage) if manage else None)
+    join = safe_url(booking.get("join_url")) if confirmed else ""
+    cta = ("Confirm on Zoom", confirm_url) if confirm_url else (("Join Zoom meeting", join) if join else None)
+    cal = _calendar(booking, v, start, confirmed)
 
     card = card_stack([
         (0, pills([(state, STATE_WORD[state])])),
-        (16, h1(copy["heading"])),
+        (12, h1(copy["heading"])),
         (12, lead(copy["intro"] + [copy["intro2"]])),
         (24, event_card(v["title"], state, booking_rows(booking, "visitor", confirmed, start), start=start,
                         duration=booking.get("duration_min"), when=v["date_visitor"])),
         (24, status_note(copy["status"], state)),
-        (32, buttons([cta]) if cta and cta_ok else ""),
+        (20, buttons([cta]) if cta and cta_ok else ""),
+        (16, cal),
         (32, ask_panel(ask)),
     ])
     return shell(title=copy["heading"], pre=copy["preheader"], brand=brand, eyebrow=copy["eyebrow"], card=card,
@@ -801,6 +835,8 @@ def _letter(booking: dict[str, Any], *, tpl: dict[str, str], v: dict[str, str], 
         cut = next((i for i, ln in enumerate(lines) if ln.strip() == first), None)
         if cut is not None:
             body, brief = "\n".join(lines[:cut]), "\n".join(lines[cut:])
+    if audience != "host" and v.get("manage_line"):
+        body = body.replace(v["manage_line"], "")
     parts = parse_body(body, v.get("meeting_line") or "")
     start = _start(booking.get("start_utc"), tz)
     confirmed = not pending and not cancelled
@@ -852,20 +888,20 @@ def _letter(booking: dict[str, Any], *, tpl: dict[str, str], v: dict[str, str], 
     intro_texts = [" ".join(p) for p in parts["intro"] if not re.match(r"^(Hi|Hello|Dear)\b", p[0])]
     pre = " ".join(x for x in ((intro_texts[0] if intro_texts else heading), pre_extra) if x)
 
+    cal = _calendar(booking, v, start, confirmed, guest=audience == "guest") if audience != "host" else ""
     card = card_stack([
         (0, pills(states)),
-        (16, h1(heading)),
+        (12, h1(heading)),
         (12, _prose(parts["intro"], 16, 24)),
         (24, card_html),
         *outro,
-        (28, buttons(actions)),
+        (24, buttons(actions)),
+        (16, cal),
         (28, signoff),
         (32, ask_panel(ask)),
         (32, brief_section(brief)),
     ])
-    site = settings.site_base_url.replace("https://", "").replace("http://", "")
-    note = ("Sent by the website assistant. Reply to this email to reach the visitor directly." if audience == "host"
-            else f"Sent by the {site} assistant. Reply to this email and a person reads it.")   # the simple card's words
+    note = FOOTER_NOTE["host"] if audience == "host" else FOOTER_NOTE["visitor"]
     return shell(title=heading, pre=pre, brand=brand, eyebrow=eyebrow, card=card,
                  foot=footer(brand, note, sent_line(recipient, now.astimezone(tz))))
 
@@ -878,6 +914,14 @@ def _context(booking: dict[str, Any], audience: str, tpl: dict[str, str] | None)
     return tpl, v, tz, recipient
 
 
+def _who(v: dict[str, str]) -> str:
+    return v.get("name") or "The visitor"
+
+
+def _soon(word: str) -> str:
+    return {"Today": "today", "Tomorrow": "tomorrow"}.get(word, "coming up")
+
+
 def _host_extra(v: dict[str, str]) -> str:
     return " · ".join(x for x in (v["name"], v["title"], v["date"]) if x)
 
@@ -887,7 +931,8 @@ def render_cancelled(booking: dict[str, Any], audience: str, subject: str, body:
                      ask: dict[str, Any] | None = None) -> str:
     """#3 (visitor) / #4 (host): the cancelled call and its time, calm slate, no join link."""
     tpl, v, tz, to = _context(booking, audience, tpl)
-    return _letter(booking, tpl=tpl, v=v, audience=audience, heading=subject, body=body, eyebrow="Booking cancelled",
+    heading = f"{_who(v)} cancelled their call" if audience == "host" else "Your call has been cancelled"
+    return _letter(booking, tpl=tpl, v=v, audience=audience, heading=heading, body=body, eyebrow="Booking cancelled",
                    states=[("off", "")], tz=tz, now=now, recipient=to, actions=list(actions), pending=False, cancelled=True,
                    pre_extra=_host_extra(v) if audience == "host" else "", ask=ask if audience == "visitor" else None)
 
@@ -898,7 +943,9 @@ def render_moved(booking: dict[str, Any], audience: str, subject: str, body: str
     """#5 (visitor) / #6 (host): the before-and-after block; a hold still to confirm on Zoom says so."""
     tpl, v, tz, to = _context(booking, audience, tpl)
     prev = _start(booking.get("previous_start_utc"), tz)
-    return _letter(booking, tpl=tpl, v=v, audience=audience, heading=subject, body=body, eyebrow="Booking rescheduled",
+    heading = (f"{_who(v)} rescheduled their call" if audience == "host"
+               else "Confirm your new time on Zoom" if pending else "Your call has been rescheduled")
+    return _letter(booking, tpl=tpl, v=v, audience=audience, heading=heading, body=body, eyebrow="Booking rescheduled",
                    states=[("move", "")] + ([("wait", "")] if pending else []), tz=tz, now=now, recipient=to,
                    actions=list(actions), pending=pending, moved=True,
                    old=(fmt_date(prev), fmt_time(prev)) if prev else None, pre_extra=_host_extra(v) if audience == "host" else "",
@@ -911,7 +958,8 @@ def render_reminder(booking: dict[str, Any], subject: str, body: str, tpl: dict[
     """#7, the visitor's day-before reminder."""
     tpl, v, tz, to = _context(booking, "visitor", tpl)
     word = _day_word(_start(booking.get("start_utc"), tz), _now(now))
-    return _letter(booking, tpl=tpl, v=v, audience="visitor", heading=subject, body=body, eyebrow="Reminder",
+    heading = "Confirm your time on Zoom" if pending else f"Your call with {v.get('host_name') or 'Deep'} is {_soon(word)}"
+    return _letter(booking, tpl=tpl, v=v, audience="visitor", heading=heading, body=body, eyebrow="Reminder",
                    states=[("soon", word)] + ([("wait", "")] if pending else []), tz=tz, now=now, recipient=to,
                    actions=list(actions), pending=pending, ask=ask)
 
@@ -921,7 +969,8 @@ def render_host_brief(booking: dict[str, Any], subject: str, body: str, brief: s
     """#8, the host's day-before email: the call in the host's time with the visitor's beside it, then the brief.
     `today` is the send function's own "today / tomorrow" decision, so the pill and the subject agree."""
     tpl, v, tz, to = _context(booking, "host", tpl)
-    return _letter(booking, tpl=tpl, v=v, audience="host", heading=subject, body=body, eyebrow="Pre-call brief",
+    heading = f"Your call with {_who(v)} is {'today' if today else 'tomorrow'}"
+    return _letter(booking, tpl=tpl, v=v, audience="host", heading=heading, body=body, eyebrow="Pre-call brief",
                    states=[("soon", "Today" if today else "Tomorrow")] + ([("wait", "")] if pending else []), tz=tz, now=now,
                    recipient=to, actions=list(actions), pending=pending, brief=brief, pre_extra=_host_extra(v))
 
@@ -935,7 +984,8 @@ def render_nudge(lead: dict[str, Any], subject: str, body: str, tpl: dict[str, s
     tz = _tz(lead.get("visitor_tz") if lead.get("visitor_tz") not in (None, "-") else None)
     booking = {"method": "handoff", "handoff_url": lead.get("handoff_url"), "start_utc": lead.get("slot_start"),
                "duration_min": lead.get("duration_min"), "email": lead.get("email")}
-    return _letter(booking, tpl=tpl, v=v, audience="visitor", heading=subject, body=body, eyebrow="Booking request",
+    return _letter(booking, tpl=tpl, v=v, audience="visitor", heading="Your time isn’t reserved yet", body=body,
+                   eyebrow="Booking request",
                    states=[("wait", "")], tz=tz, now=now, recipient=lead.get("email") or "",
                    actions=[("Confirm on Zoom", lead.get("handoff_url") or "")], pending=True, when=v["date_visitor"], ask=ask)
 
@@ -956,7 +1006,10 @@ def render_guest(booking: dict[str, Any], guest: dict[str, str], kind: str, subj
              "reminder": ("soon", _day_word(_start(booking.get("start_utc"), tz), _now(now)))}.get(kind, ("soon", ""))
     states = [first] + ([("wait", "")] if pending and not cancelled else [])
     prev = _start(booking.get("previous_start_utc"), tz)
-    return _letter(dict(booking, attendees=[]), tpl=tpl, v=v, audience="guest", heading=subject, body=body,
+    host = v.get("host_name") or "Deep"
+    heading = {"booked": f"{v.get('name') or 'A colleague'} invited you to a call with {host}", "moved": "Your call has a new time",
+               "cancelled": "This call has been cancelled"}.get(kind) or f"Your call with {host} is {_soon(first[1])}"
+    return _letter(dict(booking, attendees=[]), tpl=tpl, v=v, audience="guest", heading=heading, body=body,
                    eyebrow=GUEST_EYEBROW.get(kind, "Reminder"), states=states, tz=tz, now=now,
                    recipient=guest.get("email") or "", actions=list(actions), pending=pending, cancelled=cancelled,
                    moved=kind == "moved", old=(fmt_date(prev), fmt_time(prev)) if prev and kind == "moved" else None, ask=ask)
