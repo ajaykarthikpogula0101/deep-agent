@@ -185,8 +185,11 @@ def main() -> None:
     rows = []
     for stem, num, label, audience, item in cases(Capture()):
         # the logo from this checkout (the CDN copy appears once the file is pushed)
-        page = (item["html"] or "").replace(f'{settings.email_assets_url.rstrip("/")}/logo.png', "../static/email/logo.png")
-        (out / f"{stem}.html").write_text(page.replace("cid:logo.png@cg", "../static/email/logo.png"), encoding="utf-8")
+        page = item["html"] or ""
+        for img in ("logo.png", "host.png"):
+            page = page.replace(f'{settings.email_assets_url.rstrip("/")}/{img}', f"../static/email/{img}")
+            page = page.replace(f"cid:{img}@cg", f"../static/email/{img}")
+        (out / f"{stem}.html").write_text(page, encoding="utf-8")
         kb = len((item["html"] or "").encode()) / 1024
         rows.append(f'<tr><td>{html.escape(num)}</td><td><a href="{stem}.html">{html.escape(label)}</a></td><td>{html.escape(audience)}</td>'
                     f'<td>{html.escape(item["to"])}</td><td>{html.escape(item["subject"])}</td><td>{kb:.0f} KB</td></tr>')

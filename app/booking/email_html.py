@@ -288,6 +288,7 @@ def preheader(text: str) -> str:
 
 
 LOGO = "logo.png"   # static/email/logo.png: the Champions Group logo (130 x 82), shown at 104 x 66
+HOST_PHOTO = "host.png"   # static/email/host.png: Deep's photo (120 x 120), shown round at 40 x 40
 
 
 def header(brand: str, eyebrow: str = "") -> str:
@@ -612,13 +613,16 @@ def _visitor_time(booking: dict[str, Any], start_utc: Any) -> list[tuple[str, st
 
 
 def _host_row(v: dict[str, str]) -> list[tuple[str, str]]:
-    """Who they meet: the photo (HOST_PHOTO_URL, https only; round, 40 px) beside the name and HOST_TITLE."""
+    """Who they meet: the photo (round, 40 px) beside the name and HOST_TITLE. The photo is HOST_PHOTO_URL (https only),
+    else static/email/host.png like the logo (EMAIL_ASSETS_URL, else inside the message)."""
     name = v.get("host_name") or "Deep"
     title = (settings.host_title or "").strip()
     photo = safe_url(settings.host_photo_url)
+    if not photo.startswith("https://"):
+        photo = _src(image_base({}, "hosted"), HOST_PHOTO) if (ASSETS / HOST_PHOTO).is_file() else ""
     text = (f'<div class="dm-ink" style="{_font(15, 22, 600)}">{esc(name)}</div>'
             + (f'<div class="dm-mut" style="{_font(13, 18, 400, MUTE)}">{esc(title)}</div>' if title else ""))
-    if not photo.startswith("https://"):
+    if not photo:
         return [("Host", text)]
     img = (f'<img src="{esc(photo)}" width="40" height="40" alt="{esc(name)}" style="display:block;width:40px;height:40px;'
            f'border:0;border-radius:20px;object-fit:cover">')

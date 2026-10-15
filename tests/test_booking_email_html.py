@@ -19,6 +19,11 @@ PENDING = dict(CONFIRMED, method="handoff", status="pending_zoom", zoom_meeting_
                handoff_url="https://scheduler.zoom.us/sreedeep/gtm?firstname=Harsha&email=harsha%40example.com")
 
 
+def imgs(h: str) -> list[str]:
+    """The images an email shows, by file name: only the bundled logo and host photo are allowed."""
+    return sorted(re.sub(r"^cid:|@cg$|^.*/", "", s) for s in re.findall(r'<img src="([^"]+)"', h))
+
+
 def html(booking, audience="visitor"):
     return E.render(booking, audience, dict(templates.DEFAULTS), now=NOW)
 
@@ -110,7 +115,7 @@ def test_email_safe_markup():
     h = html(CONFIRMED)
     assert "<script" not in h and "<svg" not in h and "display:flex" not in h and "display:grid" not in h
     assert "@media only screen and (max-width:620px)" in h and "max-width:600px" in h
-    assert h.count("<img") == 1 and "/logo.png" in h and "cid:" not in h and "v:roundrect" in h   # the logo is the only image
+    assert imgs(h) == ["host.png", "logo.png"] and "cid:" not in h and "v:roundrect" in h   # the logo and Deep's photo only
     assert all(re.search(r'alt="[^"]*"', tag) for tag in re.findall(r"<img [^>]+>", h))
 
 
@@ -294,9 +299,8 @@ def test_hosted_images_come_from_a_public_https_folder_and_an_empty_setting_embe
     assert E.image_base(CONFIRMED) == E.CID
     monkeypatch.setattr(settings, "email_assets_url", "http://insecure.example/x")   # never plain http
     assert E.image_base(CONFIRMED) == E.CID
-    for audience in ("visitor", "host"):                                     # the logo is the only image, so the only cid: part
-        assert html(CONFIRMED, audience).count("<img") == 1
-        assert set(re.findall(r"cid:([^\"]+)", html(PENDING, audience))) == {"logo.png@cg"}
+    for audience, want in (("visitor", {"logo.png@cg", "host.png@cg"}), ("host", {"logo.png@cg"})):   # the only cid: parts
+        assert set(re.findall(r"cid:([^\"]+)", html(PENDING, audience))) == want
 
 
 # ---------------------------------------------------------------- the Ledger visitor confirmation (#1)
@@ -366,7 +370,7 @@ def test_visitor_confirmation_design_system_markup():
     assert len(css.encode()) < 3000                                               # small enough to survive clipping rules
     assert len(h.encode()) < 80_000                                               # far below Gmail's 102 KB clip
     assert 'width="600"' in h and "<!--[if mso]>" in h                              # the Outlook ghost table
-    assert "Inter" not in h and "fonts.googleapis" not in h and h.count("<img") == 1 and "url(" not in h
+    assert "Inter" not in h and "fonts.googleapis" not in h and imgs(h) == ["host.png", "logo.png"] and "url(" not in h
     assert "#101E50" not in h and "Strategy · Growth · Impact" not in h            # nothing of the previous design
     pre = re.search(r"<body[^>]*>\s*<div[^>]*>(.*?)</div>", h, flags=re.S).group(1)
     assert pre == E.esc("GTM Strategy Session: Data, AI & Revenue Acceleration on Fri 09 Oct, 18:30 (Asia/Kolkata). "
@@ -378,15 +382,16 @@ def test_the_logo_is_the_only_image_hosted_or_inside_the_message(monkeypatch):
     """The Champions Group logo (static/email/logo.png): from EMAIL_ASSETS_URL (https), else a cid: part of the message;
     alt text is the brand, so it reads with images blocked; another brand gets its name as text."""
     h = html(CONFIRMED)
-    assert h.count("<img") == 1 and f'src="{settings.email_assets_url}/logo.png"' in h and 'alt="Champions Group"' in h
-    assert (E.ASSETS / "logo.png").is_file() and E.inline_images(h) == []
+    assert imgs(h) == ["host.png", "logo.png"] and f'src="{settings.email_assets_url}/logo.png"' in h and 'alt="Champions Group"' in h
+    assert f'src="{settings.email_assets_url}/host.png"' in h and 'alt="Deep"' in h
+    assert (E.ASSETS / "logo.png").is_file() and (E.ASSETS / "host.png").is_file() and E.inline_images(h) == []
     monkeypatch.setattr(settings, "email_assets_url", "")
     h = html(CONFIRMED)
-    assert 'src="cid:logo.png@cg"' in h and [x[0] for x in E.inline_images(h)] == ["logo.png@cg"]
+    assert 'src="cid:logo.png@cg"' in h and sorted(x[0] for x in E.inline_images(h)) == ["host.png@cg", "logo.png@cg"]
     monkeypatch.setattr(settings, "email_assets_url", "http://insecure.example/x")      # never plain http
     assert 'src="cid:logo.png@cg"' in html(CONFIRMED)
     other = E.render(CONFIRMED, "visitor", dict(templates.DEFAULTS, brand_default="Acme"), now=NOW)
-    assert "<img" not in other and ">Acme</div>" in other
+    assert "logo.png" not in other and ">Acme</div>" in other
     assert E.image_base(CONFIRMED, "inline") == E.CID and E.image_base(CONFIRMED, "url").endswith("/static/email")
 
 
@@ -413,7 +418,7 @@ def test_visitor_extras_host_card_phone_agenda_and_footer_address(monkeypatch):
     """2026-10-15: the host row (name, title, optional https photo), joining by phone when the meeting ID is known,
     "What to expect" for the call type, the postal address in the footer, and an honest next step without a Zoom link."""
     h = html(CONFIRMED)
-    assert ">Host<" in h and "Founder &amp; CEO, Champions Group" in h and h.count("<img") == 1   # no photo set: text only
+    assert ">Host<" in h and "Founder &amp; CEO, Champions Group" in h and "/host.png" in h       # the bundled photo
     assert ">By phone<" in h and 'href="https://zoom.us/zoomconference"' in h and "meeting ID 812 3456 7890" in h
     assert "What to expect" in h and "Clear next steps, if there is a fit" in h                     # by the slug (discovery-call)
     assert ">By phone<" not in html(PENDING) and "Join from the button below" in h
@@ -424,7 +429,7 @@ def test_visitor_extras_host_card_phone_agenda_and_footer_address(monkeypatch):
     assert '<img src="https://cdn.example.com/deep.jpg" width="40" height="40" alt="Deep"' in h and "&lt;b&gt;CMO&lt;/b&gt;" in h
     assert "1 Example Road, Bengaluru &lt;560001&gt;" in h
     monkeypatch.setattr(settings, "host_photo_url", "http://insecure.example/deep.jpg")
-    assert html(CONFIRMED).count("<img") == 1                                                     # https only: logo, no photo
+    assert "insecure.example" not in html(CONFIRMED) and "/host.png" in html(CONFIRMED)          # https only: else the bundled photo
     browser = html(dict(CONFIRMED, join_url="", zoom_meeting_id=None, meeting_id=None, passcode="", method="browser"))
     assert "Zoom sends the meeting link in its own invitation" in browser and "Join from the button below" not in browser
     assert "Join Zoom meeting" not in browser and ">By phone<" not in browser

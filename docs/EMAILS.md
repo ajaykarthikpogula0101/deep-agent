@@ -244,3 +244,6 @@ above. Its next step is now "Zoom sends the meeting link in its own invitation; 
   `brand_default` gets its name as text. It is the only image in the emails.
 - `EMAIL_POSTAL_ADDRESS` defaults to the Bengaluru corporate office: Champions Square, Opp. Decathlon, Sarjapur Main
   Road, Carmelaram, Bengaluru 560035, India (from championsgroup's contact page; other offices can be set later).
+- Deep's photo (`static/email/host.png`, 120 x 120, cropped from the supplied portrait) is the host card's picture,
+  delivered like the logo; `HOST_PHOTO_URL` (https) overrides it. Images in the emails: the logo, and Deep's photo in
+  visitor and guest emails that show the host card.

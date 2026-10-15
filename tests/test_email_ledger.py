@@ -50,7 +50,9 @@ def never_confirmed(h: str) -> bool:
 
 
 def ledger(h: str) -> bool:
-    return 'class="card dm-card"' in h and "#F28C28" not in h and h.count("<img") == 1 and "logo.png" in h   # the logo only
+    srcs = re.findall(r'<img src="([^"]+)"', h)                       # the logo first, Deep's photo at most once
+    return ('class="card dm-card"' in h and "#F28C28" not in h and bool(srcs) and srcs[0].endswith("/logo.png")
+            and all(s.endswith(("/logo.png", "/host.png")) for s in srcs) and len(srcs) <= 2)
 
 
 def pills(h: str) -> list[str]:
