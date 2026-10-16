@@ -11,7 +11,7 @@ gives Deep a brief on every lead before the call.
 ![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-497%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-549%20passing-2EA44F)
 
 [Features](#features) · [Features in detail](#features-in-detail) · [Quick start](#quick-start) ·
 [Configuration](#configuration) · [Visitor tracking and IP lookup](#visitor-tracking-and-ip-lookup) ·
@@ -123,7 +123,14 @@ it. The linked guides in `docs/` go further.
 
 Every night (`RECRAWL_CRON`, 02:30 IST) the crawler reads deependhq.com (llms-full.txt, data.js and the sitemap
 pages), splits it into chunks and embeds them locally. A question is embedded the same way and matched against those
-chunks. If nothing is close enough (`RETRIEVAL_MIN_SCORE`), the bot politely says it can't answer instead of guessing,
+chunks. Before searching, the message is read (`app/rag/understand.py`): small talk ("hello", "thanks", "what can you
+do?", "is this a bot?") gets a friendly reply with no search; a greeting in front of a question is dropped; a follow-up
+("tell me more", "how is it different from Ampliz?") is rewritten into a standalone question. Questions vectors answer
+badly go straight to the page that answers them: who Deep is and where he's based (home page and /now), his tools
+(/toolkit), what he's on right now (/now), and the latest entries ("what did he ship yesterday?", newest days by number,
+with today's date in the prompt). Between `RETRIEVAL_SOFT_FLOOR` and `RETRIEVAL_MIN_SCORE` the model reads the loosely
+related pages and either answers with citations or says it couldn't find it (an uncited answer is logged as a refusal).
+If nothing is even that close, the bot politely says it can't answer instead of guessing,
 and the question goes to the [knowledge-gap loop](#knowledge-gap-loop). Answers cite their pages. Everything retrieved
 is fenced as data, so text on a page cannot give the model instructions. Deep can steer the bot without code changes:
 **Guidance** (standing instructions) and **Custom answers** (an exact answer that fires word for word above
@@ -542,7 +549,7 @@ All settings live in `.env`. `.env.example` lists the usual options with a comme
 | `EMBED_MODEL` | `BAAI/bge-small-en-v1.5` | local embedding model |
 | `DATABASE_URL` | local Postgres | Postgres with the `vector` extension |
 | `SITE_BASE_URL`, `RECRAWL_CRON`, `RECRAWL_TZ` | deependhq.com, `30 2 * * *`, `Asia/Kolkata` | what is crawled and when |
-| `RETRIEVAL_MIN_SCORE`, `RETRIEVAL_TOP_K`, `CUSTOM_ANSWER_MIN_SCORE` | `0.60`, `6`, `0.86` | how close a page or custom answer must be |
+| `RETRIEVAL_MIN_SCORE`, `RETRIEVAL_SOFT_FLOOR`, `RETRIEVAL_TOP_K`, `CUSTOM_ANSWER_MIN_SCORE` | `0.60`, `0.50`, `6`, `0.86` | how close a page or custom answer must be (between the two floors the model decides) |
 | `MULTILINGUAL` | `true` | answer in the visitor's language |
 
 **Security and links**
@@ -744,7 +751,7 @@ with a MaxMind key, downloads the GeoLite2 files in the background if they are m
 ## Tests
 
 ```bash
-pytest                                        # 497 passed, 2 skipped; no network (the database tests skip without Postgres)
+pytest                                        # 549 passed, 2 skipped; no network (the database tests skip without Postgres)
 python -m app.tracking 49.207.200.10 'Acme' a@acme.com   # one IP through GEOIP_PROVIDER and the network rules, no database
 python -m app.geoip_update                    # download or refresh the GeoLite2 files (needs MAXMIND_LICENSE_KEY)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)

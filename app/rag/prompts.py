@@ -107,6 +107,20 @@ def pack_sources(hits: list[Hit], max_chars: int = 9000) -> str:
     return "<sources>\n" + "\n".join(parts) + "\n</sources>"
 
 
+def contact_note(booking_url: str, email: str) -> str:
+    """Facts the assistant may always state without a source: how to reach Deep."""
+    return (f"\nContact facts you may state without a source: visitors can book a call with Deep right here in the chat "
+            f"or at {booking_url}, and email him at {email}. Offer a call or the email only when the visitor asks how to "
+            "reach Deep, wants to work with him, or the answer is not on the site; do not end every answer with it.")
+
+
+WEAK_SOURCES_NOTE = (
+    "\nThe sources for this question are only loosely related to it. Answer only if they really contain the answer "
+    "(cite them as usual). If they do not, say in one or two friendly sentences that you couldn't find that on "
+    "deependhq.com, mention one or two things you can help with instead (what Deep is building, his companies, the "
+    "log, booking a call), and do not cite anything. Never fill the gap with outside knowledge."
+)
+
 REFUSAL_NO_CONTEXT = (
     "I couldn't find that on deependhq.com, so I'd rather not guess. "
     "You can book 30 minutes with Deep at https://scheduler.zoom.us/sreedeep or email deep@championsmail.com."

@@ -417,7 +417,7 @@ async function send(text) {
   q.value = ''; autosize(); clearSuggestions(); setBusy(true);
   add('user', text); transcript.push({ role: 'user', text, ts: Date.now() }); persist();
   const bot = add('bot', ''); thinking(bot);
-  let answer = '', sources = [], allSources = [], failed = false, mid = null;
+  let answer = '', sources = [], allSources = [], failed = false, mid = null, offered = false;
   controller = new AbortController();
   try {
     const r = await fetch(API, { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', 'X-Session-Id': SESSION, ...(VISITOR ? { 'X-Visitor-Id': VISITOR } : {}) },
@@ -438,7 +438,7 @@ async function send(text) {
         else if (ev.type === 'sources') { allSources = ev.items || []; }
         else if (ev.type === 'meta') { mid = ev.message_id || null; }
         else if (ev.type === 'handover') { bot.classList.remove('thinking'); renderHandover(bot, ev.prefill || ''); }
-        else if (ev.type === 'handover_offer') { renderHandoverOffer(bot, text); }
+        else if (ev.type === 'handover_offer') { offered = true; renderHandoverOffer(bot, text); }
         else if (ev.type === 'error') { failed = true; setText(bot, 'Something went wrong on the assistant side. ' + (answer ? '' : 'Please try again.')); }
         if (atBottom()) scrollLatest();
       }
@@ -448,7 +448,7 @@ async function send(text) {
     else { failed = true; setText(bot, 'Connection problem. Check that the assistant is running, then retry.'); setLive('off', 'offline'); }
   } finally {
     if (bot.classList.contains('thinking')) setText(bot, answer || '…', allSources);
-    if (answer && allSources.length) { sources = usedSources(answer, allSources); addSources(bot, sources); }
+    if (answer && allSources.length && !offered) { sources = usedSources(answer, allSources); addSources(bot, sources); }
     const raw = bot.dataset.raw || answer;
     addTools(bot, () => raw, failed ? text : null, mid);
     history.push({ role: 'user', content: text }, { role: 'assistant', content: answer }); history = history.slice(-12);

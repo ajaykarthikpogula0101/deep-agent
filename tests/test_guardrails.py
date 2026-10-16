@@ -145,6 +145,9 @@ def test_booking_intent_persists_across_the_conversation():
     assert not booking_in_progress("what is ChampGraph?", [])
     old = [{"role": "user", "content": "book a call"}] + [{"role": "user", "content": "x"}] * 8
     assert not booking_in_progress("what is ChampGraph?", old)  # intent from long ago has expired
+    upsell = [{"role": "user", "content": "what is Lake B2B?"},
+              {"role": "assistant", "content": "B2B data. [1] You can book a call with Deep to discuss it."}]
+    assert not booking_in_progress("tell me more", upsell)  # the assistant's own offer is not the visitor's intent
 
 
 def test_pack_sources_fences_untrusted_content():

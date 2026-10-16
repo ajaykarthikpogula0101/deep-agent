@@ -1659,7 +1659,7 @@ class DeepAssistant extends HTMLElement {
       if (card && !card.done) this._uiDrop(card);   // stream ended without 'ui end' (abort, provider error): no half card
       // _stick still holds "was the reader at the bottom before the last change", so the tail below follows the same rule
       bot.classList.remove('streaming'); if (bot.classList.contains('skel')) this._setText(bot, answer || '…', all);
-      if (answer && all.length && !failed) { sources = usedSources(answer, all); this._addSources(bot, sources); }
+      if (answer && all.length && !failed && !offer) { sources = usedSources(answer, all); this._addSources(bot, sources); }
       act.done(sources.length);
       const raw = bot.dataset.raw || answer; this._addTools(bot, () => raw, failed ? text : null, mid);
       if (failed) this._followups(bot, [{ icon: 'reset', label: 'Try again', fn: () => this._retry(bot, text) }]);

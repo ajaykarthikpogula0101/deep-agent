@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     recrawl_tz: str = Field(default="Asia/Kolkata", alias="RECRAWL_TZ")
     retrieval_min_score: float = Field(default=0.60, alias="RETRIEVAL_MIN_SCORE")  # bge-small scale, between on- and off-topic scores
     retrieval_top_k: int = Field(default=6, alias="RETRIEVAL_TOP_K")
+    # between this and RETRIEVAL_MIN_SCORE the model still sees the (loosely related) sources and may answer from them
+    # or say it could not find it; below it the fixed "couldn't find that" reply goes out without a model call
+    retrieval_soft_floor: float = Field(default=0.50, alias="RETRIEVAL_SOFT_FLOOR")
     custom_answer_min_score: float = Field(default=0.86, alias="CUSTOM_ANSWER_MIN_SCORE")  # owner-written answers fire above this
 
     # Security / cost
