@@ -11,7 +11,7 @@ gives Deep a brief on every lead before the call.
 ![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-564%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-587%20passing-2EA44F)
 
 [Features](#features) · [Features in detail](#features-in-detail) · [Quick start](#quick-start) ·
 [Configuration](#configuration) · [Visitor tracking and IP lookup](#visitor-tracking-and-ip-lookup) ·
@@ -128,8 +128,12 @@ can you do?", "is this a bot?") gets a short natural reply the model writes with
 word-for-word repeat; varied built-in replies when the model is down), with no search; a greeting in front of a question is dropped; a follow-up
 ("tell me more", "how is it different from Ampliz?") is rewritten into a standalone question. Questions vectors answer
 badly go straight to the page that answers them: who Deep is and where he's based (home page and /now), his tools
-(/toolkit), what he's on right now (/now), and the latest entries ("what did he ship yesterday?", newest days by number,
-with today's date in the prompt). Between `RETRIEVAL_SOFT_FLOOR` and `RETRIEVAL_MIN_SCORE` the model reads the loosely
+(/toolkit), what he's on right now (/now), the full company list (the pillars page plus the exact count of company
+pages, so "which companies?" never stops at the top six matches), and the latest entries. A question that names a period
+("this week", "last month", "in September", "on October 5", "yesterday") gets the log entries and weekly essays dated in
+it, in the visitor's calendar; when there is none yet, the bot says so and gives the newest entry. Every source carries
+its date, and a page last updated more than 30 days ago is marked not current, so the June Now page is quoted "as of
+June 12", never as today. Between `RETRIEVAL_SOFT_FLOOR` and `RETRIEVAL_MIN_SCORE` the model reads the loosely
 related pages and either answers with citations or says it couldn't find it (an uncited answer is logged as a refusal).
 If nothing is even that close, the bot politely says it can't answer instead of guessing,
 and the question goes to the [knowledge-gap loop](#knowledge-gap-loop). Answers cite their pages. Everything retrieved
@@ -752,7 +756,7 @@ with a MaxMind key, downloads the GeoLite2 files in the background if they are m
 ## Tests
 
 ```bash
-pytest                                        # 564 passed, 2 skipped; no network (the database tests skip without Postgres)
+pytest                                        # 587 passed, 2 skipped; no network (the database tests skip without Postgres)
 python -m app.tracking 49.207.200.10 'Acme' a@acme.com   # one IP through GEOIP_PROVIDER and the network rules, no database
 python -m app.geoip_update                    # download or refresh the GeoLite2 files (needs MAXMIND_LICENSE_KEY)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)

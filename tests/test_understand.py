@@ -272,3 +272,85 @@ def test_below_the_soft_floor_is_still_refused_without_a_model_call():
     assert not fake.calls
     assert [e for e in events if e["type"] == "refusal"] == [{"type": "refusal", "reason": "low_confidence"}]
     assert _text(events) == prompts.REFUSAL_NO_CONTEXT
+
+
+# ---------------------------------------------------------------- periods, company lists, stale pages
+from datetime import date  # noqa: E402
+
+from app.rag.retrieve import date_range  # noqa: E402
+
+FRI = date(2026, 10, 16)   # a Friday
+
+
+@pytest.mark.parametrize("q,start,end,label", [
+    ("what did he ship today?", "2026-10-16", "2026-10-16", "today"),
+    ("what did he ship yesterday?", "2026-10-15", "2026-10-15", "yesterday"),
+    ("give me a summary of his week", "2026-10-12", "2026-10-16", "this week"),
+    ("what happened this week", "2026-10-12", "2026-10-16", "this week"),
+    ("what did he ship last week?", "2026-10-05", "2026-10-11", "last week"),
+    ("what did he learn this month?", "2026-10-01", "2026-10-16", "this month"),
+    ("anything big last month?", "2026-09-01", "2026-09-30", "last month"),
+    ("what happened in September?", "2026-09-01", "2026-09-30", "September 2026"),
+    ("what did he do in june 2026", "2026-06-01", "2026-06-30", "June 2026"),
+    ("what did he do in December", "2025-12-01", "2025-12-31", "December 2025"),   # a month still ahead means last year's
+    ("what did he do on October 5?", "2026-10-05", "2026-10-05", "October 5, 2026"),
+    ("what happened on 5th oct", "2026-10-05", "2026-10-05", "October 5, 2026"),
+    ("entry for 2026-09-30", "2026-09-30", "2026-09-30", "September 30, 2026"),
+    ("what did he ship in the last 3 days", "2026-10-14", "2026-10-16", "the last 3 days"),
+])
+def test_named_periods_become_date_ranges(q, start, end, label):
+    r = date_range(q, FRI)
+    assert (r.start.isoformat(), r.end.isoformat(), r.label) == (start, end, label)
+
+
+@pytest.mark.parametrize("q", ["what is Lake B2B", "what is day 338 about", "who is Deep?", "may I book a call",
+                                "what tools does he use", "march of progress"])
+def test_questions_without_a_period_have_none(q):
+    assert date_range(q, FRI) is None
+
+
+def test_a_period_replaces_latest_and_company_questions_get_the_pillars():
+    assert pinned_rules("what did he ship yesterday", FRI) == ["period"]
+    assert pinned_rules("what did he ship yesterday") == ["latest"]           # no date known: newest entries
+    assert pinned_rules("which companies does Champions Group own?") == ["companies"]
+    assert pinned_rules("how many companies are in the portfolio?") == ["companies"]
+    assert pinned_rules("what are the pillars?") == ["companies"]
+    assert pinned_rules("what is Lake B2B") == []
+
+
+def _day(n: int, d: str, in_period: bool = True) -> Hit:
+    return Hit(url=f"https://deependhq.com/journey.html#day-{n}", title=f"Day {n}", section=None, text="t", score=1.0,
+               metadata={"day": n, "date": d, "kind": "journey", **({"in_period": True} if in_period else {})})
+
+
+def test_period_notes_scope_the_answer_or_admit_there_is_no_entry():
+    from app.chat import _period_notes
+
+    note = _period_notes("what did he learn this month?", [_day(348, "2026-10-14"), _day(339, "2026-10-05")], FRI)
+    assert "this month (2026-10-01 to 2026-10-16)" in note and "never present an entry from another date" in note
+    note = _period_notes("what did he ship yesterday?", [_day(348, "2026-10-14", in_period=False)], FRI)
+    assert "no entry dated in that period yet" in note and "day 348 (2026-10-14)" in note
+    with patch("app.chat.company_names", return_value=["Ampliz", "Lake B2B"]):
+        note = _period_notes("which companies does Champions Group own?", [], FRI)
+    assert "exactly 2 company pages: Ampliz, Lake B2B" in note and "do not add up the per-pillar counts" in note
+    assert _period_notes("what is Lake B2B", [], FRI) == ""
+
+
+def test_sources_carry_their_date_and_old_pages_are_marked_not_current():
+    now = Hit(url="https://deependhq.com/now", title="Now", section=None, score=1.0, metadata={"kind": "now"},
+              text="updated: 2026-06-12\nfocus: HIRING a Chief Campaign Officer")
+    fresh = Hit(url="https://deependhq.com/now", title="Now", section=None, score=1.0, metadata={"kind": "now"},
+                text="updated: 2026-10-10\nfocus: x")
+    essay = Hit(url="https://deependhq.com/journey", title="Week 47", section=None, score=1.0, metadata={"kind": "essay"},
+                text="2026-10-11, 4 min, Celsus OS. Eight team plans")
+    entry = _day(300, "2026-08-27", in_period=False)
+    assert prompts.source_date(now) == "2026-06-12" and prompts.source_date(essay) == "2026-10-11"
+    assert prompts.source_date(entry) == "2026-08-27"
+    assert prompts.stale_note(now, FRI) == "June 12, 2026, 126 days ago: not current"
+    assert prompts.stale_note(fresh, FRI) is None and prompts.stale_note(entry, FRI) is None   # a log entry is history, not stale
+    assert prompts.stale_note(now, None) is None
+    packed = prompts.pack_sources([now, entry], today=FRI)
+    assert 'date="2026-06-12" as_of="June 12, 2026, 126 days ago: not current"' in packed
+    assert 'date="2026-08-27">' in packed and "as_of" not in packed.split("day-300")[1]
+    assert 'in_period="yes"' in prompts.pack_sources([_day(348, "2026-10-14")], today=FRI)
+    assert "as_of attribute is NOT current" in prompts.SYSTEM_PROMPT
