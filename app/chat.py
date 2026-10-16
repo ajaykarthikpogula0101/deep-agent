@@ -14,7 +14,7 @@ Event types sent to the client (one JSON object per SSE 'data:' line):
   {"type":"handover_offer"}        shown after a refusal: offer a "talk to a person" form
   {"type":"handover","prefill":..} the visitor asked for a human: render the hand-over form (POST /handover)
   {"type":"custom","id":...}       the answer is an owner-written custom answer (no model call)
-  {"type":"smalltalk","kind":...}  a greeting, thanks, goodbye or "what can you do": a fixed friendly reply (app/rag/understand.py)
+  {"type":"smalltalk","kind":...}  a greeting, thanks, goodbye or "what can you do": a short natural reply (app/rag/understand.py)
   {"type":"ui","op":"start"}       an answer card begins (docs/UI_CARDS.md); the prose keeps coming as 'token' events
   {"type":"ui","op":"chunk","text":...}  openui-lang source of the card, streamed as the model writes it
   {"type":"ui","op":"end","program":...,"complete":true}  the whole card program; complete:false (+reason) = show nothing
@@ -273,7 +273,8 @@ def _respond(
     if kind and not understand.answers_a_question(kind, history):
         log_event("smalltalk", session_id, {"kind": kind, "message": message[:300]})
         yield sse({"type": "smalltalk", "kind": kind})
-        yield sse({"type": "token", "text": _smalltalk_text(kind, message, li, client)})
+        yield status("writing", "Writing…")
+        yield sse({"type": "token", "text": _smalltalk_text(kind, message, history, li, client)})
         yield sse({"type": "done"})
         return
 
@@ -488,14 +489,13 @@ def _today(visitor_tz: str, now: datetime | None = None) -> str:
     return f"\nToday is {d:%A}, {d:%Y-%m-%d} in the visitor's timezone."
 
 
-def _smalltalk_text(kind: str, message: str, li, client: OpenAI) -> str:
-    """The fixed English reply; in another language one short model call, falling back to the English reply."""
-    if not li.code:
-        return understand.smalltalk_reply(kind)
+def _smalltalk_text(kind: str, message: str, history: list[dict], li, client: OpenAI) -> str:
+    """A natural reply written by the model with the conversation in view (so a second "hello" is not a repeat), in the
+    visitor's language. Model down or slow: a fixed reply the visitor has not seen yet."""
     try:
         r = client.chat.completions.create(
-            model=settings.chat_model, temperature=0.3, max_tokens=150,
-            messages=[{"role": "system", "content": understand.SMALLTALK_PROMPT + li.note}, {"role": "user", "content": message}])
+            model=settings.chat_model, temperature=0.8, max_tokens=120, timeout=8,
+            messages=understand.smalltalk_messages(message, _history(history), li.note))
         if getattr(r, "usage", None):
             record_spend(settings.chat_model, r.usage.prompt_tokens, r.usage.completion_tokens)
         out = (r.choices[0].message.content or "").strip()
@@ -503,7 +503,7 @@ def _smalltalk_text(kind: str, message: str, li, client: OpenAI) -> str:
             return out
     except Exception as e:
         log.warning("small talk reply failed: %s", e)
-    return understand.smalltalk_reply(kind)
+    return understand.smalltalk_reply(kind, history)
 
 
 def _create_stream(client: OpenAI, messages: list[dict], tools, max_tokens: int = 500):

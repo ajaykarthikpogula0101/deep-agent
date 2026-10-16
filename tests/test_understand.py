@@ -69,7 +69,10 @@ def _text(events) -> str:
     ("thanks", "thanks"), ("Thank you so much!", "thanks"), ("ok thanks", "thanks"), ("bye", "bye"),
     ("thanks, bye", "bye"), ("ok", "ack"), ("cool", "ack"), ("got it", "ack"), ("who are you?", "identity"),
     ("are you a bot", "identity"), ("what can you do?", "capabilities"), ("help", "capabilities"),
-    ("hi, what can you do", "capabilities"),
+    ("hi, what can you do", "capabilities"), ("hii", "greeting"), ("heyyy", "greeting"), ("hey again", "greeting"),
+    ("how r  u", "how_are_you"), ("how r u?", "how_are_you"), ("hru", "how_are_you"), ("hi, how's your day going", "how_are_you"),
+    ("whats up", "how_are_you"), ("thnx", "thanks"), ("ok thnx bye", "bye"), ("am i talking to deep?", "identity"),
+    ("who am i talking to", "identity"), ("are u a bot", "identity"),
 ])
 def test_small_talk_is_recognised(msg, kind):
     assert understand.smalltalk_kind(msg) == kind
@@ -81,12 +84,34 @@ def test_questions_are_not_small_talk(msg):
     assert understand.smalltalk_kind(msg) is None
 
 
-def test_ack_after_a_question_is_an_answer_not_small_talk():
+def test_ack_after_an_offer_is_an_answer_not_small_talk():
     asked = [{"role": "user", "content": "what is lake b2b"}, {"role": "assistant", "content": "B2B data. [1] Want me to book a call?"}]
     told = [{"role": "assistant", "content": "Lake B2B sells B2B data. [1]"}]
+    open_q = [{"role": "assistant", "content": "Hi there! What would you like to know about Deep?"}]
     assert understand.answers_a_question("ack", asked) and understand.answers_a_question("thanks", asked)
     assert not understand.answers_a_question("ack", told) and not understand.answers_a_question("ack", [])
+    assert not understand.answers_a_question("ack", open_q)   # "ok" after an open question is still small talk
     assert not understand.answers_a_question("greeting", asked)
+
+
+def test_fallback_replies_never_repeat_what_the_visitor_saw():
+    first = understand.smalltalk_reply("greeting", [], pick=lambda xs: xs[0])
+    assert first in understand.SMALLTALK_REPLIES["greeting"]
+    hist = [{"role": "user", "content": "hii"}, {"role": "assistant", "content": first}]
+    again = understand.smalltalk_reply("greeting", hist, pick=lambda xs: xs[0])
+    assert again in understand.SMALLTALK_REPLIES["greeting_again"] and again != first
+    seen = understand.SMALLTALK_REPLIES["how_are_you"][0]
+    hist += [{"role": "user", "content": "how r u"}, {"role": "assistant", "content": seen}]
+    assert understand.smalltalk_reply("how_are_you", hist, pick=lambda xs: xs[0]) != seen
+    for kind, options in understand.SMALLTALK_REPLIES.items():
+        assert len(options) >= 2 and len(set(options)) == len(options), kind
+
+
+def test_small_talk_prompt_carries_the_conversation():
+    hist = [{"role": "user", "content": "hii"}, {"role": "assistant", "content": "Hey! What brings you here?"}]
+    msgs = understand.smalltalk_messages("hello", hist, " The visitor writes in Spanish.")
+    assert msgs[0]["role"] == "system" and "Never repeat" in msgs[0]["content"] and msgs[0]["content"].endswith("Spanish.")
+    assert msgs[1:] == [*hist, {"role": "user", "content": "hello"}]
 
 
 def test_greeting_in_front_of_a_question_is_dropped_for_search():
@@ -134,11 +159,15 @@ def test_pinned_pages_for_questions_vectors_answer_badly(q, rules):
 @patch("app.chat.search")
 @patch("app.chat.embed_query")
 def test_hello_gets_a_greeting_not_a_refusal(embed, search, log_event, *_):
+    client = FakeClient("Hey! What would you like to know?")
+    hist = [{"role": "user", "content": "hii"}, {"role": "assistant", "content": "Hi there! What brings you here?"}]
     with patch("app.chat.inbox.log_message", return_value=3) as log_message:
-        events = _collect(respond("hello", [], "UTC", "s-st-1", client=FakeClient(exc=AssertionError("no model call"))))
-    assert not [e for e in events if e["type"] in ("refusal", "handover_offer", "sources")]
-    assert {"type": "smalltalk", "kind": "greeting"} in events and events[-1] == {"type": "done"}
-    assert _text(events) == understand.SMALLTALK_REPLIES["greeting"] and "couldn't find" not in _text(events)
+        events = _collect(respond("how r  u", hist, "UTC", "s-st-1", client=client))
+    assert not [e for e in events if e["type"] in ("refusal", "handover_offer", "sources", "error")]
+    assert {"type": "smalltalk", "kind": "how_are_you"} in events and events[-1] == {"type": "done"}
+    assert _text(events) == "Hey! What would you like to know?"
+    call = client.calls[0]
+    assert call["temperature"] > 0.5 and call["timeout"] <= 10 and call["messages"][1:3] == hist   # it sees what it said before
     search.assert_not_called()
     embed.assert_not_called()
     assert log_event.call_args[0][0] == "smalltalk"
@@ -155,9 +184,9 @@ def test_small_talk_in_another_language_is_written_by_the_model(search, *_):
         events = _collect(respond("hola", [], "UTC", "s-st-2", client=client))
     assert _text(events) == "¡Hola! Soy el asistente de Deep."
     assert "Spanish" in client.calls[0]["messages"][0]["content"]
-    with patch("app.chat.inbox.log_message", return_value=None):   # the model failing: the English reply, never an error
-        events = _collect(respond("hola", [], "UTC", "s-st-3", client=FakeClient(exc=RuntimeError("down"))))
-    assert _text(events) == understand.SMALLTALK_REPLIES["greeting"] and not [e for e in events if e["type"] == "error"]
+    with patch("app.chat.inbox.log_message", return_value=None):   # the model failing: a fixed reply, never an error
+        events = _collect(respond("hola", [], "UTC", "s-st-3", client=FakeClient(exc=RuntimeError("401 User not found"))))
+    assert _text(events) in understand.SMALLTALK_REPLIES["greeting"] and not [e for e in events if e["type"] == "error"]
     search.assert_not_called()
 
 
