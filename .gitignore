@@ -12,3 +12,5 @@ edge-profile/
 email_preview/
 .playwright-mcp/
 data/geoip/
+cloudflare/node_modules/
+cloudflare/.wrangler/

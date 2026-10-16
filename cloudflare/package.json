@@ -1,0 +1,8 @@
+{
+  "name": "deependhq-assistant-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": { "deploy": "bash deploy.sh", "check": "bash deploy.sh --dry-run" },
+  "dependencies": { "@cloudflare/containers": "latest" },
+  "devDependencies": { "wrangler": "^4", "typescript": "^5", "@cloudflare/workers-types": "latest" }
+}
