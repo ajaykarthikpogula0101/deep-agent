@@ -11,7 +11,7 @@ gives Deep a brief on every lead before the call.
 ![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-549%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-564%20passing-2EA44F)
 
 [Features](#features) · [Features in detail](#features-in-detail) · [Quick start](#quick-start) ·
 [Configuration](#configuration) · [Visitor tracking and IP lookup](#visitor-tracking-and-ip-lookup) ·
@@ -123,8 +123,9 @@ it. The linked guides in `docs/` go further.
 
 Every night (`RECRAWL_CRON`, 02:30 IST) the crawler reads deependhq.com (llms-full.txt, data.js and the sitemap
 pages), splits it into chunks and embeds them locally. A question is embedded the same way and matched against those
-chunks. Before searching, the message is read (`app/rag/understand.py`): small talk ("hello", "thanks", "what can you
-do?", "is this a bot?") gets a friendly reply with no search; a greeting in front of a question is dropped; a follow-up
+chunks. Before searching, the message is read (`app/rag/understand.py`): small talk ("hello", "how r u", "thanks", "what
+can you do?", "is this a bot?") gets a short natural reply the model writes with the conversation in view (never a
+word-for-word repeat; varied built-in replies when the model is down), with no search; a greeting in front of a question is dropped; a follow-up
 ("tell me more", "how is it different from Ampliz?") is rewritten into a standalone question. Questions vectors answer
 badly go straight to the page that answers them: who Deep is and where he's based (home page and /now), his tools
 (/toolkit), what he's on right now (/now), and the latest entries ("what did he ship yesterday?", newest days by number,
@@ -751,7 +752,7 @@ with a MaxMind key, downloads the GeoLite2 files in the background if they are m
 ## Tests
 
 ```bash
-pytest                                        # 549 passed, 2 skipped; no network (the database tests skip without Postgres)
+pytest                                        # 564 passed, 2 skipped; no network (the database tests skip without Postgres)
 python -m app.tracking 49.207.200.10 'Acme' a@acme.com   # one IP through GEOIP_PROVIDER and the network rules, no database
 python -m app.geoip_update                    # download or refresh the GeoLite2 files (needs MAXMIND_LICENSE_KEY)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)
