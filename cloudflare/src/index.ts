@@ -25,6 +25,10 @@ export class Assistant extends Container<Env> {
       ...app,
     };
   }
+  // Cloudflare shows no container stdout in wrangler; these at least put the exit code in the Worker's tail.
+  override onStart() { console.log("container started"); }
+  override onStop(p: { exitCode: number; reason: string }) { console.log(`container stopped exit=${p.exitCode} reason=${p.reason}`); }
+  override onError(e: unknown) { console.log(`container error ${String(e)}`); }
 }
 
 const one = (env: Env) => getContainer(env.ASSISTANT, "main");

@@ -7,10 +7,10 @@ set -euo pipefail
 if [ -z "${DATABASE_URL:-}" ]; then
   PGDATA=/var/lib/postgresql/data
   PGBIN=/usr/lib/postgresql/16/bin
-  BOOTLOG=/tmp/boot.log
+  BOOTLOG=/tmp/boot.log; : > $BOOTLOG
   # Cloudflare exposes no container stdout: a failed boot ships its log to R2 as boot.log (read it with backup.py GET).
   trap 'rc=$?; if [ $rc -ne 0 ]; then cat "$PGDATA/postgresql.log" >> $BOOTLOG 2>/dev/null; python3 docker/backup.py put boot.log < $BOOTLOG || true; fi' EXIT
-  exec 2> >(tee -a $BOOTLOG >&2)
+  exec 2>>$BOOTLOG
   set -x
   export DATABASE_URL="postgresql://assistant@127.0.0.1:5432/assistant"   # loopback only, trust auth: nothing else can reach it
   mkdir -p "$PGDATA" && chown postgres "$PGDATA"
