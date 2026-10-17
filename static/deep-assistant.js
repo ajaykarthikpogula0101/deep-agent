@@ -20,7 +20,7 @@
  * Methods      ask(text), book(callType?), open(), close(), toggle(), newChat() / reset(), openConversation(id),
  *              showView('chat'|'history'|'help'), setToken(token), download(), startVoice(), stopVoice()
  * Events       deep-assistant:ready | :open | :close | :question | :answer | :sources | :booking | :handover
- *              | :feedback | :error | :view | :upload | :voice | :action | :ui   (CustomEvent, bubbles + composed)
+ *              | :feedback | :error | :view | :upload | :voice | :action | :ui | :me   (CustomEvent, bubbles + composed)
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
@@ -745,6 +745,7 @@ class DeepAssistant extends HTMLElement {
     if (this.api) { try { const r = await fetch(this._url('/me'), { headers: this._headers(false) }); if (r.ok) { const d = await r.json(); next = { ...d, name: d.name || hintName, email: d.email || hintEmail }; } } catch {} }
     if (!next.name && hintName) next.name = hintName; if (!next.email && hintEmail) next.email = hintEmail;
     this._me = next;
+    this._emit('me', next.memory || {});  // the host page may personalise with the same memory the welcome screen shows
   }
   _firstName() { return (this._me && this._me.name) ? String(this._me.name).trim().split(/\s+/)[0] : ''; }
   // A session counts as tracked only once the server stored the beacon (a 403/429/failed /track retries later; /chat and
