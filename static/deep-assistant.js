@@ -32,7 +32,7 @@ const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What 
 const EMAIL_STATUS = { confirmed: 'confirmed', pending_zoom: 'waiting for you to confirm on Zoom', cancelled: 'cancelled' };
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
-const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
+const INTRO = "I can answer questions about this site, about Deep and the 12 companies he runs, or book you a call with him.";
 // voice languages: code -> BCP-47 tag for speech recognition / synthesis, native name, and the call-view labels
 const VOICE_LANGS = { auto: ['', 'Auto'], en: ['en-US', 'English'], hi: ['hi-IN', 'हिन्दी'], te: ['te-IN', 'తెలుగు'], ta: ['ta-IN', 'தமிழ்'], es: ['es-ES', 'Español'], fr: ['fr-FR', 'Français'], de: ['de-DE', 'Deutsch'], pt: ['pt-BR', 'Português'], it: ['it-IT', 'Italiano'], nl: ['nl-NL', 'Nederlands'], ar: ['ar-SA', 'العربية'], zh: ['zh-CN', '中文'], ja: ['ja-JP', '日本語'], ko: ['ko-KR', '한국어'], ru: ['ru-RU', 'Русский'], bn: ['bn-IN', 'বাংলা'] };
 const VOICE_LABELS = { en: { listen: 'Listening…', think: 'Thinking…', speak: 'Speaking…', muted: 'Muted' }, hi: { listen: 'सुन रहा हूँ…', think: 'सोच रहा हूँ…', speak: 'बोल रहा हूँ…', muted: 'म्यूट' }, te: { listen: 'వింటున్నాను…', think: 'ఆలోచిస్తున్నాను…', speak: 'మాట్లాడుతున్నాను…', muted: 'మ్యూట్' }, ta: { listen: 'கேட்கிறேன்…', think: 'யோசிக்கிறேன்…', speak: 'பேசுகிறேன்…', muted: 'ஒலியடக்கம்' }, es: { listen: 'Escuchando…', think: 'Pensando…', speak: 'Hablando…', muted: 'Silenciado' }, fr: { listen: 'À l’écoute…', think: 'Réflexion…', speak: 'Je parle…', muted: 'Muet' }, de: { listen: 'Ich höre zu…', think: 'Ich denke nach…', speak: 'Ich spreche…', muted: 'Stumm' }, pt: { listen: 'Ouvindo…', think: 'Pensando…', speak: 'Falando…', muted: 'Mudo' } };
@@ -48,12 +48,12 @@ const EMOJI = [['😀', 'grin smile happy'], ['😂', 'laugh joy tears'], ['🙂
 
 // Welcome actions. Each one either asks a real question through /chat or opens the in-chat booking flow.
 const ACTIONS = {
-  explore: { icon: 'layers', label: 'Explore data solutions', ask: 'What data solutions does LakeB2B offer?' },
-  fit: { icon: 'compass', label: 'Find the right solution for my business', ask: 'Help me find the right LakeB2B solution for my business.' },
-  about: { icon: 'building', label: 'Learn about LakeB2B', ask: 'What is LakeB2B and what does it do?' },
-  book: { icon: 'cal', label: 'Book a meeting', book: true },
+  explore: { icon: 'layers', label: 'What is Deep building now?', ask: 'What is Deep building right now?' },
+  fit: { icon: 'compass', label: 'Which company fits my need?', ask: 'Help me find which of the companies fits what I need.' },
+  about: { icon: 'building', label: 'Who is Deep?', ask: 'Who is Deep and what does he do?' },
+  book: { icon: 'cal', label: 'Book a call with Deep', book: true },
   product: { icon: 'spark', label: 'Explain this product', askPage: (t) => (t ? `Tell me about ${t}.` : 'Tell me about this product.') },
-  usecases: { icon: 'target', label: 'Show me real use cases', ask: 'What are some real use cases for LakeB2B data?' },
+  usecases: { icon: 'target', label: 'How do the companies fit together?', ask: 'How do the 12 companies fit together?' },
   demo: { icon: 'play', label: 'Book a product walkthrough', book: 'walkthrough' },
   human: { icon: 'user', label: 'Talk to a person', ask: 'Can I talk to a real person?' },
 };
@@ -913,7 +913,7 @@ class DeepAssistant extends HTMLElement {
         ${sc ? `<a class="act" href="${esc(sc.href)}" target="_blank" rel="noopener">${item('', SVG.video, esc(sc.label), esc(host(sc.href)) + ' · opens in a new tab', SVG.ext)}</a>` : ''}
       </div>
       <h3>What Deep can do</h3><ul class="caplist">
-        <li>${SVG.checkc}<span>Answer questions about LakeB2B, with links to the pages it used</span></li>
+        <li>${SVG.checkc}<span>Answer questions about Deep, his companies and this site, with links to the pages it used</span></li>
         <li>${SVG.checkc}<span>Book a meeting with live availability, without leaving this chat</span></li>
         <li>${SVG.checkc}<span>Pass your question to the team when it can't answer confidently</span></li>
         <li>${SVG.checkc}<span>Keep your conversations in History so you can pick them up later</span></li>

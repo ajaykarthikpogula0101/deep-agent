@@ -53,11 +53,11 @@
     delayMs: parseInt(ds.delay, 10) || 3000,               // how long after page load the bubble appears
     botName: 'Deep',
     title: 'Hi! I\'m Deep 👋',
-    question: 'Exploring LakeB2B\'s data solutions? I can answer questions or book you a meeting.',
+    question: 'Exploring what Deep is building? I can answer questions about the site, the companies, or book you a call.',
     // optional intro line for the chat's welcome screen; empty keeps the component's default copy
     message: '',
     quickReplies: ds.quickReplies ? ds.quickReplies.split('|').map(function (s) { return s.trim(); }).filter(Boolean)
-      : ['Book a meeting', 'What data solutions does LakeB2B offer?', 'What is LakeB2B?'],
+      : ['Book a call with Deep', 'What is Deep building right now?', 'How do the 12 companies fit together?'],
     unread: 1,
   };
   // sessionStorage: '1' = the generic greeting was closed (a rule may still speak once), '2' = a rule bubble was
@@ -245,6 +245,12 @@
   if (act.pages.length > 50) act.pages = act.pages.slice(-50);
   sset('dh_act', JSON.stringify(act));
   var visits = parseInt(lget('dh_visits'), 10) || 0;
+  // A returning device gets its /me memory at load, so the host page can personalise before the chat is ever opened
+  // (the component fires the same deep-assistant:me once it mounts). First visits skip the call: nothing to remember.
+  if (visits > 1 && typeof fetch === 'function') {
+    fetch(ORIGIN + '/me', { headers: { 'X-Visitor-Id': VID } }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.memory) document.dispatchEvent(new CustomEvent('deep-assistant:me', { detail: d.memory, bubbles: true })); }).catch(function () {});
+  }
   if (!sget('dh_visit_counted')) { visits += 1; lset('dh_visits', String(visits)); sset('dh_visit_counted', '1'); }
   var visibleSince = document.hidden ? 0 : Date.now(), dwellMs = 0, scrollMax = 0;   // seconds on this page while visible; deepest scroll
   function dwellS() { return Math.round((dwellMs + (visibleSince ? Date.now() - visibleSince : 0)) / 1000); }
