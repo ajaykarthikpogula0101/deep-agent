@@ -17,12 +17,13 @@ export class Assistant extends Container<Env> {
     super(ctx, env);
     const app = appEnv(env);
     this.envVars = {
+      ...app,
       // Only this Worker can reach the container, and fetch() below rewrites X-Forwarded-For,
       // so believing forwarding headers from any peer is safe here.
       TRUSTED_PROXIES: "0.0.0.0/0,::/0",
-      // Embedded Postgres snapshots go to R2 through this Worker's /__backup route.
+      // Embedded Postgres snapshots go to R2 through this Worker's /__backup route. Derived last so a stray
+      // BACKUP_URL in the env file can never point restore at the wrong place.
       BACKUP_URL: `${app.PUBLIC_BASE_URL || "https://assistant.deependhq.com"}/__backup`,
-      ...app,
     };
   }
   // Cloudflare shows no container stdout in wrangler; these at least put the exit code in the Worker's tail.

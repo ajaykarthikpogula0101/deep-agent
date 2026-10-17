@@ -21,7 +21,9 @@ DB = os.environ["DATABASE_URL"]
 
 def _req(method: str, name: str, data: bytes | None = None):
     r = urllib.request.Request(f"{URL}/{name}", data=data, method=method,
-                               headers={"X-Admin-Token": os.environ.get("ADMIN_TOKEN", ""), "Content-Type": "application/gzip"})
+                               headers={"X-Admin-Token": os.environ.get("ADMIN_TOKEN", ""), "Content-Type": "application/gzip",
+                                        # Cloudflare Browser Integrity Check blocks Python's default user agent (1010).
+                                        "User-Agent": "deependhq-assistant/0.1"})
     return urllib.request.urlopen(r, timeout=120)
 
 
@@ -53,6 +55,25 @@ def put() -> None:
         _req("PUT", sys.argv[2], sys.stdin.buffer.read())
 
 
+def snapshot(last: str | None) -> str | None:
+    """pg_dump once; upload when the dump changed. Returns the new digest."""
+    sql = subprocess.run(["pg_dump", "--no-owner", "--no-privileges", DB], capture_output=True, check=True).stdout
+    digest = hashlib.sha256(sql).hexdigest()
+    if digest == last:
+        return last
+    gz = gzip.compress(sql, 6)
+    _req("PUT", "latest.sql.gz", gz)
+    _req("PUT", time.strftime("daily/%Y-%m-%d.sql.gz"), gz)  # one dated copy per day, rewritten through the day
+    print(f"backup: uploaded {len(gz)} bytes", flush=True)
+    return digest
+
+
+def once() -> None:
+    """Final snapshot on a graceful stop (the entrypoint's TERM trap)."""
+    if URL:
+        snapshot(None)
+
+
 def loop() -> None:
     if not URL:
         return
@@ -61,18 +82,10 @@ def loop() -> None:
     while True:
         time.sleep(interval)
         try:
-            sql = subprocess.run(["pg_dump", "--no-owner", "--no-privileges", DB], capture_output=True, check=True).stdout
-            digest = hashlib.sha256(sql).hexdigest()
-            if digest == last:
-                continue
-            gz = gzip.compress(sql, 6)
-            _req("PUT", "latest.sql.gz", gz)
-            _req("PUT", time.strftime("daily/%Y-%m-%d.sql.gz"), gz)  # one dated copy per day, rewritten through the day
-            last = digest
-            print(f"backup: uploaded {len(gz)} bytes", flush=True)
+            last = snapshot(last)
         except Exception as e:  # never let a failed snapshot take the app down
             print(f"backup: failed: {e}", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
-    {"restore": restore, "loop": loop, "put": put}[sys.argv[1]]()
+    {"restore": restore, "loop": loop, "put": put, "once": once}[sys.argv[1]]()
