@@ -245,13 +245,13 @@
   if (act.pages.length > 50) act.pages = act.pages.slice(-50);
   sset('dh_act', JSON.stringify(act));
   var visits = parseInt(lget('dh_visits'), 10) || 0;
+  if (!sget('dh_visit_counted')) { visits += 1; lset('dh_visits', String(visits)); sset('dh_visit_counted', '1'); }
   // A returning device gets its /me memory at load, so the host page can personalise before the chat is ever opened
   // (the component fires the same deep-assistant:me once it mounts). First visits skip the call: nothing to remember.
   if (visits > 1 && typeof fetch === 'function') {
     fetch(ORIGIN + '/me', { headers: { 'X-Visitor-Id': VID } }).then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) { if (d && d.memory) document.dispatchEvent(new CustomEvent('deep-assistant:me', { detail: d.memory, bubbles: true })); }).catch(function () {});
   }
-  if (!sget('dh_visit_counted')) { visits += 1; lset('dh_visits', String(visits)); sset('dh_visit_counted', '1'); }
   var visibleSince = document.hidden ? 0 : Date.now(), dwellMs = 0, scrollMax = 0;   // seconds on this page while visible; deepest scroll
   function dwellS() { return Math.round((dwellMs + (visibleSince ? Date.now() - visibleSince : 0)) / 1000); }
   document.addEventListener('visibilitychange', function () { if (document.hidden) { if (visibleSince) dwellMs += Date.now() - visibleSince; visibleSince = 0; } else if (!visibleSince) visibleSince = Date.now(); });
