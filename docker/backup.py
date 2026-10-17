@@ -29,15 +29,28 @@ def restore() -> None:
     if not URL:
         print("backup: BACKUP_URL unset, starting with an empty database", flush=True)
         return
-    try:
-        body = _req("GET", "latest.sql.gz").read()
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            print("backup: no snapshot yet, starting with an empty database", flush=True)
-            return
-        raise
+    for attempt in range(6):  # the network may still be coming up right after boot
+        try:
+            body = _req("GET", "latest.sql.gz").read()
+            break
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                print("backup: no snapshot yet, starting with an empty database", flush=True)
+                return
+            raise
+        except urllib.error.URLError as e:
+            if attempt == 5:
+                raise  # never start empty over a snapshot we could not read: the loop would overwrite it
+            print(f"backup: fetch failed ({e}), retrying", flush=True)
+            time.sleep(5)
     subprocess.run(["psql", "-q", "-v", "ON_ERROR_STOP=1", DB], input=gzip.decompress(body), check=True)
     print(f"backup: restored {len(body)} bytes", flush=True)
+
+
+def put() -> None:
+    """Upload stdin as a named object (boot diagnostics)."""
+    if URL:
+        _req("PUT", sys.argv[2], sys.stdin.buffer.read())
 
 
 def loop() -> None:
@@ -62,4 +75,4 @@ def loop() -> None:
 
 
 if __name__ == "__main__":
-    {"restore": restore, "loop": loop}[sys.argv[1]]()
+    {"restore": restore, "loop": loop, "put": put}[sys.argv[1]]()
