@@ -16,6 +16,8 @@
   ],
   "durable_objects": { "bindings": [{ "class_name": "Assistant", "name": "ASSISTANT" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Assistant"] }],
+  // Database snapshots from the container's embedded Postgres (docker/backup.py) land here.
+  "r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "deependhq-assistant-backups" }],
   "routes": [{ "pattern": "assistant.deependhq.com", "custom_domain": true }],
   // Wakes the container if Cloudflare recycled its host, so the in-process scheduler (recrawl, reminders) keeps running.
   "triggers": { "crons": ["*/2 * * * *"] }

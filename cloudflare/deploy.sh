@@ -15,7 +15,7 @@ for line in open(sys.argv[1]):
     k, v = line.split("=", 1)
     v = v.split(" #")[0].strip()
     if v: env[k.strip()] = v
-for need in () if sys.argv[3] == "--dry-run" else ("LLM_API_KEY", "DATABASE_URL", "ADMIN_TOKEN", "LINK_SECRET"):
+for need in () if sys.argv[3] == "--dry-run" else ("LLM_API_KEY", "ADMIN_TOKEN", "LINK_SECRET"):
     if need not in env: sys.exit(f"{need} is empty in .env.production")
 json.dump({"APP_ENV": json.dumps(env)}, open(sys.argv[2], "w"))
 PY
