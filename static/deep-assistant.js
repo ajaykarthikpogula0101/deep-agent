@@ -1130,9 +1130,9 @@ class DeepAssistant extends HTMLElement {
         <div class="guests"><div class="glabel">Attendees <span>(optional · they get the invite too)</span></div><div class="glist" role="list" aria-label="Attendees"></div><button type="button" class="linkbtn addg">+ Add attendee</button></div>
         <button class="btn primary block" type="submit">Continue ${SVG.chev}</button>
       </form>`;
-    const form = body.querySelector('form'), field = (n) => form.elements[n];
-    if (!known) { field('name').value = w.name ?? p.name ?? me.name ?? ''; field('email').value = w.email ?? p.email ?? me.email ?? ''; }
-    field('company').value = w.company ?? p.company ?? me.company ?? ''; field('notes').value = w.notes ?? p.reason ?? p.notes ?? '';
+    const form = body.querySelector('form'), field = (n) => form.elements[n]; const mem = me.memory || {};
+    if (!known) { field('name').value = w.name ?? p.name ?? me.name ?? mem.name ?? ''; field('email').value = w.email ?? p.email ?? me.email ?? mem.email ?? ''; }
+    field('company').value = w.company ?? p.company ?? mem.company ?? ''; field('notes').value = w.notes ?? p.reason ?? p.notes ?? '';
     const glist = body.querySelector('.glist'), addg = body.querySelector('.addg'), MAXG = 5;
     const addRow = (g = {}) => { if (glist.children.length >= MAXG) return; const r = document.createElement('div'); r.className = 'grow'; r.setAttribute('role', 'listitem'); const k = glist.children.length + 1;
       r.innerHTML = `<input class="inp gname" maxlength="120" placeholder="Name" aria-label="Attendee ${k} name" autocomplete="off"><input class="inp gemail" type="email" maxlength="200" placeholder="Email" aria-label="Attendee ${k} email" inputmode="email" autocomplete="off"><button type="button" class="gx" aria-label="Remove attendee ${k}" title="Remove">${SVG.close}</button><span class="ferr gerr" hidden></span>`;
