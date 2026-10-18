@@ -412,7 +412,11 @@ def data_block(p: dict[str, Any], mem: dict[str, Any] | None, window_full: bool,
 def public(p: dict[str, Any]) -> dict[str, Any]:
     """What GET /me returns to the widget (no transcripts)."""
     g = greeting(p)
-    return {"returning": bool(p.get("returning")), "visits": p.get("visits") or 0, "name": p.get("name"), "email": p.get("email"),
-            "company": p.get("company"), "lang": p.get("lang"), "last_topic": (p.get("topics") or [None])[0],
+    known = p.get("known") or {}
+    # chat-learned identity fills the booking form when no booking or sign-in has given a firmer value
+    name = p.get("name") or (known.get("name") or {}).get("v")
+    company = p.get("company") or (known.get("company") or {}).get("v")
+    return {"returning": bool(p.get("returning")), "visits": p.get("visits") or 0, "name": name, "email": p.get("email"),
+            "company": company, "lang": p.get("lang"), "last_topic": (p.get("topics") or [None])[0],
             "upcoming": p.get("upcoming"), "recent_change": p.get("recent_change"),
             "headline": g["headline"] if g else None, "line": g["line"] if g else None}

@@ -110,3 +110,12 @@ def test_profile_links_earlier_sessions_of_the_same_device():
             c.execute("DELETE FROM events WHERE session_id IN (%s, %s)", (s1, s2))
             c.execute("DELETE FROM sessions WHERE session_id IN (%s, %s)", (s1, s2))
             c.commit()
+
+
+def test_public_falls_back_to_chat_learned_identity():
+    p = memory.empty() if hasattr(memory, "empty") else {"returning": True, "visits": 2, "topics": []}
+    p.update(name=None, company=None, known={"name": {"v": "Priya", "as_of": None}, "company": {"v": "HealthTech", "as_of": None}})
+    out = memory.public(p)
+    assert (out["name"], out["company"]) == ("Priya", "HealthTech")
+    p.update(name="Priya Rao", company=None)
+    assert memory.public(p)["name"] == "Priya Rao"  # a booking or sign-in name wins over a chat guess
