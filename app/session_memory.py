@@ -5,7 +5,7 @@ A session's row (table session_memory) is filled from two sources:
     to a budget word, the questions answered, and a plain "no" to a hand-over or booking offer (declines are session-only);
   * a small model (_ask_model), never on the reply path and never per turn: only at the window edge (the chat outgrows
     the 12-message history), as a catch-up of earlier sessions when a returning visitor comes back, right before the
-    pre-call brief, and on an admin rebuild.
+    pre-call brief, when a booking starts (so the details form can prefill), and on an admin rebuild.
 What the visitor typed on the booking and hand-over forms is NOT stored here: app/memory.py reads it live from bookings
 and leads, like the booking state. Email is never stored.
 
@@ -41,7 +41,7 @@ FIELDS: dict[str, tuple[str, int]] = {
     "contact_pref": ("prefs", 40),
 }
 LISTS: dict[str, tuple[int, int]] = {"asked": (8, 60), "declined": (4, 60)}  # name -> (max items, max chars)
-MODEL_REASONS = ("window", "catchup", "precall", "rebuild")                   # 'turn' is rules only
+MODEL_REASONS = ("window", "catchup", "precall", "rebuild", "booking")        # 'turn' is rules only
 READ_LIMIT, BATCH_LINES, MAX_BATCHES, LINE_CHARS = 48, 24, 2, 400
 MAX_FAILS = 3
 GIST_CHARS = 300

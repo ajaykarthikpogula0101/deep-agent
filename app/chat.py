@@ -389,6 +389,7 @@ def _respond(
         yield sse({"type": "sources", "items": [{"n": n, "url": h.url, "title": h.title} for n, h in prompts.numbered_sources(cited)]})
     if choices:
         yield sse({"type": "schedules", "items": choices})
+        session_memory.update_async(session_id, "booking")  # their name and company, said in chat, reach the details form in time
     state["known_email"] = visitor.get("email") if visitor.get("signed_in") and visitor.get("verified") else None
     yield status("writing", "Writing…")
     try:
