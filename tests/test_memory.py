@@ -119,3 +119,18 @@ def test_public_falls_back_to_chat_learned_identity():
     assert (out["name"], out["company"]) == ("Priya", "HealthTech")
     p.update(name="Priya Rao", company=None)
     assert memory.public(p)["name"] == "Priya Rao"  # a booking or sign-in name wins over a chat guess
+
+
+def test_me_overlays_this_conversations_name_and_company(monkeypatch):
+    """A first-time visitor who said "I'm Asha from a health-tech company" gets both prefilled on the booking form."""
+    from fastapi.testclient import TestClient
+    from app import main, session_memory
+
+    monkeypatch.setattr(main, "_origin_ok", lambda r: True)
+    monkeypatch.setattr(main, "_visitor", lambda r: {"signed_in": False})
+    monkeypatch.setattr(main.settings, "visitor_memory", True)
+    monkeypatch.setattr(memory, "profile", lambda *a: {"returning": False, "visits": 0, "topics": []})
+    monkeypatch.setattr(session_memory, "catch_up_async", lambda *a: None)
+    monkeypatch.setattr(session_memory, "get", lambda sid: {"facts": {"name": {"v": "Asha"}, "company": {"v": "health-tech company"}}} if sid == "s1" else None)
+    m = TestClient(main.app).get("/me", headers={"X-Visitor-Id": "v1", "X-Session-Id": "s1"}).json()["memory"]
+    assert (m["name"], m["company"]) == ("Asha", "health-tech company")

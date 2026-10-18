@@ -1133,6 +1133,8 @@ class DeepAssistant extends HTMLElement {
     const form = body.querySelector('form'), field = (n) => form.elements[n]; const mem = me.memory || {};
     if (!known) { field('name').value = w.name ?? p.name ?? me.name ?? mem.name ?? ''; field('email').value = w.email ?? p.email ?? me.email ?? mem.email ?? ''; }
     field('company').value = w.company ?? p.company ?? mem.company ?? ''; field('notes').value = w.notes ?? p.reason ?? p.notes ?? '';
+    // facts learned in this conversation (their name, company) land after mount: refresh and fill what is still empty
+    this._loadMe().then(() => { const m = (this._me || {}).memory || {}; for (const k of ['name', 'email', 'company']) { const el = field(k); if (el && !el.value && m[k]) el.value = m[k]; } }).catch(() => {});
     const glist = body.querySelector('.glist'), addg = body.querySelector('.addg'), MAXG = 5;
     const addRow = (g = {}) => { if (glist.children.length >= MAXG) return; const r = document.createElement('div'); r.className = 'grow'; r.setAttribute('role', 'listitem'); const k = glist.children.length + 1;
       r.innerHTML = `<input class="inp gname" maxlength="120" placeholder="Name" aria-label="Attendee ${k} name" autocomplete="off"><input class="inp gemail" type="email" maxlength="200" placeholder="Email" aria-label="Attendee ${k} email" inputmode="email" autocomplete="off"><button type="button" class="gx" aria-label="Remove attendee ${k}" title="Remove">${SVG.close}</button><span class="ferr gerr" hidden></span>`;

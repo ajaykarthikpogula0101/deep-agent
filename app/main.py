@@ -743,6 +743,10 @@ def me(request: Request, x_visitor_id: str | None = Header(default=None), x_sess
     if settings.visitor_memory and (x_visitor_id or v.get("signed_in")):
         p = memory.profile((x_visitor_id or "").strip()[:64] or None, v.get("sub") if v.get("signed_in") else None, (x_session_id or "").strip()[:64] or None)
         out["memory"] = memory.public(p)
+        cur = (session_memory.get((x_session_id or "").strip()[:64] or None) or {}).get("facts") or {}  # this conversation's own facts
+        for k in ("name", "company"):
+            if not out["memory"].get(k) and isinstance(cur.get(k), dict) and cur[k].get("v"):
+                out["memory"][k] = cur[k]["v"]
         session_memory.catch_up_async(p.get("memory_pending"))  # a returning visitor: earlier sessions' gists before they write
         if not v.get("signed_in"):  # hints from their own earlier forms; the booking/hand-over forms prefill them, unverified
             out["name"] = out.get("name") or p.get("name")
