@@ -340,8 +340,10 @@ def _respond(
         if _CONTACT_Q.search(query):  # how to reach Deep: the configured route, never a loosely related page
             log_event("degraded", session_id, {"reason": "no_api_key", "message": message[:300], "contact": True})
             yield sse({"type": "degraded", "reason": "no_api_key"})
-            yield sse({"type": "token", "text": f"You can book a call with Deep at {settings.zoom_booking_base} or email "
-                                                f"{settings.host_email}. (No AI model key is configured on this install, so "
+            who = settings.host_name_short or "the host"
+            route = (f"You can book a call with {who} at {settings.zoom_booking_base} or email {settings.host_email}."
+                     if settings.zoom_booking_base else f"You can email {who} at {settings.host_email}.")
+            yield sse({"type": "token", "text": route + " (No AI model key is configured on this install, so "
                                                 "this is the configured contact route, not a generated answer.)"})
             yield sse({"type": "handover_offer"})
             yield sse({"type": "done"})

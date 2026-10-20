@@ -136,6 +136,41 @@ def first_run_ingest(skip: bool, pages: int) -> None:
     say(f"ingest done: {stats}")
 
 
+def stop_embedded_on_exit(server) -> None:
+    """Stop the embedded Postgres on every way out: normal exit, Ctrl+C, and on Windows the console window
+    being closed, log-off or shutdown. Without this a closed window leaves postgres.exe running, which later
+    blocks updates (locked files) and holds the data directory."""
+    import atexit
+
+    state = {"done": False}
+
+    def stop(*_):
+        if not state["done"]:
+            state["done"] = True
+            try:
+                server.cleanup()
+            except Exception:
+                pass
+
+    atexit.register(stop)
+    if os.name == "nt":
+        import ctypes
+
+        handler_type = ctypes.WINFUNCTYPE(ctypes.c_uint, ctypes.c_uint)
+
+        def handler(event):  # CTRL_C 0, CTRL_BREAK 1, CTRL_CLOSE 2, LOGOFF 5, SHUTDOWN 6
+            if event in (2, 5, 6):
+                stop()
+            return False  # let Python's own Ctrl+C handling and the default close proceed
+
+        global _CTRL_HANDLER
+        _CTRL_HANDLER = handler_type(handler)  # must outlive the call
+        ctypes.windll.kernel32.SetConsoleCtrlHandler(_CTRL_HANDLER, True)
+
+
+_CTRL_HANDLER = None
+
+
 def open_when_ready(port: int, path: str = "/site") -> None:
     def _wait():
         for _ in range(120):
@@ -165,9 +200,15 @@ def main() -> None:
     ensure_port_free(args.port)
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     os.environ.setdefault("OMP_NUM_THREADS", "1")
+    if (ROOT / "models").is_dir():  # the bundle ships the embedding model: no download, no hub check
+        os.environ.setdefault("FASTEMBED_CACHE_PATH", str(ROOT / "models"))
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
     url, embedded = pick_database()
     os.environ["DATABASE_URL"] = url  # must be set before app.config is imported
+    if embedded is not None:
+        os.environ["ROBIN_EMBEDDED_DB"] = "1"  # tells the app the database (and the install) is local
+        stop_embedded_on_exit(embedded)
 
     key = os.environ.get("LLM_API_KEY") or dotenv_value("LLM_API_KEY") or dotenv_value("OPENAI_API_KEY")
     if not key or key.endswith("..."):  # empty, or the .env.example placeholder

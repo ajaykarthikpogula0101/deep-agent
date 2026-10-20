@@ -103,6 +103,11 @@ def test_no_key_contact_question_gives_the_contact_route_not_a_blog_post(search,
     assert "Day 320" not in text and all(e["type"] != "sources" for e in events)
     assert events[2] == {"type": "handover_offer"} and events[-1] == {"type": "done"}
 
+    monkeypatch.setattr(settings, "zoom_booking_base", "")  # no booking link configured: email only, no blank
+    text2 = _outcome(_collect(respond("How do I get in touch?", [], "Asia/Kolkata", "s-contact-2")))[1]["text"]
+    assert text2.startswith(f"You can email {settings.host_name_short} at {settings.host_email}.")
+    assert " at  " not in text2
+
 
 # ---------------------------------------------------------------- chat: provider failures stay honest
 
@@ -302,6 +307,25 @@ def test_setup_page_saves_env_applies_settings_and_starts_the_crawl(setup_env, m
     assert c.get("/setup/status").json()["configured"] is True
 
 
+def test_setup_page_keeps_a_shipped_central_key_when_none_is_pasted(setup_env, monkeypatch):
+    tmp, started = setup_env
+    (tmp / ".env").write_text("LLM_API_KEY=central-key\nLLM_BASE_URL=https://openrouter.ai/api/v1\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "llm_api_key", "central-key")
+    monkeypatch.setattr(settings, "llm_base_url", "https://openrouter.ai/api/v1")
+    c = _client(monkeypatch, local=True)
+    page = c.get("/setup").text
+    assert "AI answers are included" in page and 'name="provider"' in page and "<select" not in page
+
+    r = c.post("/setup", data={"site": "https://www.example-shop.test", "host_full_name": "Asha Rao",
+                               "host_name_short": "Asha", "host_email": "asha@example-shop.test",
+                               "provider": "openrouter", "api_key": ""}, follow_redirects=False)
+
+    assert r.status_code == 303
+    env = (tmp / ".env").read_text(encoding="utf-8")
+    assert "LLM_API_KEY=central-key\n" in env and settings.llm_api_key == "central-key"
+    assert "SITE_BASE_URL=https://www.example-shop.test\n" in env and started == [True]
+
+
 def test_setup_page_refuses_remote_clients_and_bad_addresses(setup_env, monkeypatch):
     tmp, started = setup_env
     assert _client(monkeypatch, local=False).get("/setup").status_code == 403
@@ -310,6 +334,20 @@ def test_setup_page_refuses_remote_clients_and_bad_addresses(setup_env, monkeypa
                                               follow_redirects=False)
     assert r.status_code == 303 and "error=" in r.headers["location"]
     assert started == [] and "SITE_BASE_URL=https://deependhq.com" in (tmp / ".env").read_text(encoding="utf-8")
+
+
+def test_origin_check_without_origin_header_accepts_only_local_databases(monkeypatch):
+    from app.main import _origin_ok
+
+    req = types.SimpleNamespace(headers={})
+    monkeypatch.delenv("ROBIN_EMBEDDED_DB", raising=False)
+    monkeypatch.setattr(settings, "database_url", "postgresql://u:p@prod.internal:5432/assistant")
+    assert _origin_ok(req) is False                       # a deployed install still needs an Origin
+    monkeypatch.setattr(settings, "database_url", "postgresql://postgres:@/postgres?host=/tmp/pg")
+    assert _origin_ok(req) is True                        # pgserver on Linux: unix socket
+    monkeypatch.setattr(settings, "database_url", "postgresql://u:p@prod.internal:5432/assistant")
+    monkeypatch.setenv("ROBIN_EMBEDDED_DB", "1")
+    assert _origin_ok(req) is True                        # the launcher marked the install as local
 
 
 # ---------------------------------------------------------------- embeddings: remote option, no local model

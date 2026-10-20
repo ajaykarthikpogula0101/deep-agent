@@ -142,17 +142,66 @@ path), run exactly what `Start Robin.bat` runs, no browser:
 
 Evidence: `r1/bundle_evidence/run1.log`, `setup_form.html`, `chat1.sse`, `run2.log`.
 
+## Round 3: shipping to non-technical users (20 Oct, late)
+
+| Ask | Done | How |
+|---|---|---|
+| 1. Pre-bundled embedding model | yes | `build_bundle.py` downloads the model into `models/`; `Start Robin.bat`, `Robin.exe`, `start-robin.sh` and `app.launch` set `FASTEMBED_CACHE_PATH` + `HF_HUB_OFFLINE=1`, so the first crawl never contacts the hub (model loads in 2 s on Linux) |
+| 2. Signed `Robin.exe` | half | `Robin.exe` is compiled at build time from `scripts/bundle/Robin.cs` (csc.exe ships with .NET Framework); `scripts/bundle/sign.ps1` signs it, `python.exe` and `update.ps1` with signtool once Champions has a code-signing certificate (`-Pfx` or `-Thumbprint`). **Unsigned until then: SmartScreen still warns.** |
+| 3. Mac/Linux bundles | Linux yes, macOS untested | `--platform linux-x64 \| macos-arm64 \| macos-x64`: portable CPython (python-build-standalone) + wheels pip resolves for that platform from this machine, packed as `.tar.gz` with exec bits; `start-robin.sh`, `update.sh`. Linux x64 verified in WSL; macOS builds but no Mac to test |
+| 4. Updates | yes | `build_bundle.py` writes `manifest.json` (version, archive, sha256) next to the archive; `Update Robin.bat` / `update.sh` read `UPDATE_URL` from `.env`, compare with `VERSION`, download, verify sha256, stop a leftover embedded Postgres, swap folders by rename, keep `.env` + `data/` |
+| 5. Central AI key | yes | `--llm-key-file` writes the key into the bundle's `.env.example`; the setup page then says "AI answers are included" and asks nothing (a user may still paste their own). Ship a spend-capped key: anything inside a zip can be read out |
+
+Also fixed on the way, found by the acceptance runs:
+- The crawler's `llms-full.txt` / `data.js` / `sitemap.xml` were mandatory → optional, with a homepage-links fallback.
+- Closing the Robin window left `postgres.exe` running (18 orphans after a day of testing), which later blocked
+  the updater and half-deleted `python\`. `app.launch` now stops the embedded database on Ctrl+C, window close,
+  log-off and shutdown; the updater stops any leftover and swaps by rename so a locked file can't brick an install.
+- Chat without an `Origin` header (curl, scripts) was rejected on the Linux bundle: the "is this a local
+  install" check only knew `@localhost` URLs, not pgserver's unix socket. `ROBIN_EMBEDDED_DB` now marks it.
+- Quoted-text contact answer printed "book a call at  or email …" when no booking link was set.
+
+Measured: Windows bundle 417 MB unzipped / 219 MB zip (model ~130 MB barely compresses), build 185 s.
+Linux bundle 724 MB / 246 MB, build 208 s.
+
+### Round 3 acceptance, Windows (21 Oct, rebuilt zip, fresh unzip into a user path)
+
+| Step | Result | Time |
+|---|---|---|
+| `Robin.exe --no-browser` from nothing | `.env` created, embedded Postgres ready (11.7 s), setup page served | 18 s |
+| `/setup` saved (no AI key) → first crawl | 150 pages / 223 passages, **35 s** with the pre-bundled model, no hub contact | 35 s (was ~5 min) |
+| Server killed hard (simulates closing the window on an older build) | 6 `postgres.exe` left running | |
+| `Update Robin.bat` against a local manifest | stopped the 6 leftovers, downloaded 219 MB, sha256 verified, folders swapped by rename, `.env` + `data/` kept | 298 s (local download + unzip) |
+| Restart after update | embedded Postgres reused (0.3 s), 150 pages present | 5 s |
+
+Note: my first acceptance runs reported "crawl done after ~310 s" on every platform; that was the test's
+own polling bug (it waited for `"done": true` with a space; the JSON is compact). The crawl itself is
+35–40 s on Windows and 44–88 s on WSL.
+
+### Round 3 acceptance, Linux x64 (21 Oct, WSL Kali, final tar.gz)
+
+| Step | Result | Time |
+|---|---|---|
+| `tar -xzf` as a normal user | 12,283 files, exec bits intact, bundled Python 3.11.17 imports the app | 11 s |
+| `./start-robin.sh --no-browser` from nothing | embedded Postgres ready (3.5 s), setup page served | 18 s |
+| `/setup` saved → first crawl | 150 pages / 223 passages, **offline** (pre-bundled model, no hub contact) | 47 s |
+| "How do I get in touch?" | `degraded` + "You can email Deep at …" (no booking link was set, so no blank) | |
+| Restart | embedded Postgres reused, 150 pages present | 16 s |
+
+Found on the way: the first Linux archive carried the model cache's symlinks with Windows-style targets
+(`..\..\blobs\…`), dead on Linux (`NO_SUCHFILE`). The tar is now written with `dereference=True`, which
+stores real files; the archive grew to 307 MB because the model then exists under both `blobs/` and
+`snapshots/` (pruning `blobs/` is the next size win). Linux archive: 724 MB unpacked / 307 MB tar.gz.
+
 ### Not done / remaining manual steps
 
-- **Pre-bundle the embedding model** (130 MB) or default new installs to `EMBED_PROVIDER=api`: the first crawl
-  currently waits ~4 min on the model download, the slowest part of the user's first run.
-- The bundle is Windows x64 only; `pgserver` has macOS/Linux wheels, so the same script with a different
-  embeddable Python would cover them. Untested.
-- No code signing: Windows SmartScreen will warn on `Start Robin.bat` from a download. A signed `Robin.exe`
-  wrapper is the fix.
-- Updates: a user replaces the folder (keeping `data/` and `.env`); no in-app updater.
-- CORS origins from `/setup` apply on the next start (the setup page says so implicitly by opening `/site`,
-  which is same-origin); embedding the widget on the real site needs one restart.
+- **Code signing certificate** (Champions): until then every download warns once in SmartScreen.
+- **macOS**: builds, untested; needs a Mac for one acceptance run (and Gatekeeper notarisation, same story as signing).
+- **Update hosting**: the manifest + archive need a static HTTPS location (S3, GitHub Releases on a public repo,
+  or a folder on deependhq.com); `UPDATE_URL` in the shipped `.env.example` then points at it.
+- **Bundle size**: 219 MB zip. Dropping the local embedding stack (`EMBED_PROVIDER=api` by default) would cut
+  ~200 MB but needs an embeddings endpoint and a central key.
+- CORS origins from `/setup` apply on the next start; embedding the widget on the real site needs one restart.
 
 - `pgserver` is in the runtime requirements, so the Docker image grows by 41 MB; a split extra would avoid that.
 - `fastembed`/`onnxruntime` remain in the runtime install; making them an extra needs `EMBED_PROVIDER=api` to

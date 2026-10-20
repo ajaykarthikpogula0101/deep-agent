@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import os
 import time
 import uuid
 from pathlib import Path
@@ -362,8 +363,9 @@ def _origin_ok(req: Request) -> bool:
     """Belt and braces on top of CORS: non-browser callers must still present an allowed Origin/Referer.
     Not authentication (headers can be forged); it just stops casual abuse of the endpoint."""
     origin = req.headers.get("origin") or req.headers.get("referer") or ""
-    if not origin:
-        return "@localhost" in settings.database_url or "@127.0.0.1" in settings.database_url  # local dev only
+    if not origin:  # local dev / single-machine installs only (the embedded database is local by construction)
+        db = settings.database_url
+        return "@localhost" in db or "@127.0.0.1" in db or "host=/" in db or bool(os.environ.get("ROBIN_EMBEDDED_DB"))
     host = req.headers.get("host", "")
     same_origin = bool(host) and origin.split("://", 1)[-1].split("/", 1)[0].lower() == host.lower()
     return same_origin or any(origin.startswith(o) for o in settings.origins) or origin.startswith("http://localhost")
