@@ -11,15 +11,20 @@ descriptive User-Agent so Cloudflare AI Crawl Control can identify us.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import urllib.robotparser as robotparser
 from typing import Iterable
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 
 from app.config import settings
 from app.ingest.chunker import Doc, split_markdown_sections
+
+log = logging.getLogger("ingest")
+HOMEPAGE_LINK_CAP = 60  # sites without a sitemap: the homepage plus this many of its own links
 
 _DAY_RE = re.compile(r"^Day (\d+), (\d{4}-\d{2}-\d{2})(?: \((\w+)\))?", re.I)
 _LINK_RE = re.compile(r"(?m)^Link:\s*(\S+)\s*$")
@@ -45,9 +50,15 @@ def robots_allows(url: str, client: httpx.Client) -> bool:
 
 # ---------------------------------------------------------------- llms-full.txt
 def docs_from_llms_full(client: httpx.Client) -> list[Doc]:
+    """Optional: only sites that publish llms-full.txt (deependhq.com does). Anything else gives []."""
     r = client.get(f"{settings.site_base_url}/llms-full.txt")
-    r.raise_for_status()
-    return parse_llms_full(r.text)
+    if r.status_code != 200 or "text/html" in r.headers.get("content-type", ""):
+        return []
+    try:
+        return parse_llms_full(r.text)
+    except Exception as e:  # a file by that name that is not ours
+        log.warning("llms-full.txt skipped: %s", e)
+        return []
 
 
 def parse_llms_full(md: str) -> list[Doc]:
@@ -82,8 +93,13 @@ def _split_top(md: str) -> list[tuple[str, str]]:
 # ---------------------------------------------------------------- data.js
 def docs_from_data_js(client: httpx.Client) -> list[Doc]:
     r = client.get(f"{settings.site_base_url}/data.js")
-    r.raise_for_status()
-    return parse_data_js(r.text)
+    if r.status_code != 200 or "text/html" in r.headers.get("content-type", ""):
+        return []  # optional, like llms-full.txt
+    try:
+        return parse_data_js(r.text)
+    except Exception as e:
+        log.warning("data.js skipped: %s", e)
+        return []
 
 
 def parse_data_js(js: str) -> list[Doc]:
@@ -150,8 +166,31 @@ _NOISE_TAGS = ("script", "style", "nav", "footer", "noscript", "svg", "pre")
 
 def sitemap_urls(client: httpx.Client) -> list[str]:
     r = client.get(f"{settings.site_base_url}/sitemap.xml")
-    r.raise_for_status()
+    if r.status_code != 200:
+        return []  # no sitemap: fetch_all_docs falls back to the homepage and its links
     return re.findall(r"<loc>\s*(\S+?)\s*</loc>", r.text)
+
+
+def homepage_links(client: httpx.Client) -> list[str]:
+    """The homepage and the same-site pages it links to (capped), for sites without a sitemap."""
+    base = settings.site_base_url.rstrip("/")
+    try:
+        r = client.get(base + "/")
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        log.warning("homepage unreachable: %s", e)
+        return [base + "/"]
+    host = urlparse(base).netloc
+    found: list[str] = [str(r.url)]
+    for a in BeautifulSoup(r.text, "lxml").find_all("a", href=True):
+        u = urljoin(str(r.url), a["href"]).split("#", 1)[0]
+        p = urlparse(u)
+        if p.scheme in ("http", "https") and p.netloc == host and u not in found and not p.path.lower().endswith(
+                (".pdf", ".jpg", ".png", ".zip", ".mp4")):
+            found.append(u)
+        if len(found) > HOMEPAGE_LINK_CAP:
+            break
+    return found
 
 
 def docs_from_html(client: httpx.Client, urls: Iterable[str], skip: set[str]) -> list[Doc]:
@@ -199,5 +238,7 @@ def fetch_all_docs() -> list[Doc]:
         covered |= {f"{settings.site_base_url}/journey", f"{settings.site_base_url}/writing",
                     f"{settings.site_base_url}/field-notes"}
         extra = [u for u in sitemap_urls(client) if u.rstrip("/") not in covered and "/post/" not in u]
+        if not docs and not extra:  # an ordinary website: no agent files, no sitemap
+            extra = homepage_links(client)
         docs += docs_from_html(client, extra, skip=covered)
     return docs

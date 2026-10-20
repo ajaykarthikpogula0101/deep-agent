@@ -55,12 +55,14 @@ def dotenv_value(key: str) -> str:
     return ""
 
 
-def ensure_env_file() -> None:
+def ensure_env_file() -> bool:
+    """Create .env from .env.example when missing. Returns True when it was created now (a brand-new install)."""
     env = ROOT / ".env"
     if env.exists():
-        return
+        return False
     shutil.copy(ROOT / ".env.example", env)
     say("created .env from .env.example")
+    return True
 
 
 def ensure_widget_assets() -> None:
@@ -110,13 +112,17 @@ def pick_database():
     return server.get_uri(), server
 
 
-def first_run_ingest(skip: bool) -> None:
+def kb_pages() -> int:
     from app.db import conn, init_schema
-    from app.ingest.pipeline import run_ingest
 
     init_schema()
     with conn() as c:
-        pages = c.execute("SELECT count(*) FROM pages").fetchone()[0]
+        return c.execute("SELECT count(*) FROM pages").fetchone()[0]
+
+
+def first_run_ingest(skip: bool, pages: int) -> None:
+    from app.ingest.pipeline import run_ingest
+
     if pages:
         say(f"knowledge base present ({pages} pages); re-crawl runs on the RECRAWL_CRON schedule")
         return
@@ -130,7 +136,7 @@ def first_run_ingest(skip: bool) -> None:
     say(f"ingest done: {stats}")
 
 
-def open_when_ready(port: int) -> None:
+def open_when_ready(port: int, path: str = "/site") -> None:
     def _wait():
         for _ in range(120):
             time.sleep(0.5)
@@ -141,7 +147,7 @@ def open_when_ready(port: int) -> None:
                 continue
         else:
             return
-        webbrowser.open(f"http://localhost:{port}/site")
+        webbrowser.open(f"http://localhost:{port}{path}")
 
     threading.Thread(target=_wait, daemon=True).start()
 
@@ -154,7 +160,7 @@ def main() -> None:
     args = ap.parse_args()
 
     os.chdir(ROOT)
-    ensure_env_file()
+    created_env = ensure_env_file()
     ensure_widget_assets()
     ensure_port_free(args.port)
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
@@ -169,11 +175,23 @@ def main() -> None:
         say("no LLM_API_KEY: the assistant runs in quoted-text mode (sources shown verbatim, no "
             "generated answers) until you add one to .env")
 
-    first_run_ingest(args.skip_ingest)
+    from app.setup_page import mark_done, needs_setup
+
+    pages = kb_pages()
+    first_time = needs_setup() and (created_env or pages == 0)
+    if first_time:
+        # a brand-new install: the browser opens the setup page, which crawls the chosen site when saved
+        say(f"first run: choose the website and your details at http://localhost:{args.port}/setup")
+        landing = "/setup"
+    else:
+        if needs_setup():
+            mark_done()  # an install configured by hand (.env + an existing knowledge base) never sees /setup
+        first_run_ingest(args.skip_ingest, pages)
+        landing = "/site"
 
     if not args.no_browser:
-        open_when_ready(args.port)
-    say(f"starting on http://localhost:{args.port}  (embed preview: /site, Ctrl+C to stop)")
+        open_when_ready(args.port, landing)
+    say(f"starting on http://localhost:{args.port}  (opens {landing}; close this window or press Ctrl+C to stop)")
     import uvicorn
 
     try:

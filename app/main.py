@@ -66,6 +66,10 @@ app.add_middleware(
 )
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
+from app import setup_page  # noqa: E402  (first-run /setup; local-only, gone once data/setup_done exists)
+
+app.include_router(setup_page.router)
+
 _scheduler = BackgroundScheduler()
 _track_limiter = RateLimiter(per_minute=60, per_day=3000)  # beacons and visitor-scoped reads (history, bookings, availability); separate from the chat budget
 _booking_limiter = RateLimiter(per_minute=4, per_day=12)     # confirm attempts per session (plus the per-email active cap)

@@ -210,6 +210,108 @@ def test_widget_assets_are_prebuilt_and_present():
     launch.ensure_widget_assets()  # no Bun/Node needed: the committed static files are the runtime
 
 
+# ---------------------------------------------------------------- crawler: ordinary websites
+
+def test_crawl_falls_back_to_homepage_links_on_a_site_without_agent_files(monkeypatch):
+    import respx
+
+    from app.ingest import sources
+
+    monkeypatch.setattr(settings, "site_base_url", "https://www.example-shop.test")
+    home = ('<html><title>Example Shop</title><body><main><h1>Example Shop</h1><p>' + "We sell widgets. " * 30
+            + '</p><a href="/about">About</a> <a href="https://www.example-shop.test/pricing#top">Pricing</a> '
+            '<a href="https://other.test/x">Other</a> <a href="/brochure.pdf">PDF</a></main></body></html>')
+    page = '<html><title>About</title><body><main><p>' + "Founded in 1998 by two engineers. " * 20 + '</p></main></body></html>'
+    with respx.mock(base_url="https://www.example-shop.test", assert_all_called=False) as m:
+        m.get("/llms-full.txt").respond(404)
+        m.get("/data.js").respond(404)
+        m.get("/sitemap.xml").respond(404)
+        m.get("/robots.txt").respond(404)
+        m.get("/").respond(200, text=home)
+        m.get("/about").respond(200, text=page)
+        m.get("/pricing").respond(200, text=page)
+        docs = sources.fetch_all_docs()
+
+    urls = [d.url for d in docs]
+    assert urls == ["https://www.example-shop.test/", "https://www.example-shop.test/about",
+                    "https://www.example-shop.test/pricing"]
+    assert all(d.source == "html" for d in docs)
+
+
+def test_crawl_ignores_html_served_in_place_of_agent_files(monkeypatch):
+    import respx
+
+    from app.ingest import sources
+
+    monkeypatch.setattr(settings, "site_base_url", "https://spa.test")
+    with respx.mock(base_url="https://spa.test", assert_all_called=False) as m:
+        m.get("/llms-full.txt").respond(200, text="<html>not ours</html>", headers={"content-type": "text/html"})
+        m.get("/data.js").respond(200, text="<html>not ours</html>", headers={"content-type": "text/html"})
+        with sources._client() as c:
+            assert sources.docs_from_llms_full(c) == [] and sources.docs_from_data_js(c) == []
+
+
+# ---------------------------------------------------------------- first-run setup page
+
+@pytest.fixture
+def setup_env(tmp_path, monkeypatch):
+    from app import setup_page
+
+    monkeypatch.setattr(setup_page, "MARKER", tmp_path / "data" / "setup_done")
+    monkeypatch.setattr(setup_page, "ENV_FILE", tmp_path / ".env")
+    (tmp_path / ".env").write_text("# keep me\nLLM_API_KEY=sk-or-v1-...\nSITE_BASE_URL=https://deependhq.com\n", encoding="utf-8")
+    started: list = []
+    monkeypatch.setattr(setup_page, "_start_ingest", lambda: started.append(True))
+    for k in ("site_base_url", "host_full_name", "host_name_short", "host_email", "zoom_booking_base",
+              "llm_api_key", "llm_base_url", "chat_model", "allowed_origins"):
+        monkeypatch.setattr(settings, k, getattr(settings, k))  # restored after the test
+    return tmp_path, started
+
+
+def _client(monkeypatch, local: bool):
+    """The app under TestClient; `local` stands in for the request coming from 127.0.0.1 or not."""
+    from fastapi.testclient import TestClient
+
+    from app import setup_page
+    from app.main import app
+
+    monkeypatch.setattr(setup_page, "_local", lambda request: local)
+    return TestClient(app)
+
+
+def test_setup_page_saves_env_applies_settings_and_starts_the_crawl(setup_env, monkeypatch):
+    from app import setup_page
+
+    tmp, started = setup_env
+    c = _client(monkeypatch, local=True)
+    assert "Set up Robin" in c.get("/setup").text
+
+    r = c.post("/setup", data={"site": "www.example-shop.test/", "host_full_name": "Asha Rao", "host_name_short": "Asha",
+                               "host_email": "asha@example-shop.test", "booking": "", "provider": "groq",
+                               "api_key": "gsk_test"}, follow_redirects=False)
+
+    assert r.status_code == 303 and r.headers["location"] == "/setup/progress"
+    env = (tmp / ".env").read_text(encoding="utf-8")
+    assert "# keep me" in env and "SITE_BASE_URL=https://www.example-shop.test\n" in env
+    assert "LLM_API_KEY=gsk_test\n" in env and "LLM_BASE_URL=https://api.groq.com/openai/v1\n" in env
+    assert "ALLOWED_ORIGINS=https://example-shop.test,https://www.example-shop.test,http://localhost:8080\n" in env
+    assert settings.site_base_url == "https://www.example-shop.test" and settings.host_email == "asha@example-shop.test"
+    assert settings.llm_api_key == "gsk_test" and settings.chat_model == "openai/gpt-oss-120b"
+    assert not setup_page.needs_setup() and started == [True]
+    assert c.get("/setup", follow_redirects=False).status_code == 303  # configured: the form is gone
+    assert c.get("/setup/status").json()["configured"] is True
+
+
+def test_setup_page_refuses_remote_clients_and_bad_addresses(setup_env, monkeypatch):
+    tmp, started = setup_env
+    assert _client(monkeypatch, local=False).get("/setup").status_code == 403
+    r = _client(monkeypatch, local=True).post("/setup", data={"site": "not a site", "host_full_name": "A",
+                                                             "host_name_short": "A", "host_email": "a@b.test"},
+                                              follow_redirects=False)
+    assert r.status_code == 303 and "error=" in r.headers["location"]
+    assert started == [] and "SITE_BASE_URL=https://deependhq.com" in (tmp / ".env").read_text(encoding="utf-8")
+
+
 # ---------------------------------------------------------------- embeddings: remote option, no local model
 
 def test_api_embeddings_use_the_remote_endpoint_and_check_the_size(monkeypatch):

@@ -101,7 +101,58 @@ Existing-deployment path: on the working clone, whose `.env` points at the Docke
 Test suite on the branch: **599 passed, 1 skipped** (587 before + the 12 new tests), run from the working
 clone against the Docker Postgres; `tests/test_live_zoom.py` excluded as usual.
 
+## Non-technical installs: the Windows bundle
+
+Deep's end users are not technical (no Python, no terminal, no `.env`). So the one action became a zip:
+
+```
+python scripts/build_bundle.py        # -> dist/Robin-win64.zip
+```
+
+The bundle holds an embeddable CPython 3.11, every runtime requirement pre-installed, the app, the prebuilt
+widget, `.env.example`, `Start Robin.bat` and a one-page `README.txt`. The user unzips it and double-clicks
+`Start Robin.bat`:
+
+1. `app.launch` starts the embedded database and the server
+2. the browser opens **`/setup`**: website, name, short name, email, booking link, AI provider + key
+   (or "no key yet" = quoted-text mode). Local-only; gone once `data/setup_done` exists
+3. saving writes `.env`, applies the values to the running process and crawls the site in the background
+   (`/setup/progress` shows it, then a button opens Robin)
+4. next time, `Start Robin.bat` opens Robin directly
+
+Crawler changes for ordinary websites: `llms-full.txt` and `data.js` are now optional (deependhq.com extras),
+a missing `sitemap.xml` falls back to the homepage and the same-site pages it links to (capped at 60), and HTML
+served in place of those files is ignored instead of crashing the first crawl.
+
+### Bundle acceptance (20 Oct 2026, evening)
+
+Build: `python scripts/build_bundle.py` → 198 s, **282 MB unzipped / 97 MB zip**, bundled interpreter imports
+the app with the repo off `sys.path`. Test as a user: unzip into `C:\Users\…\r1\user\` (a normal, long
+path), run exactly what `Start Robin.bat` runs, no browser:
+
+| Step | Result | Time |
+|---|---|---|
+| Unzip (PowerShell `Expand-Archive`, 10,847 files) | ok | 172 s |
+| First start | `.env` created, embedded Postgres ready (12.3 s), quoted-text mode announced, browser target `/setup` | 17 s to the setup page |
+| `/setup` | 200, six fields; saved with site = deependhq.com, no AI key → 303 to `/setup/progress` | |
+| First crawl | 150 pages, 223 passages, crawl 38.7 s; about 5 min overall because the 130 MB embedding model downloads first | |
+| After setup | `.env` holds the site, origins, host email, empty key; `/site` 200; `/setup` redirects away (configured) | |
+| "How do I get in touch?" | `degraded` + the configured contact route + hand-over offer, no blog citation | |
+| Restart | embedded DB reused (0.0 s), "knowledge base present (150 pages)", opens `/site` | 6 s |
+
+Evidence: `r1/bundle_evidence/run1.log`, `setup_form.html`, `chat1.sse`, `run2.log`.
+
 ### Not done / remaining manual steps
+
+- **Pre-bundle the embedding model** (130 MB) or default new installs to `EMBED_PROVIDER=api`: the first crawl
+  currently waits ~4 min on the model download, the slowest part of the user's first run.
+- The bundle is Windows x64 only; `pgserver` has macOS/Linux wheels, so the same script with a different
+  embeddable Python would cover them. Untested.
+- No code signing: Windows SmartScreen will warn on `Start Robin.bat` from a download. A signed `Robin.exe`
+  wrapper is the fix.
+- Updates: a user replaces the folder (keeping `data/` and `.env`); no in-app updater.
+- CORS origins from `/setup` apply on the next start (the setup page says so implicitly by opening `/site`,
+  which is same-origin); embedding the widget on the real site needs one restart.
 
 - `pgserver` is in the runtime requirements, so the Docker image grows by 41 MB; a split extra would avoid that.
 - `fastembed`/`onnxruntime` remain in the runtime install; making them an extra needs `EMBED_PROVIDER=api` to

@@ -13,3 +13,5 @@ email_preview/
 .playwright-mcp/
 data/geoip/
 data/pg/
+data/setup_done
+dist/
