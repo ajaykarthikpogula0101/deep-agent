@@ -54,6 +54,12 @@ _BOOKING_INTENT = re.compile(
 )
 MAX_HISTORY = 12
 MAX_TOOL_ROUNDS = 4
+# "How do I reach Deep?" in quoted-text mode gets the configured contact route (see _respond step 4b).
+_CONTACT_Q = re.compile(r"\b(get in touch|contact|reach (you|deep|him)|email (you|deep|him)|phone number|"
+                        r"how (do|can) i (reach|contact|talk to))\b", re.I)
+# Shown instead of an answer when no model key is configured (quoted-text mode, see _respond step 4b).
+DEGRADED_NOTE = ("Quoted from deependhq.com. No AI model key is configured on this install, so this is the matching "
+                 "page text, not a generated answer.")
 
 
 # a question about the booking a booking email opened this chat for: answered from its context, not refused for lack of
@@ -325,6 +331,30 @@ def _respond(
         yield sse({"type": "refusal", "reason": "low_confidence"})
         yield sse({"type": "token", "text": lang.refusal(li.code)})
         yield sse({"type": "handover_offer"})
+        yield sse({"type": "done"})
+        return
+
+    # 4b. no model key: quoted-text mode. The matching page text is shown verbatim and labelled as such;
+    #     nothing is generated, so an unconfigured install never passes off a canned reply as intelligence.
+    if not settings.chat_api_key and not booking:
+        if _CONTACT_Q.search(query):  # how to reach Deep: the configured route, never a loosely related page
+            log_event("degraded", session_id, {"reason": "no_api_key", "message": message[:300], "contact": True})
+            yield sse({"type": "degraded", "reason": "no_api_key"})
+            yield sse({"type": "token", "text": f"You can book a call with Deep at {settings.zoom_booking_base} or email "
+                                                f"{settings.host_email}. (No AI model key is configured on this install, so "
+                                                "this is the configured contact route, not a generated answer.)"})
+            yield sse({"type": "handover_offer"})
+            yield sse({"type": "done"})
+            return
+        shown = prompts.numbered_sources(hits)[:3] if usable else []
+        log_event("degraded", session_id, {"reason": "no_api_key", "message": message[:300], "sources": len(shown)})
+        yield sse({"type": "degraded", "reason": "no_api_key"})
+        if shown:
+            yield sse({"type": "sources", "items": [{"n": n, "url": h.url, "title": h.title} for n, h in shown]})
+            body = "\n\n".join(f"[{n}] {h.title}: {h.text.strip()[:400]}" for n, h in shown)
+            yield sse({"type": "token", "text": DEGRADED_NOTE + "\n\n" + body})
+        else:
+            yield sse({"type": "token", "text": DEGRADED_NOTE + "\n\n" + lang.refusal(li.code)})
         yield sse({"type": "done"})
         return
 

@@ -13,8 +13,14 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")  # legacy fallback for LLM_API_KEY
     llm_base_url: str = Field(default="", alias="LLM_BASE_URL")  # empty = api.openai.com
     chat_model: str = Field(default="openai/gpt-oss-120b", alias="CHAT_MODEL")
-    # Embeddings: local Hugging Face model via fastembed (free, no key)
+    # Embeddings: "local" = Hugging Face model via fastembed (free, no key, ~130 MB download, CPU);
+    # "api" = an OpenAI-compatible /embeddings endpoint (remote, server-side; EMBED_API_KEY/EMBED_BASE_URL default
+    # to the LLM ones). Changing provider or model changes the vector size: re-run the ingest afterwards.
+    embed_provider: str = Field(default="local", alias="EMBED_PROVIDER")
     embed_model: str = Field(default="BAAI/bge-small-en-v1.5", alias="EMBED_MODEL")
+    embed_api_key: str = Field(default="", alias="EMBED_API_KEY")
+    embed_base_url: str = Field(default="", alias="EMBED_BASE_URL")
+    embed_dim: int = Field(default=0, alias="EMBED_DIM")  # 0 = look the model up; set it for an unknown API model
 
     # DB
     database_url: str = Field(default="postgresql://assistant:assistant@127.0.0.1:5432/assistant", alias="DATABASE_URL")

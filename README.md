@@ -71,16 +71,23 @@ OpenAI-compatible endpoint: Groq's free tier, OpenRouter or OpenAI.
 
 ## Quick start
 
-**Needs:** Python 3.11, Docker (for Postgres), and an API key for a chat model (e.g. a free Groq key).
+**Needs:** Python 3.11+. Nothing else: no Docker, no Postgres install. An API key for a chat model
+(e.g. a free Groq key) turns on generated answers; without one the assistant runs in quoted-text mode.
 
 ```bash
-cp .env.example .env                 # fill LLM_API_KEY; outside Docker use DATABASE_URL=...@127.0.0.1:5432/...
-docker compose up -d db              # Postgres 16 + pgvector
-python -m venv .venv
-.venv/Scripts/pip install -r requirements.txt        # macOS/Linux: .venv/bin/pip
-python -m app.ingest.pipeline        # crawl + embed deependhq.com (~1 min; first run downloads the 130 MB model)
-uvicorn app.main:app --port 8080 --reload
+python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # macOS/Linux: .venv/bin/pip
+.venv/Scripts/python -m app.launch                                       # Windows: double-click run.cmd instead
 ```
+
+`app.launch` creates `.env` from `.env.example` if missing, starts an **embedded Postgres + pgvector**
+(`pgserver`, data in `./data/pg`), creates the schema, crawls and embeds deependhq.com on the first run only
+(~1 min; the local embedding model downloads once, ~130 MB), starts the server and opens the embed preview.
+Run it again and the site data and chat history are still there. A busy port, a missing widget file or an
+unreachable `DATABASE_URL` stop it with the fix spelled out.
+
+Already have Postgres? Set `DATABASE_URL` in `.env` and the launcher uses it instead; the embedded database is
+only for the case where nothing is configured. The embedded database is a real Postgres 16 process, one per
+install: fine for a single server, not for several app instances sharing data (point them at one `DATABASE_URL`).
 
 Then open:
 
@@ -95,23 +102,44 @@ Then open:
 <details>
 <summary><b>Windows: one double-click</b></summary>
 
-`run.cmd` starts Docker Desktop if needed, waits for Postgres to be healthy and starts the assistant on port 8080.
-It uses the interpreter in `RUN_PYTHON` from `.env`, else `.venv` in the project, else `python` on the PATH, passes
-`FASTEMBED_CACHE_PATH` from `.env` to the embedding model and sets `OPENBLAS_NUM_THREADS=1` itself.
+`run.cmd` creates `.venv` and installs the runtime requirements if they are missing, then runs `python -m app.launch`
+(embedded database unless `DATABASE_URL` points at a reachable server). It uses the interpreter in `RUN_PYTHON`
+from `.env`, else `.venv` in the project, passes `FASTEMBED_CACHE_PATH` from `.env` to the embedding model and sets
+`OPENBLAS_NUM_THREADS=1` itself. `run.cmd -Docker` keeps the previous path: Docker Desktop → `docker compose up db`
+→ uvicorn.
 
-Tips: use `127.0.0.1` rather than `localhost` in `DATABASE_URL` (Docker Desktop's IPv6 relay stalls), and set
-`OPENBLAS_NUM_THREADS=1` if numpy runs out of memory on a busy machine.
+Tips: use `127.0.0.1` rather than `localhost` in `DATABASE_URL` (Docker Desktop's IPv6 relay stalls). On Windows
+keep the project in a short path (`C:\deep-agent`): the local embedding stack installs files whose names exceed
+Windows' 260-character limit under a long folder name, or enable long paths in Windows.
 </details>
 
 <details>
-<summary><b>Everything in Docker</b></summary>
+<summary><b>Docker / an existing Postgres</b></summary>
 
 ```bash
-docker compose up --build -d
+docker compose up --build -d          # Postgres 16 + pgvector, the app and the ingest job
 docker compose run --rm ingest
 ```
 
-The MaxMind GeoLite2 files live in the `geoip` volume, so they survive rebuilds.
+or, with your own Postgres, set `DATABASE_URL` in `.env` and run `python -m app.ingest.pipeline` then
+`uvicorn app.main:app --port 8080`. The MaxMind GeoLite2 files live in the `geoip` volume, so they survive rebuilds.
+</details>
+
+<details>
+<summary><b>Models stay behind APIs</b></summary>
+
+Chat always goes to the OpenAI-compatible endpoint in `LLM_BASE_URL` with `LLM_API_KEY`; the key lives on the
+server and never reaches the widget. Without a key the assistant answers in **quoted-text mode**: the matching
+page text with its sources, labelled as such, and no generated sentences. A provider timeout or rejected key
+gives a labelled "having trouble answering" reply with the booking link and email, never a dead stream.
+
+Embeddings are local by default (fastembed, no key). Set `EMBED_PROVIDER=api` with an `/embeddings`-capable
+`EMBED_BASE_URL` and `EMBED_API_KEY` (defaults: the LLM ones) to keep them remote too; set `EMBED_DIM` for a model
+the app doesn't know, and re-run the ingest after switching. OpenRouter has no embeddings endpoint.
+
+Booking: with Zoom API credentials the meeting is created for real; otherwise the visitor gets a prefilled
+Zoom hand-off link and the chat says so (`pending_zoom`). The widget never reports a meeting as booked unless a
+provider confirmed it.
 </details>
 
 ## Features in detail
@@ -756,6 +784,7 @@ with a MaxMind key, downloads the GeoLite2 files in the background if they are m
 ## Tests
 
 ```bash
+pip install -r requirements-dev.txt           # pytest, pytest-asyncio, respx (not part of the runtime install)
 pytest                                        # 587 passed, 2 skipped; no network (the database tests skip without Postgres)
 python -m app.tracking 49.207.200.10 'Acme' a@acme.com   # one IP through GEOIP_PROVIDER and the network rules, no database
 python -m app.geoip_update                    # download or refresh the GeoLite2 files (needs MAXMIND_LICENSE_KEY)
