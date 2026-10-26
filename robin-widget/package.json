@@ -1,0 +1,22 @@
+{
+  "name": "robin-widget",
+  "version": "1.0.0",
+  "description": "Robin chat widget: a zero-dependency, Shadow-DOM isolated chat messenger that works from a script tag or in any framework.",
+  "private": true,
+  "main": "robin-widget.js",
+  "types": "robin-widget.d.ts",
+  "exports": {
+    ".": {
+      "types": "./robin-widget.d.ts",
+      "default": "./robin-widget.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "robin-widget.js",
+    "robin-widget.d.ts",
+    "README.md",
+    "DESIGN.md"
+  ],
+  "keywords": ["chat", "widget", "messenger", "web-component", "shadow-dom"]
+}

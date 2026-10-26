@@ -1,0 +1,23 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Champ Robin</title>
+</head>
+<body>
+  <!--
+    Champ Robin on a page: load the script once, then Robin.init() with your deep-agent server.
+    The page's origin must be in that server's ALLOWED_ORIGINS. Everything the chat shows (answers, quick starts,
+    booking, the privacy link, pop-ups) comes from the server; see README.md for every option.
+  -->
+  <script src="robin-widget.js"></script>
+  <script>
+    Robin.init({
+      appName: 'Champ Robin',
+      deepAgent: 'https://assistant.deependhq.com',   // the deep-agent server (its PUBLIC_BASE_URL)
+      primaryColor: '#F4A62A'                         // deependhq.com marigold
+    });
+  </script>
+</body>
+</html>
