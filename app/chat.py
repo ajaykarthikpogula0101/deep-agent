@@ -170,6 +170,7 @@ def respond(
     logged = message + ("".join(f"\n[attached: {a['name']}]({a['url']})" for a in attachments) if attachments else "")
     inbox.log_message(session_id, "user", logged, reason=user_reason)
     text, outcome, reason, sources, finished = "", "answered", None, [], False
+    used_model = settings.chat_model
     card = None
     try:
         for chunk in _respond(message, history, visitor_tz, session_id, service, client, visitor, extra_context, memory, memory_data,
@@ -186,6 +187,9 @@ def respond(
                 outcome, reason = ("injection" if ev.get("reason") == "injection" else "refused"), ev.get("reason")
             elif t == "sources":
                 sources = ev.get("items", [])
+            elif t == "model":   # the backup model answered: recorded on the stored turn, not sent to the page
+                used_model = ev.get("name") or used_model
+                continue
             elif t == "custom":
                 outcome = "custom"
             elif t == "handover":
@@ -200,7 +204,7 @@ def respond(
                 finished = True
                 mid = inbox.log_message(session_id, "assistant", text or "(no text)", question=message, outcome=outcome,
                                         reason=reason, sources=sources[:6], latency_ms=int((time.monotonic() - t0) * 1000),
-                                        model=settings.chat_model)
+                                        model=used_model)
                 if mid:
                     yield sse({"type": "meta", "message_id": mid, "outcome": outcome})
                 if card is not None:
@@ -219,7 +223,7 @@ def respond(
         if not finished:  # the visitor pressed stop or the connection dropped mid-stream
             inbox.log_message(session_id, "assistant", text or "(stopped before any text)", question=message,
                               outcome="stopped", sources=sources[:6], latency_ms=int((time.monotonic() - t0) * 1000),
-                              model=settings.chat_model)
+                              model=used_model)
 
 
 def _respond(
@@ -256,7 +260,7 @@ def _respond(
     #     the visitor's own words still go to the model, which answers in their language (rule 11 + li.note)
     if settings.multilingual and lang.conversation_language(message, history):
         yield status("translating", "Translating…")
-    client = client or OpenAI(api_key=settings.chat_api_key, base_url=settings.llm_base_url or None,
+    client = client or OpenAI(api_key=settings.chat_api_key, base_url=settings.llm_base_url or None, timeout=settings.chat_timeout,
                               # OpenRouter attribution headers; harmless for other providers
                               default_headers={"HTTP-Referer": settings.site_base_url, "X-Title": "deependhq assistant"})
     li = lang.prepare(message, history, client)
@@ -420,24 +424,48 @@ def _respond(
         yield sse({"type": "schedules", "items": choices})
     state["known_email"] = visitor.get("email") if visitor.get("signed_in") and visitor.get("verified") else None
     yield status("writing", "Writing…")
-    try:
-        answer = ""
-        for chunk in _agent_loop(client, service, messages, tools, visitor_tz, session_id, state):
-            if weak_only and chunk.startswith('data: {"type": "token"'):
-                answer += json.loads(chunk[6:]).get("text", "")
-            yield chunk
-        if weak_only and not _CITED.search(answer):  # the model found nothing in the loose sources: a refusal for the inbox and gaps
-            log_event("refusal", session_id, {"reason": "low_confidence", "message": message[:300],
-                                              "best_score": hits[0].score if hits else None, "answered_by": "model"})
-            yield sse({"type": "refusal", "reason": "low_confidence"})
-            yield sse({"type": "handover_offer"})
-    except Exception as e:  # provider outage, bad model name, rate limit: never a dead stream
-        log.error("model call failed: %s", e)
-        log_event("error", session_id, {"where": "llm", "error": str(e)[:300]})
+    # The main model, then the backup (CHAT_FALLBACK_MODEL) when the main one fails before the visitor saw anything and
+    # before any tool ran: a dead key, an outage or a timeout then costs a few seconds, not the answer.
+    attempts = [(client, settings.chat_model)]
+    if settings.chat_fallback_model:
+        attempts.append((None, settings.chat_fallback_model))
+    answer, failed = "", None
+    for n, (cl, model) in enumerate(attempts):
+        state["model"], shown, failed = model, False, None
+        try:
+            cl = cl or _fallback_client()
+            if n:
+                log_event("model_fallback", session_id, {"model": model, "after": attempts[0][1]})
+                yield sse({"type": "model", "name": model})   # respond() records it; not sent to the page
+            for chunk in _agent_loop(cl, service, messages, tools, visitor_tz, session_id, state):
+                if not chunk.startswith('data: {"type": "status"'):
+                    shown = True
+                if weak_only and chunk.startswith('data: {"type": "token"'):
+                    answer += json.loads(chunk[6:]).get("text", "")
+                yield chunk
+            break
+        except Exception as e:  # provider outage, bad model name, rate limit, timeout: never a dead stream
+            failed = e
+            log.error("model call failed (%s): %s", model, e)
+            log_event("error", session_id, {"where": "llm", "model": model, "error": str(e)[:300]})
+            if shown or state["tools_called"]:
+                break
+    if failed is not None:
         yield sse({"type": "error", "error": "model_unavailable"})
         yield sse({"type": "token", "text": "I'm having trouble answering right now. You can book a call at "
                                             f"{settings.zoom_booking_base} or email {settings.host_email}."})
+    elif weak_only and not _CITED.search(answer):  # the model found nothing in the loose sources: a refusal for the inbox and gaps
+        log_event("refusal", session_id, {"reason": "low_confidence", "message": message[:300],
+                                          "best_score": hits[0].score if hits else None, "answered_by": "model"})
+        yield sse({"type": "refusal", "reason": "low_confidence"})
+        yield sse({"type": "handover_offer"})
     yield sse({"type": "done"})
+
+
+def _fallback_client() -> OpenAI:
+    return OpenAI(api_key=settings.chat_fallback_api_key or settings.chat_api_key,
+                  base_url=settings.chat_fallback_base_url or settings.llm_base_url or None, timeout=settings.chat_timeout,
+                  default_headers={"HTTP-Referer": settings.site_base_url, "X-Title": "deependhq assistant"})
 
 
 def _agent_loop(client: OpenAI, service: BookingService, messages: list[dict], tools, visitor_tz: str,
@@ -447,7 +475,7 @@ def _agent_loop(client: OpenAI, service: BookingService, messages: list[dict], t
     closed = False
     try:
         for _round in range(MAX_TOOL_ROUNDS):
-            stream = _create_stream(client, messages, tools, max_tokens=state.get("max_tokens", 500))
+            stream = _create_stream(client, messages, tools, max_tokens=state.get("max_tokens", 500), model=state.get("model"))
             text, tool_calls, usage = "", {}, None
             for chunk in stream:
                 if chunk.usage:
@@ -468,7 +496,7 @@ def _agent_loop(client: OpenAI, service: BookingService, messages: list[dict], t
                     if tc.function and tc.function.arguments:
                         slot["args"] += tc.function.arguments
             if usage:
-                record_spend(settings.chat_model, usage.prompt_tokens, usage.completion_tokens)
+                record_spend(state.get("model") or settings.chat_model, usage.prompt_tokens, usage.completion_tokens)
             if not tool_calls:
                 break
             state["tools_called"] = True
@@ -567,9 +595,11 @@ def _smalltalk_text(kind: str, message: str, history: list[dict], li, client: Op
     return understand.smalltalk_reply(kind, history)
 
 
-def _create_stream(client: OpenAI, messages: list[dict], tools, max_tokens: int = 500):
-    """Streamed completion with usage reporting; providers that reject stream_options get a plain stream."""
-    kwargs = dict(model=settings.chat_model, messages=messages, stream=True, temperature=0.2, max_tokens=max_tokens)
+def _create_stream(client: OpenAI, messages: list[dict], tools, max_tokens: int = 500, model: str | None = None):
+    """Streamed completion with usage reporting; providers that reject stream_options get a plain stream.
+    CHAT_TIMEOUT bounds the wait for the first token and every gap after it."""
+    kwargs = dict(model=model or settings.chat_model, messages=messages, stream=True, temperature=0.2, max_tokens=max_tokens,
+                  timeout=settings.chat_timeout)
     if tools:
         kwargs["tools"] = tools
     try:

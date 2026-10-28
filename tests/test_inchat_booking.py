@@ -260,8 +260,10 @@ def test_booking_emails_render_for_both_sides_and_queue_with_the_invite():
     assert sorted(kinds) == ["attendee_booked", "booking_host", "booking_visitor"] and all(r["ok"] for r in m.results)  # the sample has one guest
 
 
-def test_mailer_retries_with_backoff_then_gives_up():
-    attempts, naps = [], []
+def test_mailer_retries_with_backoff_then_gives_up(monkeypatch):
+    attempts, naps, logged = [], [], []
+    # a give-up is logged as an event; never into the real events table, where the health check would alert on it
+    monkeypatch.setattr("app.db.log_event", lambda kind, sid, detail: logged.append((kind, detail["to"])))
 
     def flaky(to, subject, body, **kw):
         attempts.append(to)
@@ -276,6 +278,7 @@ def test_mailer_retries_with_backoff_then_gives_up():
     m3 = mailer_mod.Mailer(sender=lambda *a, **k: (_ for _ in ()).throw(OSError("smtp down")), sleep=lambda s: None, sync=True)
     m3.enqueue("x@y.z", "s", "b")
     assert m3.results[0]["error"] == "smtp down"
+    assert logged == [("mail_failed", "x@y.z"), ("mail_failed", "x@y.z")]
 
 
 def test_send_builds_html_alternative_and_calendar_attachment(monkeypatch):

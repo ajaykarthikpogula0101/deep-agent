@@ -11,7 +11,7 @@ gives Deep a brief on every lead before the call.
 ![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-587%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-616%20passing-2EA44F)
 
 [Features](#features) · [Features in detail](#features-in-detail) · [Quick start](#quick-start) ·
 [Configuration](#configuration) · [Visitor tracking and IP lookup](#visitor-tracking-and-ip-lookup) ·
@@ -543,6 +543,15 @@ in the wrong alphabet is read again (`STT_HINT_RECHECK`). Answers are spoken bac
   `NUDGE_AFTER_HOURS`.
 * **Day-before reminder** (`REMINDER_ENABLED`): one email before every upcoming booking.
 * **Smart suggestions**: the questions visitors really ask most become the quick replies (`SUGGESTIONS_DAYS`).
+* **Health checks and alerts** (`HEALTH_CRON`, every 10 minutes, `app/health.py`): the model key is accepted and has
+  credit left (`CREDIT_ALERT_USD`), the backup model's key works, answers are not failing at the model, the database is
+  reachable, no email gave up, the booking robot is not falling back to the hand-off link. A check that turns warn or
+  fail emails `ALERT_EMAIL` (default `HOST_EMAIL`), again every 6 hours while it stays broken, and once when it
+  recovers. `GET /admin/health` shows the report (`?run=true` checks now); `/healthz` carries the overall status.
+* **Backup model** (`CHAT_FALLBACK_MODEL`, `_API_KEY`, `_BASE_URL`): when the main model fails before the visitor saw
+  any text (dead key, outage, `CHAT_TIMEOUT` of 30 s), the same answer is written by the backup, ideally on another
+  provider (Groq's `openai/gpt-oss-120b` with the speech-to-text key works). The visitor never sees the switch; the
+  inbox records which model answered.
 
 Details: [AUTOMATIONS](docs/AUTOMATIONS.md).
 
@@ -785,7 +794,7 @@ with a MaxMind key, downloads the GeoLite2 files in the background if they are m
 
 ```bash
 pip install -r requirements-dev.txt           # pytest, pytest-asyncio, respx (not part of the runtime install)
-pytest                                        # 587 passed, 2 skipped; no network (the database tests skip without Postgres)
+pytest                                        # 616 passed, 2 skipped; no network (the database tests skip without Postgres)
 python -m app.tracking 49.207.200.10 'Acme' a@acme.com   # one IP through GEOIP_PROVIDER and the network rules, no database
 python -m app.geoip_update                    # download or refresh the GeoLite2 files (needs MAXMIND_LICENSE_KEY)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)

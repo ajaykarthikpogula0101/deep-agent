@@ -302,7 +302,7 @@ class FakeStream:
     def __init__(self, reply: str = REPLY, raise_after: str | None = None):
         self.reply, self.raise_after, self.calls = reply, raise_after, []
 
-    def __call__(self, client, messages, tools, max_tokens=500):
+    def __call__(self, client, messages, tools, max_tokens=500, model=None):
         self.calls.append({"messages": messages, "tools": tools, "max_tokens": max_tokens})
         return self._iter()
 

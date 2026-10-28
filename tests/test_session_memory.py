@@ -187,7 +187,7 @@ class FakeStream:
     def __init__(self, rounds):
         self.rounds, self.calls = list(rounds), []
 
-    def __call__(self, client, messages, tools, max_tokens=500):
+    def __call__(self, client, messages, tools, max_tokens=500, model=None):
         self.calls.append([dict(m) for m in messages])
         return iter(self.rounds.pop(0) if self.rounds else [_piece("Done.")])
 

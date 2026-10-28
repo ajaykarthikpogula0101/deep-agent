@@ -34,6 +34,16 @@ def _no_browser_booking(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_live_health_or_backup_model(monkeypatch):
+    """The health job calls the model provider and emails alerts; a backup model from .env would change which model a
+    chat test sees. Tests that need either set them themselves (tests/test_health.py does)."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "health_checks", False)
+    monkeypatch.setattr(settings, "chat_fallback_model", "")
+
+
+@pytest.fixture(autouse=True)
 def _no_rich_digest(monkeypatch):
     """The rich digest calls the model and Node. Unit tests keep the plain text path unless they patch these
     themselves (tests/test_digest_rich.py does)."""

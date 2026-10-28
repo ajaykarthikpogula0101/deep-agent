@@ -13,6 +13,18 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")  # legacy fallback for LLM_API_KEY
     llm_base_url: str = Field(default="", alias="LLM_BASE_URL")  # empty = api.openai.com
     chat_model: str = Field(default="openai/gpt-oss-120b", alias="CHAT_MODEL")
+    # an answer never waits longer than this for the model (seconds; also the longest gap between streamed tokens)
+    chat_timeout: float = Field(default=30, alias="CHAT_TIMEOUT")
+    # backup model when the main one fails before answering (dead key, outage, timeout); empty = none. The key and base
+    # URL default to the main ones, so another provider (e.g. Groq) needs CHAT_FALLBACK_API_KEY and _BASE_URL too
+    chat_fallback_model: str = Field(default="", alias="CHAT_FALLBACK_MODEL")
+    chat_fallback_api_key: str = Field(default="", alias="CHAT_FALLBACK_API_KEY")
+    chat_fallback_base_url: str = Field(default="", alias="CHAT_FALLBACK_BASE_URL")
+    # health checks (app/health.py): every HEALTH_CRON, alerts to ALERT_EMAIL (empty = HOST_EMAIL)
+    health_checks: bool = Field(default=True, alias="HEALTH_CHECKS")
+    health_cron: str = Field(default="*/10 * * * *", alias="HEALTH_CRON")
+    alert_email: str = Field(default="", alias="ALERT_EMAIL")
+    credit_alert_usd: float = Field(default=2.0, alias="CREDIT_ALERT_USD")   # warn when the model key has less left than this
     # Embeddings: "local" = Hugging Face model via fastembed (free, no key, ~130 MB download, CPU);
     # "api" = an OpenAI-compatible /embeddings endpoint (remote, server-side; EMBED_API_KEY/EMBED_BASE_URL default
     # to the LLM ones). Changing provider or model changes the vector size: re-run the ingest afterwards.

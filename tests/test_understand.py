@@ -27,7 +27,7 @@ class FakeStream:
     def __init__(self, reply: str):
         self.reply, self.calls = reply, []
 
-    def __call__(self, client, messages, tools, max_tokens=500):
+    def __call__(self, client, messages, tools, max_tokens=500, model=None):
         self.calls.append({"messages": messages, "tools": tools})
         return iter([_piece(self.reply[i:i + 7]) for i in range(0, len(self.reply), 7)])
 

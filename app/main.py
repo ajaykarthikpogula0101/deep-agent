@@ -6,6 +6,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
@@ -25,7 +26,7 @@ from urllib.parse import quote as quote_param
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import conversations, digest, email_ask, gaps, geoip_update, guidance, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking, visitors
+from app import conversations, digest, email_ask, gaps, geoip_update, guidance, health, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking, visitors
 from app.booking import availability as avail
 from app.booking import browser_booking
 from app.booking import email_html, flow, ics, zoom_mail
@@ -113,6 +114,9 @@ def _startup() -> None:
     if "mmdb" in chain and tracking.mmdb_problem():
         log.warning("GEOIP_PROVIDER includes mmdb but %s; it is skipped%s", tracking.mmdb_problem(),
                     " until the download finishes" if geoip_update.configured() else " (set MAXMIND_LICENSE_KEY to download them)")
+    if settings.health_checks:  # every 10 min: model key, credit, failed answers, database, email, booking robot (app/health.py)
+        _scheduler.add_job(health.run, CronTrigger.from_crontab(settings.health_cron, timezone=settings.host_timezone),
+                           id="health", replace_existing=True, misfire_grace_time=600, next_run_time=datetime.now(timezone.utc))
     if settings.browser_booking_enabled and zoom_mail.enabled():  # every 10 min: join links Zoom emailed late (app/booking/zoom_mail.py)
         _scheduler.add_job(zoom_mail.backfill, CronTrigger.from_crontab("*/10 * * * *", timezone=settings.host_timezone),
                            id="zoom_link_backfill", replace_existing=True, misfire_grace_time=600)
@@ -974,7 +978,16 @@ def booking_cancel(booking_id: int, t: str = ""):
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True, "version": APP_VERSION, "spend_today_usd": round(spend_today(), 4), "origins": settings.origins}
+    report = health.last()
+    return {"ok": True, "version": APP_VERSION, "spend_today_usd": round(spend_today(), 4), "origins": settings.origins,
+            "status": report.get("level", "unknown"), "checked_at": report.get("at")}
+
+
+@app.get("/admin/health")
+def admin_health(run: bool = False, x_admin_token: str | None = Header(default=None)):
+    """The latest health report (app/health.py); run=true checks everything now (without sending alerts)."""
+    _require_admin(x_admin_token)
+    return health.run_checks() if run or not health.last() else health.last()
 
 
 @app.post("/admin/recrawl")

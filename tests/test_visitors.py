@@ -455,7 +455,7 @@ class FakeStream:
     def __init__(self):
         self.calls = []
 
-    def __call__(self, client, messages, tools, max_tokens=500):
+    def __call__(self, client, messages, tools, max_tokens=500, model=None):
         self.calls.append([dict(m) for m in messages])
         return iter([_piece("Done.")])
 
