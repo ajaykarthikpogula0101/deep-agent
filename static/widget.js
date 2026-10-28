@@ -36,6 +36,12 @@
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     setTimeout(function () { mount(true).then(function (el) { if (el.claimEmailLink) el.claimEmailLink(ASK.t, ASK.q); }).catch(function () {}); }, 0);
   }
+  // a team reply email (app/team.py): #dh-chat=<conversation id> opens that conversation in the chat
+  var CHAT = /^#dh-chat=([A-Za-z0-9-]{8,80})$/.exec(location.hash || '');
+  if (CHAT && !ASK) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    setTimeout(function () { mount(true).then(function (el) { if (el.openConversation) el.openConversation(CHAT[1]); }).catch(function () {}); }, 0);
+  }
   function parseAskHash(hash) {
     var m = /^#ask-deep=([A-Za-z0-9_.-]{10,160})(?:&q=([a-z_]{1,24}))?$/.exec(hash || '');
     return m ? { t: m[1], q: m[2] || null } : null;

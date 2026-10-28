@@ -34,7 +34,7 @@ from zoneinfo import ZoneInfo
 
 from openai import OpenAI
 
-from app import inbox, lang, session_memory, titles, ui_cards
+from app import inbox, lang, session_memory, team, titles, ui_cards
 from app.booking.service import BookingService
 from app.booking.tools import TOOLS, run_tool, schedules_prompt
 from app.config import settings
@@ -169,6 +169,7 @@ def respond(
     t0 = time.monotonic()
     logged = message + ("".join(f"\n[attached: {a['name']}]({a['url']})" for a in attachments) if attachments else "")
     inbox.log_message(session_id, "user", logged, reason=user_reason)
+    team.visitor_wrote(session_id, logged)   # a conversation with the team: tell the host (throttled); never raises
     text, outcome, reason, sources, finished = "", "answered", None, [], False
     used_model = settings.chat_model
     card = None
@@ -440,7 +441,7 @@ def _respond(
             for chunk in _agent_loop(cl, service, messages, tools, visitor_tz, session_id, state):
                 if not chunk.startswith('data: {"type": "status"'):
                     shown = True
-                if weak_only and chunk.startswith('data: {"type": "token"'):
+                if chunk.startswith('data: {"type": "token"'):
                     answer += json.loads(chunk[6:]).get("text", "")
                 yield chunk
             break
@@ -458,6 +459,14 @@ def _respond(
         log_event("refusal", session_id, {"reason": "low_confidence", "message": message[:300],
                                           "best_score": hits[0].score if hits else None, "answered_by": "model"})
         yield sse({"type": "refusal", "reason": "low_confidence"})
+        yield sse({"type": "handover_offer"})
+    elif (not booking and not extra_context and not about_booking and not state["tools_called"]
+          and not _CITED.search(answer) and _DECLINED.search(answer)):
+        # good sources, yet the answer says the site does not have it ("who is the CEO of Ampliz?"): an unanswered
+        # question for the gap list, with the same "ask the team / book" offer as any other refusal
+        log_event("refusal", session_id, {"reason": "not_in_sources", "message": message[:300],
+                                          "best_score": hits[0].score if hits else None, "answered_by": "model"})
+        yield sse({"type": "refusal", "reason": "not_in_sources"})
         yield sse({"type": "handover_offer"})
     yield sse({"type": "done"})
 
@@ -534,6 +543,12 @@ def _agent_loop(client: OpenAI, service: BookingService, messages: list[dict], t
 
 
 _CITED = re.compile(r"\[\d{1,2}(\s*,\s*\d{1,2})*\]")
+# an uncited answer that says the site does not have it (any language falls back to the citation rule alone)
+_DECLINED = re.compile(
+    r"\b(couldn'?t|could not|can'?t|cannot|unable to) find\b|\bdo(n'?t| not) (have|see|know)\b[^.]{0,40}\b(information|details|data|"
+    r"mention|answer|record)|\b(no|any) (information|details|mention|data) (about|on|of|regarding)\b"
+    r"|\b(isn'?t|is not|aren'?t|are not|wasn'?t|was not|not) (mentioned|specified|listed|covered|included|available|stated|shared)\b"
+    r"|\bsources? (do(es)?n'?t|do(es)? not)\b|\bI don'?t know\b|\bnot (published|on (the|this) site|on deependhq)", re.I)
 
 
 def _visitor_date(visitor_tz: str, now: datetime | None = None) -> date:

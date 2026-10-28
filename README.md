@@ -11,7 +11,7 @@ gives Deep a brief on every lead before the call.
 ![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-623%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-639%20passing-2EA44F)
 
 [Features](#features) · [Features in detail](#features-in-detail) · [Quick start](#quick-start) ·
 [Configuration](#configuration) · [Visitor tracking and IP lookup](#visitor-tracking-and-ip-lookup) ·
@@ -552,6 +552,17 @@ in the wrong alphabet is read again (`STT_HINT_RECHECK`). Answers are spoken bac
   any text (dead key, outage, `CHAT_TIMEOUT` of 30 s), the same answer is written by the backup, ideally on another
   provider (Groq's `openai/gpt-oss-120b` with the speech-to-text key works). The visitor never sees the switch; the
   inbox records which model answered.
+* **The team answers inside the chat** (`app/team.py`, like Intercom Fin's "The team can also help"): the hand-over
+  form puts the conversation in *waiting*; Deep replies from Console → Conversations ("Reply in the visitor's chat"),
+  the reply shows in the visitor's chat with his name (the widget checks for replies every 12 s while the team is
+  involved) and as unread in Messages; a reply still unread after `TEAM_EMAIL_AFTER_MINUTES` (3) is emailed to them
+  once (template *visitor team reply*, with a `#dh-chat=` link that reopens the chat); when the visitor writes again,
+  Deep gets one email per `TEAM_HOST_NOTIFY_MINUTES` (15). The assistant keeps answering as before. Mark closed /
+  waiting in the console.
+* **Conversation rating**: after two plain answers and a minute of quiet, the chat asks once "How was this
+  conversation?" (1–5); 3 or less invites a note. Console → Overview shows the average and the share of 4–5.
+* **"I don't know" reaches the gap list**: an uncited answer that says the site does not have it is logged as
+  unanswered (`not_in_sources`) with the "ask the team / book" offer, even when the retrieved pages scored well.
 * **Database backups** (`BACKUP_CRON`, 03:50 nightly, `app/backup.py`): a `pg_dump` of the whole database into
   `BACKUP_DIR` on the host (here `D:\Backups\deependhq-db`), outside Docker, the newest `BACKUP_KEEP` (14) kept; one is
   taken at start-up when the newest is over a day old, and the health check alerts when it is over 36 hours. Added
@@ -801,7 +812,7 @@ with a MaxMind key, downloads the GeoLite2 files in the background if they are m
 
 ```bash
 pip install -r requirements-dev.txt           # pytest, pytest-asyncio, respx (not part of the runtime install)
-pytest                                        # 623 passed, 2 skipped; no network (the database tests skip without Postgres)
+pytest                                        # 639 passed, 2 skipped; no network (the database tests skip without Postgres)
 python -m app.tracking 49.207.200.10 'Acme' a@acme.com   # one IP through GEOIP_PROVIDER and the network rules, no database
 python -m app.geoip_update                    # download or refresh the GeoLite2 files (needs MAXMIND_LICENSE_KEY)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)

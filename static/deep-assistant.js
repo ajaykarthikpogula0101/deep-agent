@@ -24,7 +24,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.15.3';
+const VERSION = '2026.10.29.2';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -232,6 +232,11 @@ textarea.inp { height:auto; min-height:68px; padding:9px 12px; resize:vertical; 
 .pickd { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; background:var(--da-lavender); font-size:13px } .pickd svg { width:16px; height:16px; color:var(--da-ink); flex:none } .pickd span { flex:1; min-width:0 } .pickd b { font-weight:650 }
 .linkbtn { padding:0; border:0; background:none; color:var(--da-ink); font-size:12.5px; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:2px }
 .bform, .hform { display:flex; flex-direction:column; gap:10px }
+.row.agent .msg { box-shadow:inset 3px 0 0 var(--da-ink) } .row.agent .meta b { font-weight:650; color:var(--da-text) }
+.row.rate { justify-content:center } .row.rate .col { width:100%; max-width:420px } .rcard { display:flex; flex-direction:column; gap:10px; margin-top:4px } .faces { display:flex; gap:6px; flex-wrap:wrap }
+.face { width:42px; height:42px; border-radius:12px; border:1px solid var(--da-line, rgba(0,0,0,.12)); background:transparent; font-size:22px; line-height:1; cursor:pointer }
+.face:hover, .face:focus-visible { background:var(--da-lavender) } .face.on { background:var(--da-lavender); border-color:var(--da-ink) }
+.rcard .rrow { display:flex; gap:6px } .rcard .rrow .inp { flex:1 }
 .guests { display:flex; flex-direction:column; gap:6px } .glabel { font-size:12px; font-weight:600; color:var(--da-text) } .glabel span { font-weight:400; color:var(--da-muted) }
 .glist { display:flex; flex-direction:column; gap:6px } .grow { display:grid; grid-template-columns:1fr 1.25fr 30px; gap:6px; align-items:center } .grow .gerr { grid-column:1 / -1 }
 .gx { width:30px; height:30px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--da-muted); cursor:pointer; display:grid; place-items:center } .gx:hover, .gx:focus-visible { background:var(--da-surface); color:var(--da-text) } .gx svg { width:14px; height:14px }
@@ -471,6 +476,7 @@ class DeepAssistant extends HTMLElement {
     this._sid = uuid(); store.set(this._key('sid'), this._sid);
     this.removeAttribute('outreach-event'); this._outreachSent = false;  // a fresh conversation carries no pop-up context
     this._transcript = []; this._history = []; this._attachments = []; this._nudged = false; this._renderAttachments();
+    clearTimeout(this._teamT); clearTimeout(this._rateT); this._teamStatus = null; this._rated = false;
     this._restore(); this._track(); this.showView('chat');
     if (this.api) this._loadMe().then(() => this._refreshWelcome());  // return-visitor memory for the new conversation
   }
@@ -508,15 +514,17 @@ class DeepAssistant extends HTMLElement {
       let old = []; try { old = JSON.parse(store.get(this._key('tx:' + sid)) || '[]'); } catch {} const uiByMid = new Map(old.filter((m) => m.mid && m.ui).map((m) => [m.mid, m.ui]));
       this.$log.innerHTML = ''; this._transcript = []; this._history = [];
       (h.messages || []).forEach((m) => {
+        if (m.agent) { this._addAgent(m); return; }
         const el = this._add(m.role === 'user' ? 'user' : 'bot', '', m.ts);
         if (m.role === 'user') { this._setText(el, m.text); this._transcript.push({ role: 'user', text: m.text, ts: new Date(m.ts).getTime() }); }
         else { const srcs = usedSources(m.text, m.sources || []); this._setText(el, m.text, m.sources || []); this._addSources(el, srcs); this._addTools(el, () => plain(m.text), null, m.id, m.feedback);
           const ui = uiByMid.get(m.id); this._transcript.push({ role: 'bot', text: m.text, sources: srcs, ts: new Date(m.ts).getTime(), mid: m.id, fb: m.feedback, ui }); if (ui) this._mountUi(el, ui, this._transcript[this._transcript.length - 1]); }
       });
       if (!this._transcript.length) this._renderWelcome();
-      this._history = this._transcript.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })).slice(-12);
-      this._persist(); this._markLast();
+      this._history = this._transcript.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.agent ? `${m.author || 'Deep'} (from the team): ${m.text}` : m.text })).slice(-12);
+      this._persist(); this._markLast(); this._teamStatus = h.team_status || null; this._rated = !!h.rating;
     }
+    this._teamCheck();
     this.showView('chat'); this._scroll(true); this._markRead(sid).then(() => this._refreshBadge());
   }
   // ---------------------------------------------------------------- lifecycle
@@ -704,7 +712,7 @@ class DeepAssistant extends HTMLElement {
     this.$launcher.setAttribute('aria-expanded', String(open)); this.$launcher.setAttribute('aria-label', open ? 'Minimize the assistant' : 'Open the ' + this.botName + ' assistant');
     if (!launcher || open === this._wasOpen) return; this._wasOpen = open;
     this._emit(open ? 'open' : 'close');
-    if (open) { this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); if (this._voice && this._voice.orb) this._voice.orb.resume(); }
+    if (open) { this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); this._teamCheck(); if (this._voice && this._voice.orb) this._voice.orb.resume(); }
     else { this._bindViewport(false); this._closePops(); if (this._voice && this._voice.orb) this._voice.orb.pause(); if (this.shadowRoot.activeElement && this.shadowRoot.activeElement !== this.$launcher) this.$launcher.focus({ preventScroll: true }); }
   }
   _bindViewport(on) {  // phones: size the full-screen panel to the visual viewport so the composer stays above the keyboard
@@ -936,6 +944,61 @@ class DeepAssistant extends HTMLElement {
     meta.innerHTML = role === 'bot' ? `<span class="vh">${esc(this.botName)} said, </span>${esc(this.botName)} · ${when}` : `<span class="vh">You said, </span>${when}`; col.appendChild(meta);
     row.appendChild(col); this.$log.appendChild(row); this._stick = stick; this._scroll(); return d;
   }
+  _markAgent(el, author, ts) {  // a reply from the team (app/team.py): same bubble, says who wrote it
+    const row = el.closest('.row'); row.classList.add('agent'); const meta = row.querySelector('.meta'); const who = esc(author || 'Deep');
+    if (meta) meta.innerHTML = `<span class="vh">${who} from the team said, </span><b>${who}</b> · Team · ${relShort(ts ? new Date(ts).getTime() : Date.now())}`;
+  }
+  _addAgent(m) {
+    const ts = new Date(m.ts).getTime() || Date.now(); const el = this._add('bot', '', ts); this._markAgent(el, m.author, ts); this._setText(el, m.text);
+    this._transcript.push({ role: 'bot', agent: true, author: m.author || 'Deep', text: m.text, ts, aid: m.id });
+    this._history.push({ role: 'assistant', content: `${m.author || 'Deep'} (from the team): ${m.text}` }); this._history = this._history.slice(-12);
+    return el;
+  }
+  // while the conversation is with the team: new replies appear here, and polling continues every 12 s while open
+  async _teamCheck() {
+    clearTimeout(this._teamT); const sid = this._sid; if (!this.api || !sid || !this._transcript.length) return;
+    const after = this._transcript.reduce((a, m) => Math.max(a, m.aid || 0), 0); let d = null;
+    try { const r = await fetch(this._url('/conversations/' + encodeURIComponent(sid) + '/updates?after=' + after), { headers: this._headers(false) }); if (r.ok) d = await r.json(); } catch {}
+    if (!d || sid !== this._sid) return;
+    this._teamStatus = d.team_status || null; if (d.rating) this._rated = true;
+    const fresh = (d.messages || []).filter((m) => !this._transcript.some((t) => t.aid === m.id));
+    fresh.forEach((m) => this._addAgent(m));
+    if (fresh.length) { this._persist(); this._markLast(); this._announce(`${fresh[fresh.length - 1].author || 'Deep'} from the team replied`);
+      if (this.hasAttribute('open') && this._view === 'chat') this._markRead(sid).then(() => this._refreshBadge()); else this._refreshBadge(); }
+    if ((this._teamStatus === 'waiting' || this._teamStatus === 'replied') && this.hasAttribute('open')) this._teamT = setTimeout(() => this._teamCheck(), 12000);
+  }
+  // Fin-style rating of the whole conversation: offered once, after two answers and a quiet moment
+  _maybeRate() {
+    clearTimeout(this._rateT); this._lastAct = Date.now();
+    this._rateT = setTimeout(() => {
+      const sid = this._sid, answers = this._transcript.filter((m) => m.role === 'bot' && m.mid && !m.agent && !m.err).length;
+      let done = this._rated; try { done = done || localStorage.getItem(this._key('rated:' + sid)); } catch {}
+      // only after a plain answer: never on top of a booking picker, a form or a card the visitor is still using
+      const last = [...this.$log.querySelectorAll('.row.bot')].pop();
+      if (!last || last.querySelector('.hascard, .card, form') || last.classList.contains('wide')) return;
+      if (done || answers < 2 || this._busy || !this.hasAttribute('open') || this._view !== 'chat' || Date.now() - this._lastAct < 55000 || this.$log.querySelector('.rcard')) return;
+      this._renderRating(sid);
+    }, 60000);
+  }
+  _renderRating(sid) {
+    // its own row (not a bot message), so it never counts as the assistant's last answer
+    const row = document.createElement('div'); row.className = 'row rate'; row.dataset.role = 'rate'; const el = document.createElement('div'); el.className = 'col'; row.appendChild(el);
+    const faces = [['😞', 'Very bad'], ['😕', 'Bad'], ['😐', 'Okay'], ['🙂', 'Good'], ['😍', 'Great']];
+    const c = document.createElement('div'); c.className = 'rcard card';
+    c.innerHTML = `<div class="bk-t"><b>How was this conversation?</b></div><div class="faces" role="group" aria-label="Rate this conversation">${faces.map((f, i) => `<button type="button" class="face" data-s="${i + 1}" aria-label="${i + 1} of 5: ${f[1]}" title="${f[1]}">${f[0]}</button>`).join('')}</div><p class="note" role="status"></p>`;
+    const note = c.querySelector('.note');
+    const send = async (score, text) => { try { const r = await fetch(this._url('/conversations/' + encodeURIComponent(sid) + '/rating'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ score, note: text || null }) }); return r.ok; } catch { return false; } };
+    c.querySelectorAll('.face').forEach((b) => b.onclick = async () => {
+      const score = +b.dataset.s; c.querySelectorAll('.face').forEach((x) => { x.classList.toggle('on', x === b); x.disabled = true; });
+      if (!(await send(score))) { note.textContent = "Couldn't save that. Please try again."; c.querySelectorAll('.face').forEach((x) => x.disabled = false); return; }
+      this._rated = true; try { localStorage.setItem(this._key('rated:' + sid), String(score)); } catch {} this._emit('rating', { score });
+      note.textContent = 'Thanks for rating the conversation.';
+      if (score <= 3) { const f = document.createElement('form'); f.className = 'rrow'; f.innerHTML = '<input class="inp" maxlength="1000" placeholder="What could be better? (optional)" aria-label="What could be better?"><button class="btn primary sm" type="submit">Send</button>';
+        f.onsubmit = async (e) => { e.preventDefault(); const t = f.querySelector('input').value.trim(); if (!t) return; f.remove(); note.textContent = (await send(score, t)) ? 'Thanks, that helps us improve.' : "Couldn't send that note."; };
+        c.appendChild(f); }
+    });
+    el.appendChild(c); this.$log.appendChild(row); this._stick = true; this._scroll();
+  }
   _markLast() { this.$log.querySelectorAll('.row.last').forEach((r) => r.classList.remove('last')); const rows = this.$log.querySelectorAll('.row.bot'); if (rows.length) rows[rows.length - 1].classList.add('last'); }
   _activity(bot) {  // the agent at work: skeleton bubble + a status pill fed by real 'status' events; collapses into "Worked for …"
     const col = bot.parentElement; bot.classList.add('skel'); bot.innerHTML = '<div class="ln"></div><div class="ln"></div><div class="ln"></div>';
@@ -1004,8 +1067,8 @@ class DeepAssistant extends HTMLElement {
     this._syncHome();
     this.$log.innerHTML = '';
     if (!this._transcript.length) { this._history = []; this._renderWelcome(); this.$log.scrollTop = 0; return; }
-    this._transcript.forEach((m) => { const el = this._add(m.role === 'user' ? 'user' : 'bot', '', m.ts); this._setText(el, m.text, m.sources); if (m.role === 'bot') { if (m.err) el.classList.add('err'); this._addSources(el, m.sources); this._addTools(el, () => plain(m.text), null, m.mid, m.fb); if (m.ui) this._mountUi(el, m.ui, m); } });
-    this._history = this._transcript.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })).slice(-12);
+    this._transcript.forEach((m) => { const el = this._add(m.role === 'user' ? 'user' : 'bot', '', m.ts); if (m.agent) { this._markAgent(el, m.author, m.ts); this._setText(el, m.text); return; } this._setText(el, m.text, m.sources); if (m.role === 'bot') { if (m.err) el.classList.add('err'); this._addSources(el, m.sources); this._addTools(el, () => plain(m.text), null, m.mid, m.fb); if (m.ui) this._mountUi(el, m.ui, m); } });
+    this._history = this._transcript.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.agent ? `${m.author || 'Deep'} (from the team): ${m.text}` : m.text })).slice(-12);
     this._markLast(); this._scroll(true);
   }
   // ---------------------------------------------------------------- in-chat booking (docs/BOOKING.md)
@@ -1330,7 +1393,7 @@ class DeepAssistant extends HTMLElement {
       b.disabled = true; b.classList.add('loading'); note.className = 'note'; note.textContent = 'Sending…';
       try { const r = await fetch(this._url('/handover'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ session_id: this._sid, name, email, message }) });
         const d = r.ok ? await r.json() : null;
-        if (d && d.ok) { f.innerHTML = `<div class="booked"><div class="bk-ok" tabindex="-1"><svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>Message sent</span></div><p class="note">The team will reply to <b>${esc(email)}</b>.${d.visitor_mailed ? ' A copy is in your inbox.' : ''}</p></div>`; f.querySelector('.bk-ok').focus({ preventScroll: true }); this._announce('Message sent'); this._emit('handover', { leadId: d.lead_id, email, briefSent: d.brief_sent }); }
+        if (d && d.ok) { this._teamStatus = 'waiting'; setTimeout(() => this._teamCheck(), 1500); f.innerHTML = `<div class="booked"><div class="bk-ok" tabindex="-1"><svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>Message sent</span></div><p class="note">The team will reply here and to <b>${esc(email)}</b>.${d.visitor_mailed ? ' A copy is in your inbox.' : ''}</p></div>`; f.querySelector('.bk-ok').focus({ preventScroll: true }); this._announce('Message sent'); this._emit('handover', { leadId: d.lead_id, email, briefSent: d.brief_sent }); }
         else { b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = r.status === 422 ? 'Please check the email address.' : "Couldn't send right now. Please try again."; } }
       catch { b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = 'Connection problem. Please try again.'; } };
     el.appendChild(f); this._emit('action', { action: 'handover_form' });
@@ -1668,7 +1731,7 @@ class DeepAssistant extends HTMLElement {
       this._history.push({ role: 'user', content: shown }, { role: 'assistant', content: answer }); this._history = this._history.slice(-12);
       const entry = { role: 'bot', text: failed ? bot.dataset.raw : answer, sources, ts: Date.now(), mid, err: failed || undefined, ui: (card && card.done && card.program) || undefined }; this._transcript.push(entry); if (card) card.entry = entry; this._persist();
       this._controller = null; this._setBusy(false); if (!this._voice) this._focusInput(); this._scroll();
-      this._emit('answer', { question: text, answer: raw, sources, messageId: mid, failed });
+      this._emit('answer', { question: text, answer: raw, sources, messageId: mid, failed }); if (!failed) this._maybeRate();
       if (this._view === 'chat' && this._sid === sid) await this._markRead(sid);
       this._refreshBadge(); if (this._view === 'messages') this._renderConversations();
       clearTimeout(this._titleT); this._titleT = setTimeout(() => { if (this._view === 'messages') this._renderConversations(); else this._convos = null; }, 6000);

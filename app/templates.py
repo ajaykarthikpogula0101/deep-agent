@@ -74,6 +74,17 @@ DEFAULTS: dict[str, str] = {
         "Your message:\n{reason}\n\n"
         "{host_name}\n{site}\n"
     ),
+    # the team answered in the chat while the visitor was away (app/team.py): the reply, and a link back to the chat
+    "visitor_team_reply_enabled": "true",
+    "visitor_team_reply_subject": "{author} replied to your message",
+    "visitor_team_reply_body": (
+        "Hi {first_name},\n\n"
+        "{author} replied to your message on {site}:\n\n"
+        "{reply}\n\n"
+        "Continue the conversation: {link}\n"
+        "Or simply reply to this email.\n\n"
+        "{host_name}\n{site}\n"
+    ),
     # follow-up when a Zoom hand-off is still unconfirmed after NUDGE_AFTER_HOURS (app/nudge.py)
     # in-chat booking (app/booking/flow.py): visitor confirmation + host 'New booking', both carry the .ics invite
     "visitor_confirmed_enabled": "true",
@@ -520,6 +531,13 @@ def preview(kind: str, overrides: dict[str, str] | None = None) -> dict[str, str
         r = gaps.render_followup(gaps.SAMPLE_PERSON, gaps.SAMPLE_ITEMS, tpl)
         s, b = (r[0], r[1]) if r else ("(disabled)", "")
         return {"subject": s, "body": b}
+    if kind == "visitor_team_reply":
+        from app import team
+
+        r = team.render_reply_email(SAMPLE_LEAD.get("name") or "", "Deep", "Thanks for the question. Yes, we cover the "
+                                    "Nordics; I'll send the sample list tomorrow.", f"{settings.site_base_url}/#dh-chat=sample", tpl)
+        s, b = r if r else ("(disabled)", "")
+        return {"subject": s, "body": b}
     if kind == "host":
         s, b = render_host(lead, tpl)
     else:
@@ -531,7 +549,8 @@ def preview(kind: str, overrides: dict[str, str] | None = None) -> dict[str, str
 
 def previews(overrides: dict[str, str] | None = None) -> dict[str, dict[str, str]]:
     return {k: preview(k, overrides) for k in ("host", "visitor_booking", "visitor_handover", "visitor_nudge", "visitor_confirmed", "host_booking",
-                                                "visitor_rescheduled", "visitor_cancelled", "visitor_reminder", "visitor_gap")}
+                                                "visitor_rescheduled", "visitor_cancelled", "visitor_reminder", "visitor_gap",
+                                                "visitor_team_reply")}
 
 
 def sample_booking_for(kind: str) -> dict[str, Any]:

@@ -410,6 +410,17 @@ CREATE TABLE IF NOT EXISTS email_ask_events (
     session_id  TEXT
 );
 CREATE INDEX IF NOT EXISTS email_ask_events_ts_idx ON email_ask_events(ts);
+
+-- Conversations like Fin (docs/ROADMAP.md step 2): the visitor's 1-5 rating of a whole conversation, the team's
+-- replies inside the thread (messages.role 'agent'), and where a hand-off stands.
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS rating SMALLINT;           -- 1..5
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS rating_note TEXT;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS rated_at TIMESTAMPTZ;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_status TEXT;          -- NULL (AI only) | waiting | replied | closed
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_status_at TIMESTAMPTZ;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_notified_at TIMESTAMPTZ;  -- last "visitor wrote again" email to the host
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS author TEXT;               -- role 'agent': who on the team wrote it
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ;   -- role 'agent': emailed to the visitor
 """
 
 _pool: ConnectionPool | None = None

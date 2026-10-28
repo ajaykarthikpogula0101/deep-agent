@@ -26,7 +26,7 @@ from urllib.parse import quote as quote_param
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import backup, conversations, digest, email_ask, gaps, geoip_update, guidance, health, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking, visitors
+from app import backup, conversations, digest, email_ask, gaps, geoip_update, guidance, health, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, team, templates, titles, tracking, visitors
 from app.booking import availability as avail
 from app.booking import browser_booking
 from app.booking import email_html, flow, ics, zoom_mail
@@ -43,7 +43,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.15.3"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.29.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -114,6 +114,9 @@ def _startup() -> None:
     if "mmdb" in chain and tracking.mmdb_problem():
         log.warning("GEOIP_PROVIDER includes mmdb but %s; it is skipped%s", tracking.mmdb_problem(),
                     " until the download finishes" if geoip_update.configured() else " (set MAXMIND_LICENSE_KEY to download them)")
+    # every minute: team replies the visitor has not read for TEAM_EMAIL_AFTER_MINUTES are emailed to them (app/team.py)
+    _scheduler.add_job(team.notify_unread_replies, CronTrigger.from_crontab("* * * * *", timezone=settings.host_timezone),
+                       id="team_reply_emails", replace_existing=True, misfire_grace_time=120)
     if settings.backup_enabled:  # nightly pg_dump outside Docker (app/backup.py); one now if the newest is over a day old
         _scheduler.add_job(backup.run, CronTrigger.from_crontab(settings.backup_cron, timezone=settings.host_timezone),
                            id="db_backup", replace_existing=True, misfire_grace_time=6 * 3600)
@@ -629,6 +632,36 @@ def conversations_get(session_id: str, request: Request, x_visitor_id: str | Non
     return h
 
 
+class RatingIn(BaseModel):
+    score: int = Field(ge=1, le=5)
+    note: str | None = Field(default=None, max_length=1000)
+
+
+@app.post("/conversations/{session_id}/rating")
+def conversations_rate(session_id: str, body: RatingIn, request: Request, x_visitor_id: str | None = Header(default=None)):
+    """The visitor rates the whole conversation 1-5 (app/team.py)."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    vid, uid = _owner(request, x_visitor_id)
+    if not team.rate(session_id, vid, uid, body.score, body.note):
+        raise HTTPException(404, "no such conversation")
+    return {"ok": True}
+
+
+@app.get("/conversations/{session_id}/updates")
+def conversations_updates(session_id: str, request: Request, after: int = 0, x_visitor_id: str | None = Header(default=None)):
+    """Team replies newer than `after` and where the hand-off stands; the widget polls this while a chat with the team is open."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    vid, uid = _owner(request, x_visitor_id)
+    out = team.updates(session_id, vid, uid, after)
+    if out is None:
+        raise HTTPException(404, "no such conversation")
+    return out
+
+
 class TitleIn(BaseModel):
     title: str = Field(min_length=1, max_length=80)
 
@@ -1035,6 +1068,33 @@ def admin_conversations(days: int = 7, limit: int = 100, x_admin_token: str | No
 def admin_transcript(session_id: str, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
     return inbox.transcript(session_id)
+
+
+class TeamReplyIn(BaseModel):
+    text: str = Field(min_length=1, max_length=6000)
+    author: str | None = Field(default=None, max_length=80)
+
+
+@app.post("/admin/conversations/{session_id}/reply")
+def admin_team_reply(session_id: str, body: TeamReplyIn, x_admin_token: str | None = Header(default=None)):
+    """The team answers inside the visitor's chat (app/team.py); emailed to them if unread after a few minutes."""
+    _require_admin(x_admin_token)
+    out = team.reply(session_id, body.text, body.author)
+    if out is None:
+        raise HTTPException(404, "no such conversation")
+    return out
+
+
+class TeamStatusIn(BaseModel):
+    status: str | None = None   # waiting | replied | closed | null (assistant only)
+
+
+@app.post("/admin/conversations/{session_id}/status")
+def admin_team_status(session_id: str, body: TeamStatusIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    if not team.set_status(session_id, body.status):
+        raise HTTPException(400, "unknown status or conversation")
+    return {"ok": True, "team_status": body.status}
 
 
 def _memory_profile(session_id: str) -> dict:

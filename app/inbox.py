@@ -113,6 +113,13 @@ def save_handover(session_id: str | None, name: str, email: str, message: str, s
     except Exception as e:
         log.error("handover visitor ack failed: %s", e)
     log_event("handover", session_id, {"lead_id": lead_id, "brief_sent": sent, "visitor_mailed": mailed, "origin": origin})
+    if session_id:
+        try:  # the conversation now waits for the team; Deep can answer it from the console (app/team.py)
+            from app import team
+
+            team.set_status(session_id, "waiting")
+        except Exception as e:
+            log.warning("team status failed: %s", e)
     log_message(session_id, "assistant", f"Hand-over request sent to {settings.host_email}.", outcome="handover",
                 question=message)
     return {"lead_id": lead_id, "brief_sent": sent, "visitor_mailed": mailed}
@@ -159,6 +166,13 @@ def metrics(days: int = 7) -> dict[str, Any]:
                       count(*) FILTER (WHERE role = 'assistant' AND outcome = 'refused')
                FROM messages WHERE ts > now() - make_interval(days => %s) GROUP BY 1 ORDER BY 1""",
             (list(_RESOLVED), days)).fetchall()
+        rated = c.execute(
+            """SELECT count(*), avg(rating), count(*) FILTER (WHERE rating >= 4) FROM sessions
+               WHERE rating IS NOT NULL AND rated_at > now() - make_interval(days => %s)""", (days,)).fetchone()
+        team = c.execute(
+            """SELECT count(*) FILTER (WHERE team_status = 'waiting'), count(*) FILTER (WHERE team_status = 'replied'),
+                      (SELECT count(*) FROM messages WHERE role = 'agent' AND ts > now() - make_interval(days => %s))
+               FROM sessions WHERE team_status IS NOT NULL""", (days,)).fetchone()
         top = c.execute(
             """SELECT lower(regexp_replace(trim(question), '\\s+', ' ', 'g')) AS q, count(*)
                FROM messages WHERE role = 'assistant' AND question IS NOT NULL AND ts > now() - make_interval(days => %s)
@@ -174,6 +188,9 @@ def metrics(days: int = 7) -> dict[str, Any]:
         "bookings": int(leads[0]), "handover_leads": int(leads[1]), "enquiries": int(leads[2]),
         "csat": {"up": int(up), "down": int(down), "score": round(up / (up + down), 3) if (up + down) else None},
         "median_latency_ms": int(p50) if p50 is not None else None,
+        "conversation_rating": {"count": int(rated[0]), "average": round(float(rated[1]), 2) if rated[1] is not None else None,
+                                "good_share": round(rated[2] / rated[0], 3) if rated[0] else None},
+        "team": {"waiting": int(team[0]), "replied": int(team[1]), "replies": int(team[2])},
         "daily": [{"day": str(d), "conversations": int(s), "resolved": int(r), "refused": int(f)} for d, s, r, f in daily],
         "top_questions": [{"question": q, "count": int(n)} for q, n in top],
     }
@@ -188,29 +205,30 @@ def conversations(days: int = 7, limit: int = 100) -> list[dict[str, Any]]:
                       count(*) FILTER (WHERE m.outcome = ANY(%s)), count(*) FILTER (WHERE m.outcome = 'refused'),
                       count(*) FILTER (WHERE m.outcome = 'handover'), count(*) FILTER (WHERE m.feedback = 1),
                       count(*) FILTER (WHERE m.feedback = -1),
-                      s.city, s.country_code, s.channel, s.referrer_host, s.leads
+                      s.city, s.country_code, s.channel, s.referrer_host, s.leads, s.team_status, s.rating
                FROM messages m LEFT JOIN sessions s ON s.session_id = m.session_id
                WHERE m.ts > now() - make_interval(days => %s)
-               GROUP BY m.session_id, s.city, s.country_code, s.channel, s.referrer_host, s.leads
+               GROUP BY m.session_id, s.city, s.country_code, s.channel, s.referrer_host, s.leads, s.team_status, s.rating
                ORDER BY max(m.ts) DESC LIMIT %s""",
             (list(_RESOLVED), days, limit)).fetchall()
     cols = ["session_id", "started", "last", "questions", "first_question", "resolved", "refused", "handovers", "up", "down",
-            "city", "country_code", "channel", "referrer_host", "leads"]
+            "city", "country_code", "channel", "referrer_host", "leads", "team_status", "rating"]
     return [dict(zip(cols, r)) for r in rows]
 
 
 def transcript(session_id: str) -> dict[str, Any]:
     with conn() as c:
         rows = c.execute(
-            """SELECT id, ts, role, text, outcome, reason, sources, latency_ms, feedback, feedback_note
+            """SELECT id, ts, role, text, outcome, reason, sources, latency_ms, feedback, feedback_note, author
                FROM messages WHERE session_id = %s ORDER BY id""", (session_id,)).fetchall()
+        st = c.execute("SELECT team_status, rating, rating_note FROM sessions WHERE session_id = %s", (session_id,)).fetchone()
         s = c.execute(
             """SELECT first_seen, city, region, country_code, channel, referrer_host, page, client_tz, user_agent, visits
                FROM (SELECT s.*, (SELECT count(*) FROM sessions v WHERE v.visitor_id = s.visitor_id AND s.visitor_id IS NOT NULL) AS visits
                      FROM sessions s WHERE s.session_id = %s) x""", (session_id,)).fetchone()
         leads = c.execute("""SELECT id, ts, name, email, reason, status, slot_start, company, confirmed_at, nudged_at
                              FROM leads WHERE session_id = %s ORDER BY id""", (session_id,)).fetchall()
-    mcols = ["id", "ts", "role", "text", "outcome", "reason", "sources", "latency_ms", "feedback", "feedback_note"]
+    mcols = ["id", "ts", "role", "text", "outcome", "reason", "sources", "latency_ms", "feedback", "feedback_note", "author"]
     scols = ["first_seen", "city", "region", "country_code", "channel", "referrer_host", "page", "client_tz", "user_agent", "visits"]
     lcols = ["id", "ts", "name", "email", "reason", "status", "slot_start", "company", "confirmed_at", "nudged_at"]
     from app import session_memory  # admin console only (the Memory panel)
@@ -218,7 +236,8 @@ def transcript(session_id: str) -> dict[str, Any]:
     mem = session_memory.row(session_id)
     return {"session_id": session_id, "messages": [dict(zip(mcols, r)) for r in rows],
             "session": dict(zip(scols, s)) if s else None, "leads": [dict(zip(lcols, r)) for r in leads],
-            "memory": mem if mem and not mem["forgotten_at"] else None, "forgotten_at": (mem or {}).get("forgotten_at")}
+            "memory": mem if mem and not mem["forgotten_at"] else None, "forgotten_at": (mem or {}).get("forgotten_at"),
+            "team_status": st[0] if st else None, "rating": st[1] if st else None, "rating_note": st[2] if st else None}
 
 
 def gaps(days: int = 30, limit: int = 50) -> dict[str, Any]:

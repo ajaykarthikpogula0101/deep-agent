@@ -28,7 +28,7 @@ def list_for(visitor_id: str | None, user_id: str | None, limit: int = 50) -> li
         rows = c.execute(
             f"""SELECT s.session_id, s.first_seen, s.last_read_at,
                        lm.ts, lm.role, lm.text, lm.outcome,
-                       (SELECT count(*) FROM messages m WHERE m.session_id = s.session_id AND m.role = 'assistant'
+                       (SELECT count(*) FROM messages m WHERE m.session_id = s.session_id AND m.role IN ('assistant', 'agent')
                           AND m.ts > COALESCE(s.last_read_at, '-infinity'::timestamptz)) AS unread,
                        (SELECT count(*) FROM messages m WHERE m.session_id = s.session_id AND m.role = 'user') AS questions,
                        (SELECT count(*) FROM leads l WHERE l.session_id = s.session_id AND l.status = 'handover') AS handovers,
@@ -60,11 +60,14 @@ def history(session_id: str, visitor_id: str | None, user_id: str | None) -> dic
         if not own:
             return None
         rows = c.execute(
-            """SELECT id, ts, role, text, sources, feedback, outcome FROM messages
+            """SELECT id, ts, role, text, sources, feedback, outcome, author FROM messages
                WHERE session_id = %s ORDER BY id""", (session_id,)).fetchall()
-    return {"session_id": session_id,
+        st = c.execute("SELECT team_status, rating FROM sessions WHERE session_id = %s", (session_id,)).fetchone()
+    # a team reply (role 'agent', app/team.py) keeps role 'bot' for older widgets and says who wrote it
+    return {"session_id": session_id, "team_status": st[0] if st else None, "rating": st[1] if st else None,
             "messages": [{"id": r[0], "ts": r[1], "role": "user" if r[2] == "user" else "bot", "text": r[3],
-                          "sources": r[4] or [], "feedback": r[5], "outcome": r[6]} for r in rows]}
+                          "sources": r[4] or [], "feedback": r[5], "outcome": r[6],
+                          **({"agent": True, "author": r[7] or "Deep"} if r[2] == "agent" else {})} for r in rows]}
 
 
 def mark_read(session_id: str, visitor_id: str | None, user_id: str | None) -> bool:

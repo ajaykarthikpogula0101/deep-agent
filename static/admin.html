@@ -44,7 +44,8 @@
   .ell { max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
   .tx { display:flex; flex-direction:column; gap:10px; max-width:860px }
   .m { padding:10px 12px; border:1px solid var(--line); border-radius:6px; background:var(--panel); max-width:85%; white-space:pre-wrap }
-  .m.user { align-self:flex-end; background:var(--panel-2) } .m .meta { color:var(--muted); font-size:11px; margin-bottom:4px }
+  .m.user { align-self:flex-end; background:var(--panel-2) } .m.agent { border-left:3px solid var(--accent, #5546F7) }
+  #convo-reply textarea { width:100%; min-height:90px; margin:8px 0 } #convo-reply .row2 { display:flex; gap:8px; flex-wrap:wrap; align-items:center } .m .meta { color:var(--muted); font-size:11px; margin-bottom:4px }
   .back { margin-bottom:10px }
   form.inline { display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:start } form.inline textarea { min-height:80px } form.inline .full { grid-column:1 / -1 }
   @media (max-width:700px) { form.inline { grid-template-columns:1fr } }
@@ -98,7 +99,7 @@
   </section>
   <section class="pane" id="convos">
     <div id="convo-list" class="wrap"></div>
-    <div id="convo-view" style="display:none"><button class="btn back" id="back">← all conversations</button><div id="convo-head" class="card"></div><details class="card" id="convo-mem"></details><div class="tx" id="tx"></div></div>
+    <div id="convo-view" style="display:none"><button class="btn back" id="back">← all conversations</button><div id="convo-head" class="card"></div><details class="card" id="convo-mem"></details><div class="tx" id="tx"></div><div class="card" id="convo-reply"></div></div>
   </section>
   <section class="pane" id="bookings">
     <div id="bk-list-wrap">
@@ -193,6 +194,10 @@
           <label><input type="checkbox" name="visitor_gap_enabled"> send this email ({answers} holds their question(s) and your answer(s))</label>
           <label class="mono muted">subject<input name="visitor_gap_subject" style="width:100%"></label>
           <label class="mono muted">body<textarea name="visitor_gap_body" style="min-height:220px"></textarea></label>
+          <h2>Visitor email when the team replied in the chat and they have not read it (a few minutes later)</h2>
+          <label><input type="checkbox" name="visitor_team_reply_enabled"> send this email ({author} wrote it, {reply} is the text, {link} opens their chat)</label>
+          <label class="mono muted">subject<input name="visitor_team_reply_subject" style="width:100%"></label>
+          <label class="mono muted">body<textarea name="visitor_team_reply_body" style="min-height:180px"></textarea></label>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <button class="btn primary" type="submit">Save templates</button>
             <button class="btn" type="button" id="tplreset">Reset all to defaults</button>
@@ -211,6 +216,7 @@
         <div class="card"><h2>Preview · visitor day-before reminder <button class="btn" type="button" data-test="visitor_reminder" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_reminder"></pre></div>
         <div class="card"><h2>Preview · host new booking (chat) <button class="btn" type="button" data-test="host_booking" style="float:right">send test</button></h2><pre class="pv" id="pv-host_booking"></pre></div>
         <div class="card"><h2>Preview · visitor answer to their question <button class="btn" type="button" data-test="visitor_gap" style="float:right">send test</button></h2><pre class="pv" id="pv-visitor_gap"></pre></div>
+        <div class="card"><h2>Preview · visitor team reply</h2><pre class="pv" id="pv-visitor_team_reply"></pre></div>
         <p class="status" id="teststatus"></p>
         <div id="public-url-note"></div>
       </div>
@@ -318,7 +324,9 @@ async function loadOverview() {
     ['conversations', m.conversations, `${m.questions} questions`], ['resolution rate', pct(m.resolution_rate), `${m.resolved} resolved · ${m.refused} refused`],
     ['satisfaction', pct(m.csat.score), `${m.csat.up} up · ${m.csat.down} down`], ['bookings', m.bookings, `${m.enquiries} enquiries`],
     ['hand-overs', m.handover_leads, `${m.handovers} requests`], ['custom answers used', m.custom, ''],
-    ['median answer time', m.median_latency_ms != null ? (m.median_latency_ms / 1000).toFixed(1) + ' s' : '—', ''], ['errors', m.errors, '']
+    ['median answer time', m.median_latency_ms != null ? (m.median_latency_ms / 1000).toFixed(1) + ' s' : '—', ''], ['errors', m.errors, ''],
+    ...(m.conversation_rating ? [['conversation rating', m.conversation_rating.average != null ? '★' + m.conversation_rating.average : '—', `${m.conversation_rating.count} rated · ${pct(m.conversation_rating.good_share)} 4–5 stars`]] : []),
+    ...(m.team ? [['waiting for the team', m.team.waiting, `${m.team.replies} team replies in the chat`]] : [])
   ].map(([k, v, s]) => `<div class="tile"><small>${k}</small><div class="n">${v ?? 0}</div><div class="sub">${s}</div></div>`).join('');
   const max = Math.max(1, ...m.daily.map(d => d.conversations));
   $('daily').innerHTML = m.daily.map(d => `<div style="height:${Math.round(100 * d.conversations / max)}%" data-t="${d.day}: ${d.conversations} conversations, ${d.resolved} resolved, ${d.refused} refused"><i style="height:${d.conversations ? Math.round(100 * d.resolved / Math.max(d.resolved + d.refused, 1)) : 0}%"></i></div>`).join('') || '<span class="muted">no conversations yet</span>';
@@ -340,9 +348,9 @@ $('sugg-refresh').onclick = async () => { try { const sg = await api('/admin/sug
 async function loadConvos() {
   const d = await api(`/admin/conversations?days=${days()}&limit=300`);
   $('convo-view').style.display = 'none'; $('convo-list').style.display = '';
-  $('convo-list').innerHTML = `<table><thead><tr><th>last</th><th>first question</th><th>q</th><th>resolved</th><th>refused</th><th>hand-over</th><th>feedback</th><th>leads</th><th>where</th><th>channel</th></tr></thead><tbody>` +
+  $('convo-list').innerHTML = `<table><thead><tr><th>last</th><th>first question</th><th>q</th><th>resolved</th><th>refused</th><th>hand-over</th><th>feedback</th><th>team</th><th>rating</th><th>leads</th><th>where</th><th>channel</th></tr></thead><tbody>` +
     d.items.map(c => `<tr class="click" data-sid="${esc(c.session_id)}"><td>${fmt(c.last)}</td><td class="ell">${esc(c.first_question || '')}</td><td>${c.questions}</td><td class="ok">${c.resolved || ''}</td><td class="bad">${c.refused || ''}</td><td class="warn">${c.handovers || ''}</td>
-      <td>${c.up ? `<span class="ok">▲${c.up}</span> ` : ''}${c.down ? `<span class="bad">▼${c.down}</span>` : ''}</td><td class="ok">${c.leads || ''}</td><td class="muted">${esc([c.city, c.country_code].filter(Boolean).join(', '))}</td><td class="muted">${esc(c.channel || '')}${c.referrer_host ? ' · ' + esc(c.referrer_host) : ''}</td></tr>`).join('') + '</tbody></table>';
+      <td>${c.up ? `<span class="ok">▲${c.up}</span> ` : ''}${c.down ? `<span class="bad">▼${c.down}</span>` : ''}</td><td class="${c.team_status === 'waiting' ? 'warn' : 'muted'}">${esc(c.team_status || '')}</td><td>${c.rating ? '★' + c.rating : ''}</td><td class="ok">${c.leads || ''}</td><td class="muted">${esc([c.city, c.country_code].filter(Boolean).join(', '))}</td><td class="muted">${esc(c.channel || '')}${c.referrer_host ? ' · ' + esc(c.referrer_host) : ''}</td></tr>`).join('') + '</tbody></table>';
   if (!d.items.length) $('convo-list').innerHTML = '<p class="muted">No conversations in this period.</p>';
   $('convo-list').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => openConvo(tr.dataset.sid));
 }
@@ -352,10 +360,32 @@ async function openConvo(sid) {
   const s = t.session || {};
   $('convo-head').innerHTML = `<div class="mono muted">session ${esc(sid.slice(0, 8))}</div><div>${esc([s.city, s.region, s.country_code].filter(Boolean).join(', ') || 'location unknown')} · ${esc(s.channel || 'direct')}${s.referrer_host ? ' via ' + esc(s.referrer_host) : ''}${s.visits > 1 ? ' · returning (' + s.visits + ')' : ''}${s.client_tz ? ' · ' + esc(s.client_tz) : ''}</div>` +
     (t.leads.length ? `<div style="margin-top:6px">${t.leads.map(l => `<span class="chip"><b>${esc(l.status)}</b> ${esc(l.name)} · ${esc(l.email)}${l.company ? ' · ' + esc(String(l.company).split(' · ')[0]) : ''}${l.slot_start ? ' · ' + fmt(l.slot_start) : ''}${l.confirmed_at ? ' · <span class="ok">confirmed</span>' : l.nudged_at ? ' · <span class="warn">reminded</span>' : ''}${l.status === 'handoff' && !l.confirmed_at ? ` <button class="btn" data-confirm="${l.id}" title="Zoom confirmation seen: no reminder email, counts as booked">mark confirmed</button>` : ''}</span>`).join(' ')}</div>` : '');
-  $('tx').innerHTML = t.messages.map(m => `<div class="m ${m.role === 'user' ? 'user' : ''}"><div class="meta mono">${m.role === 'user' ? 'visitor' : 'assistant'} · ${fmt(m.ts)}${m.outcome ? ' · ' + esc(m.outcome) : ''}${m.latency_ms ? ' · ' + (m.latency_ms / 1000).toFixed(1) + 's' : ''}${m.feedback === 1 ? ' · <span class="ok">▲ helpful</span>' : m.feedback === -1 ? ' · <span class="bad">▼ not helpful' + (m.feedback_note ? ': ' + esc(m.feedback_note) : '') + '</span>' : ''}</div>${esc(m.text)}${(m.sources || []).length ? `<div class="meta mono" style="margin-top:6px">sources: ${m.sources.map(x => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.url)}</a>`).join(' · ')}</div>` : ''}</div>`).join('');
+  $('tx').innerHTML = t.messages.map(m => `<div class="m ${m.role === 'user' ? 'user' : m.role === 'agent' ? 'agent' : ''}"><div class="meta mono">${m.role === 'user' ? 'visitor' : m.role === 'agent' ? esc(m.author || 'team') + ' (team, in the chat)' : 'assistant'} · ${fmt(m.ts)}${m.outcome ? ' · ' + esc(m.outcome) : ''}${m.latency_ms ? ' · ' + (m.latency_ms / 1000).toFixed(1) + 's' : ''}${m.feedback === 1 ? ' · <span class="ok">▲ helpful</span>' : m.feedback === -1 ? ' · <span class="bad">▼ not helpful' + (m.feedback_note ? ': ' + esc(m.feedback_note) : '') + '</span>' : ''}</div>${esc(m.text)}${(m.sources || []).length ? `<div class="meta mono" style="margin-top:6px">sources: ${m.sources.map(x => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.url)}</a>`).join(' · ')}</div>` : ''}</div>`).join('');
   $('convo-head').querySelectorAll('button[data-confirm]').forEach(b => b.onclick = async () => { b.disabled = true; try { await api(`/admin/leads/${b.dataset.confirm}/confirm`, { method: 'POST' }); openConvo(sid); } catch (e) { $('status').textContent = e.message; } });
   loadMemory(sid);
+  renderReply(sid, t);
 }
+// ---- the team answers inside the visitor's chat (app/team.py); unread replies are emailed to the visitor
+const TEAM_LABEL = { waiting: 'waiting for the team', replied: 'the team replied', closed: 'closed' };
+function renderReply(sid, t) {
+  const box = $('convo-reply'), st = t.team_status;
+  box.innerHTML = `<b>Reply in the visitor's chat</b> <span class="chip">${esc(TEAM_LABEL[st] || 'assistant only')}</span>${t.rating ? ` <span class="chip">rated ★${t.rating}${t.rating_note ? ': ' + esc(t.rating_note) : ''}</span>` : ''}
+    <textarea id="team-text" maxlength="6000" placeholder="Your answer appears in their chat as you. If they have not read it within a few minutes, it is emailed to them."></textarea>
+    <div class="row2"><input id="team-author" class="mono" style="width:140px" placeholder="your name" value="${esc(sessionStorage.getItem('dh_author') || '')}">
+      <button class="btn" id="team-send" type="button">Send reply</button>
+      ${st && st !== 'closed' ? '<button class="btn" id="team-close" type="button">Mark closed</button>' : '<button class="btn" id="team-open" type="button">Mark waiting</button>'}
+      <span class="muted" id="team-status"></span></div>`;
+  $('team-send').onclick = async () => { const text = $('team-text').value.trim(), author = $('team-author').value.trim(); if (!text) return;
+    try { sessionStorage.setItem('dh_author', author); } catch {}
+    $('team-send').disabled = true; $('team-status').textContent = 'sending…';
+    try { await api(`/admin/conversations/${encodeURIComponent(sid)}/reply`, { method: 'POST', headers: { ...H(), 'Content-Type': 'application/json' }, body: JSON.stringify({ text, author: author || null }) }); openConvo(sid); }
+    catch (e) { $('team-status').textContent = e.message; $('team-send').disabled = false; } };
+  const setSt = async (status) => { try { await api(`/admin/conversations/${encodeURIComponent(sid)}/status`, { method: 'POST', headers: { ...H(), 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }); openConvo(sid); } catch (e) { $('team-status').textContent = e.message; } };
+  if ($('team-close')) $('team-close').onclick = () => setSt('closed');
+  if ($('team-open')) $('team-open').onclick = () => setSt('waiting');
+}
+// "visitor wrote again" emails link here: /admin#conv=<session id>
+function openHashConvo() { const m = /^#conv=([A-Za-z0-9-]{8,80})$/.exec(location.hash || ''); if (!m) return; document.querySelector('nav button[data-pane="convos"]').click(); openConvo(m[1]).catch(e => { $('status').textContent = e.message; }); }
 // ---- working memory of one conversation (app/session_memory.py): what the bot noted, and exactly what the model sees
 const MEM_FORM = [['name', 'booking form'], ['company', 'booking form'], ['notes', 'booking form'], ['guests', 'booking form'], ['handover_message', 'hand-over']];
 async function loadMemory(sid) {
@@ -550,11 +580,11 @@ $('caform').onsubmit = async e => { e.preventDefault(); const f = e.target; $('c
 
 // ---- email templates
 const TPL_KEYS = ['brand_default', 'host_name', 'brand_map', 'host_subject', 'host_body', 'visitor_booking_enabled', 'visitor_booking_subject', 'visitor_booking_body', 'visitor_handover_enabled', 'visitor_handover_subject', 'visitor_handover_body', 'visitor_nudge_enabled', 'visitor_nudge_subject', 'visitor_nudge_body', 'visitor_confirmed_enabled', 'visitor_confirmed_subject', 'visitor_confirmed_body', 'host_booking_subject', 'host_booking_body',
-  'visitor_rescheduled_enabled', 'visitor_rescheduled_subject', 'visitor_rescheduled_body', 'visitor_cancelled_enabled', 'visitor_cancelled_subject', 'visitor_cancelled_body', 'visitor_reminder_enabled', 'visitor_reminder_subject', 'visitor_reminder_body', 'visitor_gap_enabled', 'visitor_gap_subject', 'visitor_gap_body'];
+  'visitor_rescheduled_enabled', 'visitor_rescheduled_subject', 'visitor_rescheduled_body', 'visitor_cancelled_enabled', 'visitor_cancelled_subject', 'visitor_cancelled_body', 'visitor_reminder_enabled', 'visitor_reminder_subject', 'visitor_reminder_body', 'visitor_gap_enabled', 'visitor_gap_subject', 'visitor_gap_body', 'visitor_team_reply_enabled', 'visitor_team_reply_subject', 'visitor_team_reply_body'];
 let tplDefaults = {};
 function tplValues() { const f = $('tplform'), out = {}; TPL_KEYS.forEach(k => { const el = f.elements[k]; out[k] = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value; }); return out; }
 function tplFill(t) { const f = $('tplform'); TPL_KEYS.forEach(k => { const el = f.elements[k]; if (el.type === 'checkbox') el.checked = /^(true|1|yes|on)$/i.test(t[k] || ''); else el.value = t[k] || ''; }); }
-function showPreviews(p) { for (const k of ['host', 'visitor_booking', 'visitor_handover', 'visitor_nudge', 'visitor_confirmed', 'host_booking', 'visitor_rescheduled', 'visitor_cancelled', 'visitor_reminder', 'visitor_gap']) { if (!p[k]) continue; const x = p[k]; $('pv-' + k).innerHTML = `<b>Subject:</b> ${esc(x.subject)}\n\n${esc(x.body)}`; } }
+function showPreviews(p) { for (const k of ['host', 'visitor_booking', 'visitor_handover', 'visitor_nudge', 'visitor_confirmed', 'host_booking', 'visitor_rescheduled', 'visitor_cancelled', 'visitor_reminder', 'visitor_gap', 'visitor_team_reply']) { if (!p[k]) continue; const x = p[k]; $('pv-' + k).innerHTML = `<b>Subject:</b> ${esc(x.subject)}\n\n${esc(x.body)}`; } }
 async function loadEmails() {
   const d = await api('/admin/email-templates'); tplDefaults = d.defaults; tplFill(d.templates); showPreviews(d.previews);
   $('vars').innerHTML = d.variables.map(v => `<span class="chip">{${v}}</span>`).join('');
@@ -664,7 +694,7 @@ async function load() {
   let err = null;
   try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadAnswers(), loadEmails(), loadOutreach()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
   catch (e) { err = e; $('status').textContent = e.message; }
-  if (!err || !/wrong token/.test(err.message)) openHashBooking();  // a failing unrelated pane must not block the deep link
+  if (!err || !/wrong token/.test(err.message)) { openHashBooking(); openHashConvo(); }  // a failing unrelated pane must not block the deep link
 }
 $('go').onclick = load; $('days').onchange = load; $('token').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
 if ($('token').value) load();
