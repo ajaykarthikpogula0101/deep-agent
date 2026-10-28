@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     health_cron: str = Field(default="*/10 * * * *", alias="HEALTH_CRON")
     alert_email: str = Field(default="", alias="ALERT_EMAIL")
     credit_alert_usd: float = Field(default=2.0, alias="CREDIT_ALERT_USD")   # warn when the model key has less left than this
+    # nightly database backups outside Docker (app/backup.py); relative BACKUP_DIR = inside the project
+    backup_enabled: bool = Field(default=True, alias="BACKUP_ENABLED")
+    backup_dir: str = Field(default="backups", alias="BACKUP_DIR")
+    backup_keep: int = Field(default=14, alias="BACKUP_KEEP")
+    backup_cron: str = Field(default="50 3 * * *", alias="BACKUP_CRON")
+    backup_docker_container: str = Field(default="deependhq-assistant-db-1", alias="BACKUP_DOCKER_CONTAINER")
+    backup_timeout: int = Field(default=600, alias="BACKUP_TIMEOUT")
     # Embeddings: "local" = Hugging Face model via fastembed (free, no key, ~130 MB download, CPU);
     # "api" = an OpenAI-compatible /embeddings endpoint (remote, server-side; EMBED_API_KEY/EMBED_BASE_URL default
     # to the LLM ones). Changing provider or model changes the vector size: re-run the ingest afterwards.

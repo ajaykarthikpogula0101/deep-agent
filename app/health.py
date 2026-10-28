@@ -11,6 +11,7 @@ nobody was told. Now, every HEALTH_CRON (10 min) the app checks:
   email        emails that gave up after their retries in the last 6 hours (events 'mail_failed')
   booking      the booking robot falling back to the hand-off link in the last 24 hours (events 'booking_pending'
                with a 'browser booking' error), when browser booking is on
+  backup       the newest nightly database backup (app/backup.py) is less than 36 hours old
 
 Each check is ok, warn or fail. An alert email goes to ALERT_EMAIL (default HOST_EMAIL) when a check turns warn or fail,
 again every 6 hours while it stays that way, and once when it recovers. The state lives in settings key 'health:state'.
@@ -113,6 +114,22 @@ def run_checks(get: Callable = httpx.get, count: Callable[[str, tuple], int] = _
                 "the booking robot completed every booking in the last 24 hours",
                 lambda n: _check("warn", f"the booking robot fell back to the Zoom hand-off link {n} time(s) in the last "
                                          "24 hours; see Console → Bookings (zoom_run) and uploads/zoom-runs/"))
+
+    if settings.backup_enabled:
+        try:
+            from app import backup
+
+            hours = backup.age_hours()
+            where = str(backup.backup_dir())
+            if hours is None:
+                checks["backup"] = _check("warn", f"no database backup yet in {where}")
+            elif hours > 36:
+                checks["backup"] = _check("fail", f"the newest database backup is {hours:.0f} hours old ({where}); the nightly "
+                                                  "backup is failing, see the server log", hours=round(hours, 1))
+            else:
+                checks["backup"] = _check("ok", f"newest database backup {hours:.0f} h old in {where}", hours=round(hours, 1))
+        except Exception as e:
+            checks["backup"] = _check("warn", f"could not read the backup folder ({type(e).__name__})")
 
     worst = max((c["level"] for c in checks.values()), key=LEVELS.__getitem__, default="ok")
     report = {"level": worst, "checks": checks, "at": now.isoformat(timespec="seconds")}

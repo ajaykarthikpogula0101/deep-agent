@@ -90,12 +90,59 @@ def reachable(url: str, timeout: float = 3.0) -> bool:
         return False
 
 
+def start_compose_db(url: str, wait_s: int = 240, run=None) -> bool:
+    """Docker Desktop + `docker compose up -d db` when the URL is the compose database on this machine. False when
+    there is no Docker, no compose file, or it does not come up within `wait_s`."""
+    import subprocess
+
+    run = run or subprocess.run
+    host = url.split("@")[-1].split("/")[0]
+    if host not in ("127.0.0.1:5432", "localhost:5432") or not (ROOT / "docker-compose.yml").is_file() or not shutil.which("docker"):
+        return False
+
+    def docker_up() -> bool:
+        try:
+            return run(["docker", "info"], capture_output=True, timeout=20).returncode == 0
+        except Exception:
+            return False
+
+    t0 = time.time()
+    if not docker_up():
+        exe = next((p for p in (Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "DockerDesktop" / "Docker Desktop.exe",
+                                Path(r"C:\Program Files\Docker\Docker\Docker Desktop.exe")) if p.is_file()), None)
+        if exe is None:
+            return False
+        say("starting Docker Desktop for the database (up to 4 minutes) ...")
+        subprocess.Popen([str(exe)], close_fds=True)
+        while not docker_up():
+            if time.time() - t0 > wait_s:
+                say("Docker Desktop did not come up in time")
+                return False
+            time.sleep(3)
+    say("starting the database container (docker compose up -d db) ...")
+    try:
+        run(["docker", "compose", "up", "-d", "db"], cwd=str(ROOT), capture_output=True, timeout=wait_s)
+    except Exception as e:
+        say(f"docker compose failed: {e}")
+        return False
+    while time.time() - t0 < wait_s:
+        if reachable(url):
+            return True
+        time.sleep(2)
+    return False
+
+
 def pick_database():
     """Return (url, embedded_server_or_None). See module docstring for the rule."""
     url = os.environ.get("DATABASE_URL") or dotenv_value("DATABASE_URL")
     explicit = bool(url) and url not in STOCK_DEFAULT_URLS
     if url and reachable(url):
         say(f"using Postgres at {url.split('@')[-1]}")
+        return url, None
+    # .env names the compose database and Docker is installed but stopped: start it rather than switching to the
+    # (empty) embedded database, which made all data look lost whenever Docker Desktop was not running
+    if url and start_compose_db(url):
+        say(f"using Postgres at {url.split('@')[-1]} (Docker)")
         return url, None
     if explicit:
         fail(f"DATABASE_URL is set ({url.split('@')[-1]}) but nothing answers there. Start that "

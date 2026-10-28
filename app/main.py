@@ -26,7 +26,7 @@ from urllib.parse import quote as quote_param
 from fastapi import File, Form, UploadFile
 from fastapi.responses import Response
 
-from app import conversations, digest, email_ask, gaps, geoip_update, guidance, health, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking, visitors
+from app import backup, conversations, digest, email_ask, gaps, geoip_update, guidance, health, host_page, identity, inbox, links, mailer, media, memory, nudge, outcomes, outreach, precall, reminders, session_memory, store_bookings, suggestions, templates, titles, tracking, visitors
 from app.booking import availability as avail
 from app.booking import browser_booking
 from app.booking import email_html, flow, ics, zoom_mail
@@ -114,6 +114,10 @@ def _startup() -> None:
     if "mmdb" in chain and tracking.mmdb_problem():
         log.warning("GEOIP_PROVIDER includes mmdb but %s; it is skipped%s", tracking.mmdb_problem(),
                     " until the download finishes" if geoip_update.configured() else " (set MAXMIND_LICENSE_KEY to download them)")
+    if settings.backup_enabled:  # nightly pg_dump outside Docker (app/backup.py); one now if the newest is over a day old
+        _scheduler.add_job(backup.run, CronTrigger.from_crontab(settings.backup_cron, timezone=settings.host_timezone),
+                           id="db_backup", replace_existing=True, misfire_grace_time=6 * 3600)
+        backup.take_if_stale_async()
     if settings.health_checks:  # every 10 min: model key, credit, failed answers, database, email, booking robot (app/health.py)
         _scheduler.add_job(health.run, CronTrigger.from_crontab(settings.health_cron, timezone=settings.host_timezone),
                            id="health", replace_existing=True, misfire_grace_time=600, next_run_time=datetime.now(timezone.utc))

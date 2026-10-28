@@ -41,6 +41,7 @@ def _no_live_health_or_backup_model(monkeypatch):
 
     monkeypatch.setattr(settings, "health_checks", False)
     monkeypatch.setattr(settings, "chat_fallback_model", "")
+    monkeypatch.setattr(settings, "backup_enabled", False)   # never runs pg_dump against the real database
 
 
 @pytest.fixture(autouse=True)
