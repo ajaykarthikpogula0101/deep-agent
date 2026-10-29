@@ -514,6 +514,29 @@ CREATE TABLE IF NOT EXISTS news_sitemap_seen (
     lastmod TIMESTAMPTZ,
     PRIMARY KEY (tenant, url)
 );
+-- dynamic checking (NEWS_DYNAMIC): when each source is due again (sooner after a change, later while quiet) ...
+CREATE TABLE IF NOT EXISTS news_sources (
+    tenant        TEXT NOT NULL,
+    source        TEXT NOT NULL,                 -- blog | sitemap | youtube | mention | links
+    every_minutes INT NOT NULL,
+    next_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    checked_at    TIMESTAMPTZ,
+    changed_at    TIMESTAMPTZ,
+    last_new      INT NOT NULL DEFAULT 0,
+    errors        INT NOT NULL DEFAULT 0,        -- failed checks in a row
+    last_error    TEXT,
+    PRIMARY KEY (tenant, source)
+);
+-- ... and what each feed URL answered last time, so an unchanged feed costs one 304 (or one hash compare)
+CREATE TABLE IF NOT EXISTS news_fetch_cache (
+    tenant        TEXT NOT NULL,
+    url           TEXT NOT NULL,
+    etag          TEXT,
+    last_modified TEXT,
+    body_hash     TEXT,
+    checked_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (tenant, url)
+);
 """
 
 _pool: ConnectionPool | None = None

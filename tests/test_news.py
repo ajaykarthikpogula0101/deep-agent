@@ -89,15 +89,24 @@ def tenant():
 
     with conn() as c:
         c.execute("DELETE FROM news_sitemap_seen WHERE tenant = %s", (slug,))
+        c.execute("DELETE FROM news_sources WHERE tenant = %s", (slug,))
+        c.execute("DELETE FROM news_fetch_cache WHERE tenant = %s", (slug,))
         c.execute("DELETE FROM news_tenants WHERE slug = %s", (slug,))   # items go with it (ON DELETE CASCADE)
         c.commit()
 
 
-def fake_get(pages: dict):
-    def get(url):
-        body = pages[url]
+def fake_get(pages: dict, calls: list | None = None):
+    """A page is its body, an int (a status with no body), or (body, headers): a 304 comes back when the ETag sent matches."""
+    def get(url, headers=None):
+        if calls is not None:
+            calls.append((url, dict(headers or {})))
+        body, hdrs = pages[url] if isinstance(pages[url], tuple) else (pages[url], {})
+        if isinstance(body, int):
+            return SimpleNamespace(content=b"", text="", status_code=body, headers={})
+        if hdrs.get("etag") and (headers or {}).get("If-None-Match") == hdrs["etag"]:
+            return SimpleNamespace(content=b"", text="", status_code=304, headers=hdrs)
         return SimpleNamespace(content=body if isinstance(body, bytes) else body.encode(), text=body if isinstance(body, str) else body.decode(),
-                               status_code=200)
+                               status_code=200, headers=hdrs)
     return get
 
 
@@ -152,6 +161,10 @@ def test_sitemaps_first_run_is_a_baseline_then_changes_become_items(tenant):
                                                                  ("https://site.test/cs/added", later))
     assert N.poll_sitemaps(tenant, get=fake_get(pages)) == 2                         # the edited old page and the added one
     assert "page" not in {i["kind"] for i in N.admin_items(tenant["slug"])}          # types not chosen are never read
+    pages["https://site.test/case_studies-sitemap.xml"] = urlset(("https://site.test/cs/old", later), ("https://site.test/cs/new", recent))
+    assert N.poll_sitemaps(tenant, get=fake_get(pages)) == 0                         # a page taken off the site ...
+    assert [i["status"] for i in N.admin_items(tenant["slug"]) if i["url"].endswith("/cs/added")] == ["gone"]   # ... leaves the tab
+    assert "https://site.test/cs/added" not in {i["url"] for i in N.published(tenant["slug"])}
 
 
 @db
@@ -182,5 +195,111 @@ def test_api(monkeypatch):
         d = c.get("/news").json()
         assert d["tenant"] == settings.news_tenant and d["items"][0]["title"] == "A"
         assert c.get("/admin/news").status_code in (401, 403)
+        r = c.get("/news")
+        assert r.headers["etag"] and r.headers["cache-control"] == "no-cache"
+        assert c.get("/news", headers={"If-None-Match": r.headers["etag"]}).status_code == 304   # the widget's 2-minute re-ask
+        assert c.post("/admin/news/discover", json={"url": "span.test"}).status_code in (401, 403)
         monkeypatch.setattr(settings, "news_enabled", False)
         assert c.get("/news").status_code == 404
+
+
+# ---------------------------------------------------------------- dynamic checking
+def test_cadence():
+    assert N.next_every("blog", 60, changed=True, failed=False) == 15                   # a change: back to the fastest
+    assert N.next_every("blog", 15, False, False) == 22 and N.next_every("blog", 100, False, False) == 120   # quiet: 1.5x, capped
+    assert N.next_every("blog", 15, False, True) == 30 and N.next_every("blog", 100, False, True) == 120     # failing: doubled
+    assert N.next_every("mention", 0, False, False) == 360
+
+
+@db
+def test_items_change_only_when_their_content_does(tenant):
+    from app.db import conn
+
+    slug, item = tenant["slug"], {"title": "A", "url": "https://site.test/a", "blurb": "x"}
+
+    def row():
+        with conn() as c:
+            return c.execute("SELECT updated_at, published_at, title FROM news_items WHERE tenant = %s AND url = %s", (slug, item["url"])).fetchone()
+    assert N.upsert(slug, "blog", "post", item)
+    first = row()
+    assert not N.upsert(slug, "blog", "post", item) and row() == first        # the same again: untouched, the date too (no pubDate)
+    assert not N.upsert(slug, "blog", "post", {**item, "title": "A, edited"})
+    assert row()[2] == "A, edited" and row()[0] > first[0] and row()[1] == first[1]
+    now = datetime.now(timezone.utc)
+    page = {"title": "S", "url": "https://site.test/s", "published_at": now}
+    N.upsert(slug, "sitemap", "news", page, lastmod=now - timedelta(days=1))
+    assert not [i for i in N.published(slug) if i["title"] == "S"][0]["updated"]
+    N.upsert(slug, "sitemap", "news", page, lastmod=now + timedelta(hours=2))    # re-saved on the site after it was listed
+    assert [i for i in N.published(slug) if i["title"] == "S"][0]["updated"]
+
+
+@db
+def test_an_unchanged_feed_is_not_read_again(tenant):
+    calls = []
+    pages = {"https://site.test/blog/feed/": (BLOG, {"etag": '"v1"'})}
+    get = fake_get(pages, calls)
+    assert N.poll_blog(tenant, get=get, cache=True) == 1
+    assert N.poll_blog(tenant, get=get, cache=True) == 0
+    assert calls[-1] == ("https://site.test/blog/feed/", {"If-None-Match": '"v1"'})   # answered 304
+    pages["https://site.test/blog/feed/"] = BLOG                                     # no ETag now: the same bytes are skipped too
+    n = len(calls)
+    assert N.poll_blog(tenant, get=get, cache=True) == 0 and len(calls) == n + 1
+    pages["https://site.test/blog/feed/"] = 500
+    with pytest.raises(RuntimeError):
+        N.poll_blog(tenant, get=get, cache=True)
+
+
+@db
+def test_the_schedule_speeds_up_after_a_change_and_slows_when_quiet(tenant):
+    slug = tenant["slug"]
+    N.save_tenant({"slug": slug, "name": "Test Co", "blog_feed_url": "https://site.test/blog/feed/"})   # the blog only (+ link check)
+    pages = {"https://site.test/blog/feed/": (BLOG, {"etag": '"v1"'}), "https://www.lakeb2b.com/blog/ai-sdr/": PAGE}
+    get, now = fake_get(pages), datetime.now(timezone.utc)
+    out = N.tick(get=get, now=now, tenant_slug=slug)
+    assert set(out) == {f"{slug}:blog", f"{slug}:links"}
+    assert out[f"{slug}:blog"]["new"] == 1 and out[f"{slug}:blog"]["every_minutes"] == 15
+    assert N.tick(get=get, now=now + timedelta(minutes=5), tenant_slug=slug) == {}                      # nothing due yet
+    quiet = N.tick(get=get, now=now + timedelta(minutes=16), tenant_slug=slug)
+    assert quiet == {f"{slug}:blog": {"new": 0, "changed": False, "every_minutes": 22, "error": None}}   # a 304: a little later
+    pages["https://site.test/blog/feed/"] = 503
+    failed = N.tick(get=get, now=now + timedelta(minutes=40), tenant_slug=slug)[f"{slug}:blog"]
+    assert "503" in failed["error"] and failed["every_minutes"] == 44
+    report = {r["source"]: r for r in N.source_report(slug)}
+    assert set(report) == {"blog", "links"} and report["blog"]["errors"] == 1 and report["blog"]["last_error"]
+    assert N.check_now(("blog",), slug, get=fake_get({**pages, "https://site.test/blog/feed/": BLOG})) == {f"{slug}:blog": 0}
+    assert N.source_states(slug)["blog"]["errors"] == 0                                # recovered
+
+
+@db
+def test_pages_gone_from_the_site_leave_the_tab_and_come_back(tenant):
+    slug, now = tenant["slug"], datetime.now(timezone.utc)
+    for u in ("p1", "p2", "p3"):
+        N.upsert(slug, "blog", "post", {"title": u, "url": f"https://site.test/{u}", "published_at": now})
+    N.upsert(slug, "youtube", "video", {"title": "v", "url": "https://www.youtube.com/watch?v=gone", "published_at": now})
+    N.upsert(slug, "manual", "linkedin", {"title": "m", "url": "https://site.test/m", "published_at": now})
+    oembed = "https://www.youtube.com/oembed?format=json&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dgone"
+    pages = {"https://site.test/p1": 404, "https://site.test/p2": PAGE, "https://site.test/p3": 503, oembed: 404, "https://site.test/m": 404}
+    assert N.check_links(tenant, get=fake_get(pages)) == 2                           # p1 and the video; a 503 or a hand-published post: kept
+    assert {i["title"] for i in N.published(slug)} == {"p2", "p3", "m"}
+    assert N.check_links(tenant, get=fake_get({**pages, "https://site.test/p1": PAGE})) == 1
+    assert "p1" in {i["title"] for i in N.published(slug)}
+    N.upsert(slug, "youtube", "video", {"title": "v", "url": "https://www.youtube.com/watch?v=gone", "published_at": now})
+    assert "v" in {i["title"] for i in N.published(slug)}                            # back in its feed: back in the tab
+
+
+def test_discover_finds_a_sites_sources():
+    home = """<html><head><meta property="og:site_name" content="SPAN Global Services">
+      <link rel="alternate" type="application/rss+xml" title="Feed" href="/feed/">
+      <link href="/comments/feed/" title="Comments" type="application/rss+xml" rel="alternate"></head>
+      <body><a href="https://www.youtube.com/@spanglobal">YouTube</a></body></html>"""
+    pages = {"https://www.span.test/": home, "https://www.span.test/feed/": BLOG, "https://www.span.test/blog/feed/": 404,
+             "https://www.span.test/robots.txt": "User-agent: *" + chr(10) + "Sitemap: https://www.span.test/sitemap_index.xml" + chr(10),
+             "https://www.span.test/sitemap_index.xml": INDEX,
+             "https://www.youtube.com/@spanglobal": '<script>var x = {"channelId":"UCabcdefghijklmnopqrstuv"};</script>'}
+    d = N.discover("https://www.span.test/", get=fake_get(pages))
+    assert d["slug"] == "span" and d["name"] == d["mention_query"] == "SPAN Global Services"
+    assert d["blog_feed_url"] == "https://www.span.test/feed/" and d["youtube_channel_id"] == "UCabcdefghijklmnopqrstuv"
+    assert d["sitemap_index_url"] == "https://www.span.test/sitemap_index.xml"
+    assert d["sitemap_types"] == ["case_studies", "webinar"] and d["sitemap_types_available"] == ["page", "case_studies", "webinar"]
+    with pytest.raises(ValueError):
+        N.discover("not a site")

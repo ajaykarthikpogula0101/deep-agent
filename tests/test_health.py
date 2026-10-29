@@ -38,6 +38,8 @@ def _count(n_llm=0, n_mail=0, n_booking=0, db_down=False):
             return n_mail
         if "booking_pending" in sql:
             return n_booking
+        if "news_sources" in sql:
+            return 0
         return 1
     return count
 

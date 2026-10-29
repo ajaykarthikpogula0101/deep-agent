@@ -12,6 +12,7 @@ nobody was told. Now, every HEALTH_CRON (10 min) the app checks:
   booking      the booking robot falling back to the hand-off link in the last 24 hours (events 'booking_pending'
                with a 'browser booking' error), when browser booking is on
   backup       the newest nightly database backup (app/backup.py) is less than 36 hours old
+  news         a News source (blog RSS, sitemaps, YouTube, mentions) that failed 3 checks in a row (app/news.py)
 
 Each check is ok, warn or fail. An alert email goes to ALERT_EMAIL (default HOST_EMAIL) when a check turns warn or fail,
 again every 6 hours while it stays that way, and once when it recovers. The state lives in settings key 'health:state'.
@@ -119,6 +120,10 @@ def run_checks(get: Callable = httpx.get, count: Callable[[str, tuple], int] = _
                 "the booking robot completed every booking in the last 24 hours",
                 lambda n: _check("warn", f"the booking robot fell back to the Zoom hand-off link {n} time(s) in the last "
                                          "24 hours; see Console → Bookings (zoom_run) and uploads/zoom-runs/"))
+
+    if settings.news_enabled and settings.news_dynamic:
+        counted("news", "SELECT count(*) FROM news_sources WHERE errors >= %s", (3,), "every News source answers",
+                lambda n: _check("warn", f"{n} News source(s) failed 3 checks in a row; see Console → News for the error"))
 
     if settings.backup_enabled:
         try:

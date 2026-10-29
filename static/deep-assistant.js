@@ -28,7 +28,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.29.4';
+const VERSION = '2026.10.29.5';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -420,7 +420,7 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
 .nbody { display:flex; flex-direction:column; gap:6px; padding:14px 40px 16px 16px } .nbody b { font-size:14.5px; font-weight:600; line-height:1.4 }
 .nblurb { font-size:14px; line-height:1.45; color:var(--da-muted); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
 .nlabels { display:flex; align-items:center; gap:6px; flex-wrap:wrap } .nchip { padding:2px 9px; border-radius:999px; background:var(--da-lavender); color:var(--da-primary); font-size:12px; font-weight:600 }
-.nchip.new { background:var(--da-primary); color:#fff } .nwhen { font-size:12px; color:var(--da-muted) }
+.nchip.new { background:var(--da-primary); color:#fff } .nchip.upd { background:transparent; box-shadow:inset 0 0 0 1px var(--da-line); color:var(--da-muted) } .nwhen { font-size:12px; color:var(--da-muted) }
 .ncard > svg { position:absolute; right:14px; bottom:18px; width:16px; height:16px; color:var(--da-primary) }
 .ndot { position:absolute; top:-1px; right:-2px; width:9px; height:9px; border-radius:50%; background:#DF2020; box-shadow:0 0 0 2px var(--da-surface) }
 /* Help center */
@@ -896,7 +896,7 @@ class DeepAssistant extends HTMLElement {
     this.$launcher.setAttribute('aria-expanded', String(open)); this.$launcher.setAttribute('aria-label', open ? 'Minimize the assistant' : 'Open the ' + this.botName + ' assistant');
     if (!launcher || open === this._wasOpen) return; this._wasOpen = open;
     this._emit(open ? 'open' : 'close');
-    if (open) { this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); this._teamCheck(); if (this._voice && this._voice.orb) this._voice.orb.resume(); }
+    if (open) { this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); this._teamCheck(); this._newsLive(true); if (this._voice && this._voice.orb) this._voice.orb.resume(); }
     else { this._bindViewport(false); this._closePops(); if (this._voice && this._voice.orb) this._voice.orb.pause(); if (this.shadowRoot.activeElement && this.shadowRoot.activeElement !== this.$launcher) this.$launcher.focus({ preventScroll: true }); }
   }
   _bindViewport(on) {  // phones: size the full-screen panel to the visual viewport so the composer stays above the keyboard
@@ -904,7 +904,7 @@ class DeepAssistant extends HTMLElement {
     if (on && !this._vvH) { this._vvH = () => { this.$panel.style.setProperty('--da-vvh', Math.round(vv.height) + 'px'); this.$panel.style.setProperty('--da-vv-top', Math.round(vv.offsetTop) + 'px'); }; vv.addEventListener('resize', this._vvH); vv.addEventListener('scroll', this._vvH); this._vvH(); }
     else if (!on && this._vvH) { vv.removeEventListener('resize', this._vvH); vv.removeEventListener('scroll', this._vvH); this._vvH = null; }
   }
-  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); this._applyFooter(); this._applyComposerCaps(); this._applyTabs(); this._loadNews().then(() => this._paintNewsDot()); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); } } catch {} }
+  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); this._applyFooter(); this._applyComposerCaps(); this._applyTabs(); this._loadNews().then(() => { this._paintNewsDot(); this._newsLive(); }); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); } } catch {} }
   _setBusy(on) { this._busy = on; this.shadowRoot.querySelector('.i-send').hidden = on; this.shadowRoot.querySelector('.i-stop').hidden = !on; this.$send.classList.toggle('stop', on); this.$send.setAttribute('aria-label', on ? 'Stop generating' : 'Send'); this.$send.title = on ? 'Stop' : 'Send'; this.$log.setAttribute('aria-busy', String(on)); this._setStatus(on ? 'work' : (this._voice ? 'call' : 'idle')); this._syncSend(); }
   _setStatus(mode) {
     const sh = this.shadowRoot, st = sh.querySelector('.st'); if (!st) return;
@@ -1014,12 +1014,23 @@ class DeepAssistant extends HTMLElement {
     try { const t = this._newsTenant(); const r = await fetch(this._url('/news' + (t ? '?tenant=' + encodeURIComponent(t) : ''))); if (r.ok) this._news = { ...(await r.json()), at: Date.now() }; } catch {}
     return this._news || null;
   }
+  // while the panel is open the feed is re-asked every 2 minutes (a 304 when nothing changed, app/main.py) and the
+  // open view repaints only when an item was added, edited or taken off on the site
+  _newsSig() { const d = this._news; return d && d.items ? d.items.map((i) => `${i.id}:${i.published_at}:${i.title}:${i.image || ''}`).join('|') : ''; }
+  _newsLive(now) {
+    clearTimeout(this._newsT); const shown = this.getAttribute('mode') !== 'launcher' || this.hasAttribute('open');
+    if (!shown || !this._tabs().includes('news')) return;
+    const step = async () => { if (!document.hidden) { const before = this._newsSig(); await this._loadNews(true);
+      if (this._newsSig() !== before) { if (this._view === 'news') this._renderNews(); else if (this._view === 'home') this._paintHomeNews(); else this._paintNewsDot(); } }
+      this._newsLive(); };
+    this._newsT = setTimeout(step, now && this._news && Date.now() - this._news.at > 60000 ? 0 : 120000);
+  }
   _newsSeen() { try { return localStorage.getItem(this._key('news_seen:' + this._newsTenant())) || ''; } catch { return ''; } }
   _paintNewsDot() { const d = this._news, dot = this.shadowRoot.querySelector('.ndot'); if (!dot) return; const top = d && d.items && d.items[0]; dot.hidden = !top || String(top.published_at) <= this._newsSeen(); }
   _newsCard(it, isNew, cls) {
     const when = it.published_at ? new Date(it.published_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
     return `<a class="${cls}" href="${esc(it.url)}" target="_blank" rel="noopener" data-id="${esc(String(it.id))}">${it.image ? `<span class="nimg"><img src="${esc(it.image)}" alt="" loading="lazy" onerror="this.parentNode.remove()"></span>` : ''}
-      <span class="nbody"><span class="nlabels">${isNew ? '<span class="nchip new">New</span>' : ''}${it.pinned ? '<span class="nchip">Pinned</span>' : ''}<span class="nchip">${esc(it.label || it.kind)}</span><span class="nwhen">${esc(when)}</span></span>
+      <span class="nbody"><span class="nlabels">${isNew ? '<span class="nchip new">New</span>' : ''}${it.pinned ? '<span class="nchip">Pinned</span>' : ''}<span class="nchip">${esc(it.label || it.kind)}</span>${it.updated ? '<span class="nchip upd">Updated</span>' : ''}<span class="nwhen">${esc(when)}</span></span>
       <b>${esc(it.title)}</b>${it.blurb ? `<span class="nblurb">${esc(it.blurb)}</span>` : ''}</span>${SVG.chev}</a>`;
   }
   async _renderNews() {

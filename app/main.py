@@ -1,7 +1,9 @@
 """FastAPI app: /chat (SSE), /track (session origin beacon), /healthz, /admin/*, static chat page + embeddable widget."""
 from __future__ import annotations
 
+import hashlib
 import hmac
+import json
 import logging
 import os
 import time
@@ -13,6 +15,7 @@ from typing import Annotated
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -46,7 +49,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.29.4"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.29.5"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -127,15 +130,19 @@ def _startup() -> None:
         backup.take_if_stale_async()
     if settings.help_enabled:  # starter help center + missing article vectors, in the background (app/help.py)
         help_center.seed_async()
-    if settings.news_enabled:  # News tab (app/news.py): LakeB2B as tenant one; blog + sitemaps hourly, YouTube + mentions daily
+    if settings.news_enabled:  # News tab (app/news.py): LakeB2B as tenant one
         try:
             news.seed()
         except Exception as e:
             log.warning("news seed failed: %s", e)
-        _scheduler.add_job(news.run_hourly, CronTrigger.from_crontab("20 * * * *", timezone=settings.host_timezone),
-                           id="news_hourly", replace_existing=True, misfire_grace_time=1800, next_run_time=datetime.now(timezone.utc))
-        _scheduler.add_job(news.run_daily, CronTrigger.from_crontab("30 6 * * *", timezone=settings.host_timezone),
-                           id="news_daily", replace_existing=True, misfire_grace_time=6 * 3600, next_run_time=datetime.now(timezone.utc))
+        if settings.news_dynamic:  # every NEWS_TICK_MINUTES: the sources that are due (sooner after a change, later while quiet)
+            _scheduler.add_job(news.tick, "interval", minutes=max(1, settings.news_tick_minutes), id="news_tick", replace_existing=True,
+                               misfire_grace_time=600, max_instances=1, coalesce=True, next_run_time=datetime.now(timezone.utc))
+        else:  # fixed: blog + sitemaps hourly, YouTube + mentions daily
+            _scheduler.add_job(news.run_hourly, CronTrigger.from_crontab("20 * * * *", timezone=settings.host_timezone),
+                               id="news_hourly", replace_existing=True, misfire_grace_time=1800, next_run_time=datetime.now(timezone.utc))
+            _scheduler.add_job(news.run_daily, CronTrigger.from_crontab("30 6 * * *", timezone=settings.host_timezone),
+                               id="news_daily", replace_existing=True, misfire_grace_time=6 * 3600, next_run_time=datetime.now(timezone.utc))
     if settings.health_checks:  # every 10 min: model key, credit, failed answers, database, email, booking robot (app/health.py)
         _scheduler.add_job(health.run, CronTrigger.from_crontab(settings.health_cron, timezone=settings.host_timezone),
                            id="health", replace_existing=True, misfire_grace_time=600, next_run_time=datetime.now(timezone.utc))
@@ -734,6 +741,7 @@ def widget_config(request: Request):
 # ---- News tab (app/news.py)
 @app.get("/news")
 def news_feed(request: Request, tenant: str | None = None):
+    """The widget re-asks every 2 minutes while it is open: an ETag makes an unchanged feed a 304 with no body."""
     if not settings.news_enabled:
         raise HTTPException(404, "news is off")
     if not _origin_ok(request):
@@ -742,13 +750,19 @@ def news_feed(request: Request, tenant: str | None = None):
     t = news.tenant(slug)
     if not t or not t["enabled"]:
         raise HTTPException(404, "no such news feed")
-    return {"tenant": slug, "name": t["name"], "items": news.published(slug)}
+    body = jsonable_encoder({"tenant": slug, "name": t["name"], "items": news.published(slug)})   # ISO dates, as before
+    etag = '"' + hashlib.sha1(json.dumps(body, sort_keys=True).encode()).hexdigest()[:20] + '"'
+    headers = {"ETag": etag, "Cache-Control": "no-cache"}
+    if etag in (request.headers.get("if-none-match") or ""):
+        return Response(status_code=304, headers=headers)
+    return Response(json.dumps(body), media_type="application/json", headers=headers)
 
 
 @app.get("/admin/news")
 def admin_news(tenant: str | None = None, status: str | None = None, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
-    return {"tenants": news.tenants(), "items": news.admin_items(tenant, status), "default_tenant": settings.news_tenant}
+    return {"tenants": news.tenants(), "items": news.admin_items(tenant, status), "default_tenant": settings.news_tenant,
+            "sources": news.source_report(tenant or settings.news_tenant), "dynamic": settings.news_dynamic}
 
 
 class NewsModerateIn(BaseModel):
@@ -800,9 +814,26 @@ def admin_news_tenant(body: dict, x_admin_token: str | None = Header(default=Non
 
 
 @app.post("/admin/news/poll")
-def admin_news_poll(which: str = "blog,sitemap,youtube,mention", x_admin_token: str | None = Header(default=None)):
+def admin_news_poll(which: str = "blog,sitemap,youtube,mention", tenant: str | None = None, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
-    return news.run(tuple(w for w in which.split(",") if w in news.POLLERS))
+    chosen = tuple(w for w in which.split(",") if w in news.POLLERS)
+    if settings.news_dynamic:   # also resets each source's schedule from what it finds
+        return news.check_now(chosen, tenant)
+    return news.run(chosen)
+
+
+class NewsDiscoverIn(BaseModel):
+    url: str = Field(min_length=4, max_length=500)
+
+
+@app.post("/admin/news/discover")
+def admin_news_discover(body: NewsDiscoverIn, x_admin_token: str | None = Header(default=None)):
+    """Console -> News -> Sources: find a website's blog RSS, sitemap types and YouTube channel to fill the tenant form."""
+    _require_admin(x_admin_token)
+    try:
+        return news.discover(body.url)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
 
 
 # ---- help center (app/help.py): the widget's Help tab and Home search

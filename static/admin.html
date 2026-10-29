@@ -172,8 +172,10 @@
     <div class="card">
       <h2>News · the widget's News tab (blog and YouTube publish themselves; press mentions wait for your approval)</h2>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><label class="muted">tenant <select id="nw-tenant"></select></label>
-        <label class="muted">show <select id="nw-status"><option value="">all</option><option value="pending">waiting for approval</option><option value="published">published</option><option value="hidden">hidden</option><option value="rejected">rejected</option></select></label>
+        <label class="muted">show <select id="nw-status"><option value="">all</option><option value="pending">waiting for approval</option><option value="published">published</option><option value="hidden">hidden</option><option value="rejected">rejected</option><option value="gone">gone from the site</option></select></label>
         <button class="btn" type="button" id="nw-poll">Check the sources now</button><span class="status" id="nw-status-msg"></span></div>
+      <p class="muted" id="nw-dyn" style="margin:10px 0 4px;font-size:13px"></p>
+      <div class="wrap"><table id="nw-sources"><thead><tr><th>source</th><th>last checked</th><th>last change</th><th>next check</th><th>status</th></tr></thead><tbody></tbody></table></div>
     </div>
     <div class="card">
       <h2>Publish to the news · a LinkedIn or X post, a launch, an event</h2>
@@ -189,6 +191,10 @@
     </div>
     <div class="card"><div class="wrap"><table id="nw-table"><thead><tr><th></th><th>title</th><th>kind</th><th>date</th><th>status</th><th></th></tr></thead><tbody></tbody></table></div></div>
     <details class="card"><summary><b>Sources per tenant</b> · blog RSS, YouTube channel, mention search, sitemap types</summary>
+      <form class="inline" id="nwdform" style="margin-top:10px">
+        <input name="url" class="full" placeholder="New site? Its address, e.g. https://www.spanglobalservices.com, then Find sources" maxlength="500" required>
+        <div class="full" style="display:flex;gap:10px;align-items:center"><button class="btn" type="submit">Find sources</button><span class="status" id="nwd-status"></span></div>
+      </form>
       <form class="inline" id="nwtform" style="margin-top:10px">
         <input name="slug" placeholder="slug (lakeb2b, span, deependhq)" maxlength="40" required><input name="name" placeholder="name shown: From Team …" maxlength="80">
         <input name="blog_feed_url" class="full" placeholder="Blog RSS, e.g. https://www.lakeb2b.com/blog/feed/">
@@ -787,7 +793,13 @@ async function loadNews() {
   const pending = NW.items.filter(i => i.status === 'pending').length; $('nw-badge').hidden = !pending; $('nw-badge').textContent = pending;
   const t = NW.tenants.find(x => x.slug === tsel.value); const f = $('nwtform');
   if (t) { for (const k of ['slug', 'name', 'blog_feed_url', 'youtube_channel_id', 'mention_query', 'sitemap_index_url']) f[k].value = t[k] || ''; f.sitemap_types.value = (t.sitemap_types || []).join(', '); f.enabled.checked = !!t.enabled; }
-  const st = (i) => i.status === 'pending' ? '<span class="warn">waiting</span>' : i.status === 'published' ? '<span class="ok">live</span>' : `<span class="muted">${esc(i.status)}</span>`;
+  const ago = (d) => d ? fmt(d) : '<span class="muted">not yet</span>';
+  const every = (m) => m >= 60 ? `${+(m / 60).toFixed(1)} h` : `${m} min`;
+  $('nw-dyn').textContent = NW.dynamic ? 'Checked on their own: a source that just changed is checked again soon, a quiet one less often; unchanged feeds are skipped. Pages removed from the site are taken off by themselves.' : 'Fixed schedule: blog and sitemaps hourly, YouTube and mentions daily (NEWS_DYNAMIC=false).';
+  $('nw-sources').querySelector('tbody').innerHTML = (NW.sources || []).map(s => `<tr><td>${esc(s.label)}</td><td class="muted">${ago(s.checked_at)}</td><td class="muted">${s.changed_at ? fmt(s.changed_at) + (s.last_new ? ` · ${s.last_new} new` : '') : '<span class="muted">none seen</span>'}</td>
+    <td class="muted">${NW.dynamic ? (s.next_at ? fmt(s.next_at) : 'next run') + ` <small>(every ${every(s.every_minutes)}, ${every(s.fastest)}–${every(s.slowest)})</small>` : '—'}</td>
+    <td>${s.errors ? `<span class="warn" title="${esc(s.last_error || '')}">failing ×${s.errors}</span> <small class="muted">${esc((s.last_error || '').slice(0, 90))}</small>` : s.checked_at ? '<span class="ok">ok</span>' : '<span class="muted">waiting</span>'}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No sources set for this tenant.</td></tr>';
+  const st = (i) => i.status === 'pending' ? '<span class="warn">waiting</span>' : i.status === 'published' ? '<span class="ok">live</span>' : i.status === 'gone' ? '<span class="muted" title="the page is no longer on the site">gone</span>' : `<span class="muted">${esc(i.status)}</span>`;
   $('nw-table').querySelector('tbody').innerHTML = NW.items.map(i => `<tr><td>${i.image ? `<img src="${esc(i.image)}" alt="" style="width:64px;height:36px;object-fit:cover;border-radius:6px">` : ''}</td>
     <td><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a><div class="muted" style="font-size:12px">${esc((i.blurb || '').slice(0, 140))}</div></td>
     <td class="muted">${esc(i.label)}${i.pinned ? ' · <b>pinned</b>' : ''}</td><td class="muted">${fmt(i.published_at)}</td><td>${st(i)}</td>
@@ -798,10 +810,16 @@ async function loadNews() {
     try { await api(`/admin/news/items/${b.dataset.nw}`, { method: 'POST', body: JSON.stringify(body) }); loadNews(); } catch (e) { $('nw-status-msg').textContent = e.message; b.disabled = false; } });
 }
 $('nw-tenant').onchange = loadNews; $('nw-status').onchange = loadNews;
-$('nw-poll').onclick = async () => { $('nw-status-msg').textContent = 'checking the blog, sitemaps, YouTube and mentions…'; try { const r = await api('/admin/news/poll', { method: 'POST' }); $('nw-status-msg').textContent = 'new items: ' + Object.entries(r).map(([k, v]) => `${k.split(':')[1]} ${v}`).join(', '); loadNews(); } catch (e) { $('nw-status-msg').textContent = e.message; } };
+$('nw-poll').onclick = async () => { $('nw-status-msg').textContent = 'checking the blog, sitemaps, YouTube and mentions…'; try { const r = await api('/admin/news/poll' + ($('nw-tenant').value ? '?tenant=' + encodeURIComponent($('nw-tenant').value) : ''), { method: 'POST' }); $('nw-status-msg').textContent = 'new items: ' + Object.entries(r).map(([k, v]) => `${k.split(':')[1]} ${v}`).join(', '); loadNews(); } catch (e) { $('nw-status-msg').textContent = e.message; } };
 $('nwform').onsubmit = async (e) => { e.preventDefault(); const f = e.target; $('nwform-status').textContent = 'publishing…';
   const body = { tenant: $('nw-tenant').value, url: f.url.value, kind: f.kind.value, title: f.title.value || null, image: f.image.value || null, blurb: f.blurb.value || null, pinned: f.pinned.checked };
   try { const r = await api('/admin/news/publish', { method: 'POST', body: JSON.stringify(body) }); $('nwform-status').textContent = `published: ${r.title}`; f.reset(); loadNews(); } catch (err) { $('nwform-status').textContent = err.message + (/422/.test(err.message) ? ' (type a title if the page gives none)' : ''); } };
+$('nwdform').onsubmit = async (e) => { e.preventDefault(); const f = e.target, t = $('nwtform'); $('nwd-status').textContent = 'reading the site…';
+  try { const d = await api('/admin/news/discover', { method: 'POST', body: JSON.stringify({ url: f.url.value }) });
+    for (const k of ['slug', 'name', 'blog_feed_url', 'youtube_channel_id', 'mention_query', 'sitemap_index_url']) t[k].value = d[k] || '';
+    t.sitemap_types.value = (d.sitemap_types || []).join(', '); t.enabled.checked = true;
+    $('nwd-status').textContent = `${d.notes.join(' · ')}${d.sitemap_types_available.length ? ' (suggested: the news-like ones; edit the list, then Save tenant)' : ''}`;
+  } catch (err) { $('nwd-status').textContent = err.message; } };
 $('nwtform').onsubmit = async (e) => { e.preventDefault(); const f = e.target; const body = { slug: f.slug.value, name: f.name.value, blog_feed_url: f.blog_feed_url.value, youtube_channel_id: f.youtube_channel_id.value, mention_query: f.mention_query.value, sitemap_index_url: f.sitemap_index_url.value, sitemap_types: f.sitemap_types.value, enabled: f.enabled.checked };
   try { await api('/admin/news/tenants', { method: 'POST', body: JSON.stringify(body) }); $('nwt-status').textContent = 'saved'; $('nw-tenant').value = ''; loadNews(); } catch (err) { $('nwt-status').textContent = err.message; } };
 async function load() {
