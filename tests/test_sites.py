@@ -50,6 +50,11 @@ def test_names_keywords_and_mentions():
     assert S.mentioned("tell me about SPAN's case studies", [t, span])["slug"] == "span"
     assert S.mentioned("who is Deep?", [t, span]) is None and S.mentioned("spanish lessons", [t, span]) is None
     assert S.keywords("What does LakeB2B's healthcare email list cost?", S.aliases(t)) == ["healthcare", "email", "list", "cost"]
+    assert "span global" in S.aliases(span) and S.mentioned("span global", [t, span])["slug"] == "span"
+    # just the name, or a question about the company as a whole: its profile pages, not a keyword search for "global"
+    assert S.general_question("span global", span) and S.general_question("What does LakeB2B do?", t)
+    assert S.general_question("tell me about SPAN Global Services and their services", span)
+    assert not S.general_question("How accurate is SPAN's healthcare email list?", span)
 
 
 def test_ranking_next_to_deependhq():
@@ -59,6 +64,10 @@ def test_ranking_next_to_deependhq():
     assert rank_sites("LakeB2B lists", [own, site], target="lakeb2b")[0] is site      # the company named: its site first
     assert rank_sites("x", [own], target=None) == [own]
     assert confident([own, site], floor=0.71)                                         # confidence from the best score, wherever it sits
+    from app.rag.retrieve import per_page
+
+    same = [Hit("https://www.lakeb2b.com/x", "X", None, f"part {i}", 0.8 - i / 100, {"site": "lakeb2b"}) for i in range(4)]
+    assert [h.text for h in per_page(same + [own])] == ["part 0", "part 1", "own"]   # one long page cannot fill every slot
 
 
 def fake_get(pages: dict):
@@ -170,3 +179,19 @@ def test_live_search_reads_the_sites_own_search_and_indexes_the_page(site):
     assert hits and hits[0]["url"] == R + "/hc" and hits[0]["metadata"]["site"] == site["slug"] and hits[0]["metadata"]["live"]
     assert R + "/hc" in _pages(site["slug"])                                            # indexed for next time
     assert S.live_hits("hello", embed_query("hello"), [site], get=fake_get(pages)) == []   # nothing to search for
+
+
+@db
+def test_a_question_about_the_company_reads_its_home_and_about_pages(site):
+    from app.embeddings import embed_query
+
+    about = page("About Us", "Test Data Co was founded in 2009 and builds verified B2B and healthcare data for marketing teams worldwide.")
+    pages = {R + "/": page("Test Data Co", ANSWER), R + "/about-us/": about, R + "/about/": about}
+    q = "Test Data Co"
+    hits = S.live_hits(q, embed_query(q), [site], get=fake_get(pages))
+    assert {h["url"] for h in hits} == {R + "/", R + "/about-us/"}                      # /about/ is the same page: read once
+    from app.db import conn
+
+    with conn() as c:
+        rows = S.profile_rows(c, site)
+    assert {r[0] for r in rows} >= {R + "/"}                                            # indexed, so the next question pins it

@@ -252,28 +252,71 @@ def rank_sites(query: str, hits: list[Hit], target: str | None | bool = False) -
     return sorted(hits, key=key, reverse=True)
 
 
+def per_page(hits: list[Hit], most: int = 2) -> list[Hit]:
+    """At most `most` passages from one company-site page, so one long page cannot fill every source slot
+    (deependhq.com's own pages are left as they are)."""
+    seen: dict[str, int] = {}
+    out = []
+    for h in hits:
+        if (h.metadata or {}).get("site"):
+            seen[h.url] = seen.get(h.url, 0) + 1
+            if seen[h.url] > most:
+                continue
+        out.append(h)
+    return out
+
+
 def search(query: str, k: int | None = None, vec: list[float] | None = None, today: date | None = None) -> list[Hit]:
     """`today` is the visitor's date: 'this week' or 'yesterday' then fetch the entries dated in that period."""
     k = k or settings.retrieval_top_k
     vec = vec if vec is not None else embed_query(query)
+    target = None
     with conn() as c:
         exact = _day_hits(c, query)
         try:
             exact += [h for h in _pinned_hits(c, query, today) if h.text not in {e.text for e in exact}]
         except Exception as e:  # a pinned page missing from the index must never break the search
             log.warning("pinned pages failed: %s", e)
+        try:  # "span global", "what does LakeB2B do?": the company's page here and its own home / about pages first
+            from app import sites
+
+            target = sites.mentioned(query)
+            if target and sites.general_question(query, target):
+                seen_text = {e.text for e in exact}
+                for r in sites.profile_rows(c, target):
+                    if r[3] not in seen_text:   # /about/ and /about-us/ are often the same page
+                        seen_text.add(r[3])
+                        exact.append(Hit(url=r[0], title=r[1], section=r[2], text=r[3], score=1.0,
+                                         metadata={**(r[4] or {}), **({"site": r[5]} if r[5] else {})}))
+        except Exception as e:
+            log.warning("company profile failed: %s", e)
+        # deependhq.com's own pages (a few hundred passages) are scored exactly ("+ 0" keeps the planner off the HNSW
+        # index): an approximate index scan over thousands of company-site passages would never reach them. The
+        # company sites (app/sites.py) go through the index, which then only holds their passages near the question.
         rows = c.execute(
             """
             SELECT ch.url, p.title, ch.section, ch.text, 1 - (ch.embedding <=> %s::vector) AS score, ch.metadata, p.site
             FROM chunks ch JOIN pages p ON p.url = ch.url
-            ORDER BY ch.embedding <=> %s::vector
+            WHERE p.site IS NULL
+            ORDER BY (ch.embedding <=> %s::vector) + 0
             LIMIT %s
             """,
             (vec, vec, k * 2),
         ).fetchall()
+        if c.execute("SELECT EXISTS (SELECT 1 FROM pages WHERE site IS NOT NULL)").fetchone()[0]:
+            rows += c.execute(
+                """
+                SELECT ch.url, p.title, ch.section, ch.text, 1 - (ch.embedding <=> %s::vector) AS score, ch.metadata, p.site
+                FROM chunks ch JOIN pages p ON p.url = ch.url
+                WHERE p.site IS NOT NULL
+                ORDER BY ch.embedding <=> %s::vector
+                LIMIT %s
+                """,
+                (vec, vec, k * 3),
+            ).fetchall()
     hits = [Hit(url=r[0], title=r[1], section=r[2], text=r[3], score=float(r[4]),
                 metadata={**(r[5] or {}), **({"site": r[6]} if r[6] else {})}) for r in rows]
-    hits = rank_sites(query, hits)[:k]
+    hits = per_page(rank_sites(query, hits, target["slug"] if target else None))[:k]
     if settings.help_enabled:  # help articles written for the assistant or by the owner (app/help.py) compete on score
         try:
             from app import help as help_center

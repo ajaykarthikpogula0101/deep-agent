@@ -81,10 +81,43 @@ def aliases(t: dict[str, Any]) -> list[str]:
         out.add(n)
         out.add(re.sub(r"\.(com|net|org|io|co)$", "", n))
         out.add(re.sub(r"(?<=[a-z])(?=b2b)", " ", n))               # lakeb2b -> lake b2b
-        first = n.split()[0] if " " in n else None
-        if first and len(first) >= 4 and first not in _STOP:          # "span global services" -> "span"
-            out.add(first)
+        words = n.split()
+        for i in range(2, len(words)):                                # "span global services" -> "span global"
+            out.add(" ".join(words[:i]))
+        if len(words) > 1 and len(words[0]) >= 4 and words[0] not in _STOP:   # ... -> "span"
+            out.add(words[0])
     return sorted((a for a in out if len(a) >= 3), key=len, reverse=True)
+
+
+# words that ask about the company as a whole ("what does SPAN do?", "SPAN services", just "span global")
+_GENERAL = set("""do does offer offers offering offerings service services company companies business about overview who what
+products product provide provides sell sells work works info information details known profile intro introduction
+explain describe summary""".split())
+
+
+def general_question(query: str, t: dict[str, Any]) -> bool:
+    """A question about the company as a whole: only its name and general words, nothing specific to look up."""
+    return all(w in _GENERAL for w in keywords(query, aliases(t)))
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def profile_rows(c, t: dict[str, Any]) -> list[tuple]:
+    """For a question about the company as a whole: its page on deependhq.com (/company/…, matched on the name) and
+    the first passages of its own home and about pages, when indexed. Rows: url, title, section, text, metadata, site."""
+    names = {_norm(a) for a in aliases(t)} | {_norm(t.get("name") or "")}
+    rows = []
+    for url, title in c.execute("SELECT url, title FROM pages WHERE site IS NULL AND url LIKE %s", ("%/company/%",)).fetchall():
+        if _norm(title) in names or _norm(url.rstrip("/").rsplit("/", 1)[-1]) in names:
+            rows += c.execute("""SELECT ch.url, p.title, ch.section, ch.text, ch.metadata, p.site FROM chunks ch JOIN pages p ON p.url = ch.url
+                                 WHERE ch.url = %s ORDER BY ch.position LIMIT 2""", (url,)).fetchall()
+    root = t.get("root") or site_root(t) or ""
+    rows += c.execute("""SELECT ch.url, p.title, ch.section, ch.text, ch.metadata, p.site FROM chunks ch JOIN pages p ON p.url = ch.url
+                         WHERE p.site = %s AND (rtrim(p.url, '/') = %s OR p.url ~* '/about(-us)?/?$')
+                         ORDER BY (rtrim(p.url, '/') = %s) DESC, ch.position LIMIT 3""", (t["slug"], root.rstrip("/"), root.rstrip("/"))).fetchall()
+    return rows
 
 
 def mentioned(query: str, candidates: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
@@ -255,7 +288,7 @@ def index_site(t: dict[str, Any], get: Callable | None = None, per_run: int | No
     stats = {"site": slug, "in_sitemaps": len(entries), "indexed_before": len(have), "read": 0, "changed": 0, "chunks": 0,
              "removed": 0, "failed": 0}
     listed = {u for u, _ in entries}
-    gone = [u for u in have if u not in listed]
+    gone = [u for u in have if u not in listed and u.rstrip("/") != t["root"].rstrip("/")]   # the home page stays even if unlisted
     if gone and entries and len(gone) <= max(20, len(have) // 3):   # more is a broken sitemap, not a clean-up
         with conn() as c:
             c.execute("DELETE FROM pages WHERE site = %s AND url = ANY(%s)", (slug, gone))   # chunks go with them
@@ -264,6 +297,8 @@ def index_site(t: dict[str, Any], get: Callable | None = None, per_run: int | No
     room = max(0, settings.kb_site_max_pages - (len(have) - stats["removed"]))
     todo = [(u, m) for u, m in entries if u not in have or (m is not None and have[u] != m)]
     todo.sort(key=lambda e: e[1] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    # the home and about pages first: they answer "what does this company do?"
+    todo.sort(key=lambda e: not (e[0].rstrip("/") == t["root"].rstrip("/") or re.search(r"/about(-us)?/?$", e[0])))
     todo = [e for e in todo if e[0] in have] + [e for e in todo if e[0] not in have][:room]
     for url, lastmod in todo[:per_run]:
         try:
@@ -384,14 +419,13 @@ def live_hits(query: str, vec: list[float], targets: list[dict[str, Any]], get: 
     from app.ingest.pipeline import embed_input
 
     get = get or httpx.Client(timeout=6, follow_redirects=True, headers={"User-Agent": settings.crawl_user_agent}).get
-    t0, out = time.time(), []
+    t0, out, read = time.time(), [], set()
     for t in targets:
-        words = keywords(query, aliases(t))
-        if not words:
-            continue
+        words = [w for w in keywords(query, aliases(t)) if w not in _GENERAL]
         boiler = boilerplate(t["root"], get)
-        found: list[dict[str, Any]] = []
-        for attempt in (words[:4], words[:2], words[:1]):
+        # about the company as a whole ("span global", "what does SPAN do?"): its home and about pages
+        found: list[dict[str, Any]] = [] if words else [{"url": t["root"] + "/"}, {"url": t["root"] + "/about-us/"}, {"url": t["root"] + "/about/"}]
+        for attempt in ((words[:4], words[:2], words[:1]) if words else ()):
             if time.time() - t0 > deadline:
                 break
             try:
@@ -402,7 +436,7 @@ def live_hits(query: str, vec: list[float], targets: list[dict[str, Any]], get: 
                 found = []
             if found:
                 break
-        for x in found[:pages_per_site]:
+        for x in found[:pages_per_site if words else 3]:
             if time.time() - t0 > deadline:
                 break
             try:
@@ -410,8 +444,9 @@ def live_hits(query: str, vec: list[float], targets: list[dict[str, Any]], get: 
                 page = extract(x["url"], r.text, boiler) if r.status_code < 400 else None
             except Exception:
                 page = None
-            if not page:
+            if not page or page["text"] in read:   # the same page under two addresses (/about/ and /about-us/)
                 continue
+            read.add(page["text"])
             chunks = chunk_doc(Doc(url=x["url"], title=page["title"], source="site", text=page["text"],
                                    metadata={"kind": "site", "site": t["slug"], "title": page["title"]}))[:12]
             if not chunks:
