@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 526" width="1200" height="526" role="img" aria-label="Scheduled jobs: continuous, hourly, nightly and weekly">
+  <title>Scheduled jobs: continuous, hourly, nightly and weekly</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A0E27"/>
+      <stop offset=".6" stop-color="#12123D"><animate attributeName="stop-color" values="#12123D;#17164A;#12123D" dur="16s" repeatCount="indefinite"/></stop>
+      <stop offset="1" stop-color="#231D63"><animate attributeName="stop-color" values="#231D63;#2D2580;#231D63" dur="16s" repeatCount="indefinite"/></stop>
+    </linearGradient>
+    <radialGradient id="ga"><stop offset="0" stop-color="#7B6CF6" stop-opacity=".32"/><stop offset="1" stop-color="#7B6CF6" stop-opacity="0"/></radialGradient>
+    <radialGradient id="gb"><stop offset="0" stop-color="#4F8CFF" stop-opacity=".16"/><stop offset="1" stop-color="#4F8CFF" stop-opacity="0"/></radialGradient>
+    <radialGradient id="core" cx=".35" cy=".3"><stop offset="0" stop-color="#9A8DFF"/><stop offset=".65" stop-color="#5E4FE8"/><stop offset="1" stop-color="#2D2580"/></radialGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".065"/><stop offset="1" stop-color="#fff" stop-opacity=".025"/></linearGradient>
+    <linearGradient id="edge" x1="0" x2="1"><stop offset="0" stop-color="#A59BFF"/><stop offset="1" stop-color="#6FA8FF"/></linearGradient>
+    <linearGradient id="hair" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <filter id="soft" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3.5"/></filter>
+    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .035 0"/></filter>
+    <clipPath id="clip"><rect width="1200" height="526" rx="22"/></clipPath>
+  </defs>
+  <g clip-path="url(#clip)" font-family="Inter, 'SF Pro Display', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">
+    <rect width="1200" height="526" fill="url(#bg)"/>
+    <circle cx="1008" cy="42" r="394" fill="url(#ga)"><animate attributeName="cx" values="1008;888;1008" dur="20s" repeatCount="indefinite"/></circle>
+    <circle cx="120" cy="526" r="316" fill="url(#gb)"><animate attributeName="cx" values="120;240;120" dur="24s" repeatCount="indefinite"/></circle>
+    <rect width="1200" height="526" filter="url(#grain)"/>
+    <text x="64" y="56" text-anchor="start" font-size="11.5" font-weight="600" letter-spacing="3.2" fill="#A59BFF">SCHEDULED JOBS</text>
+    <text x="64" y="86" text-anchor="start" font-size="23" font-weight="600" letter-spacing="-.3" fill="#F4F4FF">Twenty-one jobs, all in-process, one runner across instances</text>
+    <rect x="190" y="118" width="1.5" height="338" fill="url(#edge)" opacity=".45"/>
+    <g><animateTransform attributeName="transform" type="translate" values="0 0;950 0;0 0" dur="18s" repeatCount="indefinite"/>
+      <rect x="214" y="114" width="1.5" height="346" fill="#A59BFF" opacity=".5"/>
+      <rect x="206" y="114" width="17" height="346" fill="#A59BFF" opacity=".08" filter="url(#soft)"/></g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.20s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.20s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="214" y="123" width="137" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="227" y="144" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">news_tick</text>
+      <text x="338" y="144" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">5 min</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.25s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.25s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="361" y="123" width="172" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="374" y="144" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">outbox_recover</text>
+      <text x="520" y="144" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">5 min</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.30s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.30s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="543" y="123" width="122" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="556" y="144" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">health</text>
+      <text x="652" y="144" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">10 min</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.35s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.35s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="676" y="123" width="207" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="688" y="144" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">zoom_link_backfill</text>
+      <text x="870" y="144" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">10 min</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.40s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.40s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="893" y="123" width="144" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="906" y="144" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">geo_retry</text>
+      <text x="1023" y="144" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">10 min</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.45s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.45s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="214" y="169" width="172" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="227" y="190" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">gap_followups</text>
+      <text x="373" y="190" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">15 min</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.50s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.50s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="396" y="169" width="194" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="409" y="190" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">team_reply_emails</text>
+      <text x="577" y="190" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">1 min</text>
+    </g>
+    <text x="64" y="144" font-size="11" font-weight="600" letter-spacing="2.6" fill="#B8BBDA">CONTINUOUS</text>
+    <circle cx="190.8" cy="140" r="4" fill="#0A0E27" stroke="#A59BFF" stroke-width="1.3"/>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.55s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.55s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="214" y="237" width="145" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="227" y="258" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">outcome_asks</text>
+      <text x="346" y="258" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">:05</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.60s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.60s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="369" y="237" width="102" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="382" y="258" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">nudges</text>
+      <text x="458" y="258" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">:15</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.65s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.65s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="481" y="237" width="124" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="494" y="258" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">hot_leads</text>
+      <text x="592" y="258" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">:30</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.70s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.70s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="615" y="237" width="124" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="628" y="258" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">reminders</text>
+      <text x="726" y="258" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">:45</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.75s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.75s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="749" y="237" width="117" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="762" y="258" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">kb_sites</text>
+      <text x="852" y="258" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">6 h</text>
+    </g>
+    <text x="64" y="258" font-size="11" font-weight="600" letter-spacing="2.6" fill="#B8BBDA">HOURLY</text>
+    <circle cx="190.8" cy="254" r="4" fill="#0A0E27" stroke="#A59BFF" stroke-width="1.3"/>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.80s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.80s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="214" y="305" width="123" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="227" y="326" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">recrawl</text>
+      <text x="324" y="326" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">02:30</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.85s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.85s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="347" y="305" width="172" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="360" y="326" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">tracking_purge</text>
+      <text x="506" y="326" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">03:10</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.90s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.90s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="529" y="305" width="144" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="542" y="326" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">gap_drafts</text>
+      <text x="660" y="326" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">03:20</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.95s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="0.95s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="683" y="305" width="158" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="696" y="326" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">memory_purge</text>
+      <text x="828" y="326" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">03:25</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="1.00s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="1.00s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="851" y="305" width="180" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="864" y="326" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">email_ask_purge</text>
+      <text x="1018" y="326" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">03:30</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="1.05s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="1.05s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="214" y="351" width="172" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="227" y="372" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">score_learning</text>
+      <text x="373" y="372" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">03:40</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="1.10s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="1.10s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="396" y="351" width="137" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="409" y="372" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">db_backup</text>
+      <text x="520" y="372" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">03:50</text>
+    </g>
+    <text x="64" y="326" font-size="11" font-weight="600" letter-spacing="2.6" fill="#B8BBDA">NIGHTLY</text>
+    <circle cx="190.8" cy="322" r="4" fill="#0A0E27" stroke="#A59BFF" stroke-width="1.3"/>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="1.15s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="1.15s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="214" y="419" width="192" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="227" y="440" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">weekly_digest</text>
+      <text x="393" y="440" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">Mon 09:00</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="1.20s" dur="0.6s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" begin="1.20s" dur="0.6s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".2 .7 .2 1"/>
+      <rect x="416" y="419" width="185" height="34" rx="9" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".1"/>
+      <text x="429" y="440" font-family="'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace" font-size="11.5" fill="#E6E7F8">geoip_update</text>
+      <text x="587" y="440" text-anchor="end" font-size="11.5" font-weight="600" fill="#A59BFF">Wed 04:50</text>
+    </g>
+    <text x="64" y="440" font-size="11" font-weight="600" letter-spacing="2.6" fill="#B8BBDA">WEEKLY</text>
+    <circle cx="190.8" cy="436" r="4" fill="#0A0E27" stroke="#A59BFF" stroke-width="1.3"/>
+    <text x="64" y="490" font-size="11.5" fill="#B8BBDA" fill-opacity=".8">Times in the host timezone (Asia/Kolkata). With NEWS_DYNAMIC=false, news_tick becomes fixed hourly and daily runs.</text>
+
+    <rect x=".5" y=".5" width="1199" height="525" rx="21.5" fill="none" stroke="#fff" stroke-opacity=".09"/>
+  </g>
+</svg>
