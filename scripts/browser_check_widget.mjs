@@ -69,6 +69,17 @@ try {
   await evaluate(P("panel", "(sh.querySelector('.tab[data-tab=news]').click(), true)"));
   await waitFor(P("panel", "!!sh.querySelector('.newsv .ncard, .newsv .hempty')"), 15000, "News tab");
   check(await evaluate(P("panel", "sh.querySelector('.vtitle').textContent === 'News' && /Latest/.test(sh.querySelector('.nhead').textContent) && sh.querySelector('.ndot').hidden && (sh.querySelectorAll('.ncard').length === 0 || (!!sh.querySelector('.ncard .nchip') && /^https?:/.test(sh.querySelector('.ncard').href) && sh.querySelector('.ncard').target === '_blank'))")), "news: Latest list with labelled cards that open in a new tab; the unread dot clears");
+  // an item opens inside the messenger (Intercom / Snitcher News): all labels, Shared by, the article, a link out, four reactions; back returns to the list
+  if (await evaluate(P("panel", "sh.querySelectorAll('.ncard').length > 0"))) {
+    await evaluate(P("panel", "(sh.querySelector('.ncard').click(), true)"));
+    await waitFor(P("panel", "!!sh.querySelector('.nart .ntitle')"), 15000, "news item");
+    check(await evaluate(P("panel", "!sh.querySelector('.back').hidden && sh.querySelector('.tabbar').hidden && /Shared by/.test(sh.querySelector('.nby').textContent) && sh.querySelectorAll('.nart .nchip').length >= 1 && sh.querySelector('.ncta').target === '_blank' && sh.querySelectorAll('.nemoji').length === 4 && !/<script/i.test(sh.querySelector('.nhtml').innerHTML)")), "news: an item opens inside the messenger with labels, 'Shared by', the article, a link out and four reactions");
+    await evaluate(P("panel", "(sh.querySelector('.nemoji').click(), true)")); await sleep(200);
+    check(await evaluate(P("panel", "sh.querySelectorAll('.nemoji.on').length === 1")), "news: a reaction is marked as chosen");
+    await evaluate(P("panel", "(sh.querySelector('.nemoji.on').click(), true)")); await sleep(200);   // taken back: the test leaves no reaction
+    await evaluate(P("panel", "(sh.querySelector('.back').click(), true)")); await sleep(300);
+    check(await evaluate(P("panel", "!sh.querySelector('.nart') && !!sh.querySelector('.ncard') && !sh.querySelector('.tabbar').hidden")), "news: back returns to the list with the tab bar");
+  }
   await evaluate(P("panel", "(sh.querySelector('.tab[data-tab=home]').click(), true)")); await sleep(300);
   check(await evaluate(P("panel", "getComputedStyle(sh.querySelector('header')).display === 'none' && sh.querySelector('.tab.on').dataset.tab === 'home'")), "home: no header, Home tab active");
   await evaluate(P("panel", "(sh.querySelector('.askq').click(), true)")); await sleep(200);

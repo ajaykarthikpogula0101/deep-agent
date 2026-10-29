@@ -40,7 +40,15 @@ class Settings(BaseSettings):
     news_limit: int = Field(default=20, alias="NEWS_LIMIT")
     # dynamic checking: one job every NEWS_TICK_MINUTES checks the sources that are due (off: fixed hourly / daily runs)
     news_dynamic: bool = Field(default=True, alias="NEWS_DYNAMIC")
+    news_feed_days: int = Field(default=365, alias="NEWS_FEED_DAYS")   # how far back a feed (Newsletters, Case studies...) goes
+    news_popup: bool = Field(default=True, alias="NEWS_POPUP")         # a new item pops up above the closed launcher, once
     news_tick_minutes: int = Field(default=5, alias="NEWS_TICK_MINUTES")
+    # company websites in the assistant's knowledge (app/sites.py): the News tenants' sites, indexed and searched live
+    kb_sites_enabled: bool = Field(default=True, alias="KB_SITES_ENABLED")
+    kb_sites_every_hours: int = Field(default=6, alias="KB_SITES_EVERY_HOURS")
+    kb_site_pages_per_run: int = Field(default=1000, alias="KB_SITE_PAGES_PER_RUN")
+    kb_site_max_pages: int = Field(default=5000, alias="KB_SITE_MAX_PAGES")
+    kb_live_search: bool = Field(default=True, alias="KB_LIVE_SEARCH")
     # every email saved before sending, re-sent after a restart (app/mailer.py)
     mail_outbox: bool = Field(default=True, alias="MAIL_OUTBOX")
     # only one process runs the scheduled jobs (app/leader.py); false = every process runs them (the old behaviour)

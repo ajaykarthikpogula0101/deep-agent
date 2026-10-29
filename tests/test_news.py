@@ -13,6 +13,7 @@ from app import news as N
 BLOG = b"""<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:media="http://search.yahoo.com/mrss/">
 <channel><title>Blog</title>
 <item><title><![CDATA[What Is an AI SDR? &amp; Why Data Matters]]></title><link>https://www.lakeb2b.com/blog/ai-sdr/</link>
+<dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/"><![CDATA[Lisa Ray]]></dc:creator><category><![CDATA[AI]]></category><category><![CDATA[Uncategorized]]></category>
 <pubDate>Tue, 20 Oct 2026 07:00:00 +0000</pubDate>
 <description><![CDATA[<p>Your AI SDR sent 2,000 emails before lunch.</p><p>The post <a href="x">What Is</a> appeared first on <a href="y">LakeB2B</a>.</p>]]></description>
 <content:encoded><![CDATA[<p><img src="https://www.lakeb2b.com/img/sdr.webp" alt=""> Body</p>]]></content:encoded></item>
@@ -91,6 +92,7 @@ def tenant():
         c.execute("DELETE FROM news_sitemap_seen WHERE tenant = %s", (slug,))
         c.execute("DELETE FROM news_sources WHERE tenant = %s", (slug,))
         c.execute("DELETE FROM news_fetch_cache WHERE tenant = %s", (slug,))
+        c.execute("DELETE FROM settings WHERE key = %s", (f"news:backfilled:{slug}",))
         c.execute("DELETE FROM news_tenants WHERE slug = %s", (slug,))   # items go with it (ON DELETE CASCADE)
         c.commit()
 
@@ -196,7 +198,7 @@ def test_api(monkeypatch):
         assert d["tenant"] == settings.news_tenant and d["items"][0]["title"] == "A"
         assert c.get("/admin/news").status_code in (401, 403)
         r = c.get("/news")
-        assert r.headers["etag"] and r.headers["cache-control"] == "no-cache"
+        assert r.headers["etag"] and r.headers["cache-control"] == "no-cache" and r.json()["feed"] == "latest"
         assert c.get("/news", headers={"If-None-Match": r.headers["etag"]}).status_code == 304   # the widget's 2-minute re-ask
         assert c.post("/admin/news/discover", json={"url": "span.test"}).status_code in (401, 403)
         monkeypatch.setattr(settings, "news_enabled", False)
@@ -303,3 +305,87 @@ def test_discover_finds_a_sites_sources():
     assert d["sitemap_types"] == ["case_studies", "webinar"] and d["sitemap_types_available"] == ["page", "case_studies", "webinar"]
     with pytest.raises(ValueError):
         N.discover("not a site")
+
+
+# ---------------------------------------------------------------- articles in the messenger (Intercom / Snitcher News)
+def test_articles_are_safe_html():
+    dirty = ('<h1>Big</h1><p onclick="x()">Hi <a href="javascript:alert(1)">bad</a> <a href="https://ok.test/a" style="x">good</a></p>'
+             '<script>alert(1)</script><img src="http://insecure.test/i.png"><img src="https://ok.test/i.png" onerror="x()" width="9">'
+             '<div class="wp"><ul><li>One</li></ul></div><iframe src="https://evil.test"></iframe><p></p>'
+             '<p>The post <a href="https://x.test">X</a> appeared first on <a href="https://y.test">Y</a>.</p>')
+    out = N.safe_html(dirty)
+    assert "<h2>Big</h2>" in out and "<ul><li>One</li></ul>" in out and "<div" not in out
+    assert "script" not in out and "iframe" not in out and "onclick" not in out and "onerror" not in out and "javascript" not in out
+    assert '<a href="https://ok.test/a" rel="noopener" target="_blank">good</a>' in out and ">bad<" not in out and "bad" in out
+    assert '<img alt="" loading="lazy" src="https://ok.test/i.png"/>' in out and "insecure" not in out
+    assert "appeared first" not in out and "<p></p>" not in out
+    assert N.text_html("Line one\nline two\n\nSee https://ok.test/x <b>") == (
+        '<p>Line one<br>line two</p><p>See <a href="https://ok.test/x" target="_blank" rel="noopener">https://ok.test/x</a> &lt;b&gt;</p>')
+    assert N.safe_html("") == "" and N.text_html(None) == ""
+
+
+def test_feed_items_carry_their_article_labels_and_author():
+    it = N.parse_rss(BLOG)[0]
+    assert it["labels"] == ["AI"] and it["author"] == "Lisa Ray" and "<img" in it["body"] and "Body" in it["body"]
+    v = N.parse_youtube(YT)[0]
+    assert v["body"] == "<p>Are your campaigns falling flat?</p>"
+    page = "<html><body><nav>Menu</nav><div class='entry-content'><h1>Title</h1>" + "<p>" + "word " * 70 + "</p></div></body></html>"
+    assert N.article_html(page, "https://site.test/p").startswith("<h2>Title</h2><p>word")
+
+
+@db
+def test_labels_feeds_the_article_and_reactions(tenant):
+    slug, now = tenant["slug"], datetime.now(timezone.utc)
+    N.upsert(slug, "blog", "post", {**N.parse_rss(BLOG)[0], "published_at": now})
+    N.upsert(slug, "sitemap", "newsletter", {"title": "October newsletter", "url": "https://site.test/nl", "published_at": now - timedelta(days=90),
+                                             "body": "<p>Inside this issue</p>"}, lastmod=now - timedelta(days=90))
+    latest = N.published(slug)
+    assert [i["title"] for i in latest] == ["What Is an AI SDR? & Why Data Matters"]                 # the 90-day-old newsletter: not in Latest
+    assert latest[0]["labels"] == ["Blog", "AI"] and latest[0]["author"] == "Lisa Ray" and latest[0]["has_body"]
+    feeds = {f["key"]: f["count"] for f in N.feeds(slug)}
+    assert feeds == {"latest": 1, "blog": 1, "newsletters": 1}                                        # only feeds with something in them
+    assert [i["title"] for i in N.published(slug, kinds=N.feed("newsletters")[2], days=365)] == ["October newsletter"]
+    assert N.feed("nonsense")[0] == "latest"
+    pid = latest[0]["id"]
+    full = N.item(slug, pid, visitor="v1")
+    assert "<img" in full["body"] and full["views"] == 1 and full["reactions"] == {"options": N.REACTIONS, "counts": dict.fromkeys(N.REACTIONS, 0), "mine": None}
+    assert N.item("other-tenant", pid) is None
+    assert N.react(slug, pid, "v1", "🎉")["mine"] == "🎉"
+    N.react(slug, pid, "v2", "🎉")
+    r = N.react(slug, pid, "v1", "💜")                                                               # changed their mind
+    assert r["counts"]["🎉"] == 1 and r["counts"]["💜"] == 1 and r["mine"] == "💜"
+    assert N.react(slug, pid, "v1", "💜")["mine"] is None                                             # the same again takes it back
+    with pytest.raises(ValueError):
+        N.react(slug, pid, "v1", "🔥")
+    with pytest.raises(LookupError):
+        N.react(slug, 0, "v1", "🎉")
+    row = [i for i in N.admin_items(slug) if i["id"] == pid][0]
+    assert row["views"] == 1 and row["reactions"] == {"🎉": 1}
+    m = N.publish_manual(slug, "https://site.test/launch", title="We launched", body="Big day.\n\nRead more https://site.test/x",
+                         author="Deep", get=lambda url: SimpleNamespace(status_code=404, text=""))
+    full = N.item(slug, m["id"])
+    assert full["author"] == "Deep" and full["body"].startswith("<p>Big day.</p>") and full["labels"] == ["Announcement"]
+
+
+@db
+def test_feeds_are_backfilled_once_and_old_items_get_their_article(tenant):
+    from app.db import conn
+
+    tenant = N.save_tenant({**tenant, "sitemap_types": ["newsletter"]})
+    slug, now = tenant["slug"], datetime.now(timezone.utc)
+    article = "<html><head><title>Issue 7 | LakeB2B</title></head><body><article><p>" + "news " * 80 + "</p></article></body></html>"
+    with conn() as c:
+        for i in range(8):
+            c.execute("INSERT INTO news_sitemap_seen(tenant, kind, url, lastmod) VALUES (%s, 'newsletter', %s, %s)",
+                      (slug, f"https://site.test/nl/{i}", now - timedelta(days=60 + i)))
+        c.commit()
+    pages = {f"https://site.test/nl/{i}": article for i in range(8)}
+    assert N.backfill(tenant, get=fake_get(pages)) == N.BACKFILL_PER_TYPE                              # the newest six
+    assert N.backfill(tenant, get=fake_get(pages)) == 0                                                # once only
+    assert N.published(slug) == [] and len(N.published(slug, kinds=("newsletter",), days=365)) == 6   # in the feed, not in Latest
+    N.upsert(slug, "blog", "post", {"title": "Old post", "url": "https://site.test/old", "published_at": now})
+    N.upsert(slug, "blog", "post", {"title": "Dead post", "url": "https://site.test/dead", "published_at": now})
+    assert N.fill_bodies(tenant, get=fake_get({"https://site.test/old": article, "https://site.test/dead": 404})) == 2
+    bodies = {i["title"]: i["has_body"] for i in N.published(slug)}
+    assert bodies == {"Old post": True, "Dead post": False}
+    assert N.fill_bodies(tenant, get=fake_get({})) == 0                                                # '' marks one with nothing: not read again

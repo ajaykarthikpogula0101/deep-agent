@@ -16,10 +16,12 @@
  *   page-context "general" | "product" | "solutions" | "contact" (default: inferred from the page URL)
  *   tabs         sections, comma-separated from home,messages,help,news (default all; "messages" is always kept)
  *   news-tenant  whose News to show (default: the server's NEWS_TENANT, e.g. lakeb2b; app/news.py)
+ *   news-popup   "off": no pop-up above the closed launcher when there is a new news item
  *   shortcut     "Label|https://…" external scheduler link in Help (default: the Zoom booking page); "" hides it
  *   privacy-url  footer link (default: the server's PRIVACY_URL)
  * Methods      ask(text), book(callType?), open(), close(), toggle(), newChat() / reset(), openConversation(id),
- *              showView('home'|'chat'|'messages'|'help'), openHelp(focusSearch?), openArticle(slug), openCollection(slug),
+ *              showView('home'|'chat'|'messages'|'help'|'news'), openHelp(focusSearch?), openArticle(slug), openCollection(slug),
+ *              openNews(feed?), openNewsItem(id),
  *              setToken(token), download(), startVoice(), stopVoice()
  * Layout       like Intercom's messenger: Home / Messages / Help tabs with a bottom bar (tabs attribute), the chat on top
  *              (docs/ROADMAP.md); the help center comes from GET /help* (app/help.py)
@@ -28,7 +30,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.29.5';
+const VERSION = '2026.10.29.6';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -423,6 +425,37 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
 .nchip.new { background:var(--da-primary); color:#fff } .nchip.upd { background:transparent; box-shadow:inset 0 0 0 1px var(--da-line); color:var(--da-muted) } .nwhen { font-size:12px; color:var(--da-muted) }
 .ncard > svg { position:absolute; right:14px; bottom:18px; width:16px; height:16px; color:var(--da-primary) }
 .ndot { position:absolute; top:-1px; right:-2px; width:9px; height:9px; border-radius:50%; background:#DF2020; box-shadow:0 0 0 2px var(--da-surface) }
+/* News like Intercom / Snitcher: feeds, labels, the item read inside the messenger, reactions, the launcher pop-up */
+.nfeeds { display:flex; gap:8px; overflow-x:auto; padding:0 2px 14px; scrollbar-width:none } .nfeeds::-webkit-scrollbar { display:none }
+.nfeed { flex:none; padding:6px 12px; border:1px solid var(--da-line); border-radius:999px; background:var(--da-surface); color:var(--da-text); font:inherit; font-size:13px; font-weight:600; cursor:pointer }
+.nfeed:hover { background:var(--da-subtle) } .nfeed.on { background:var(--da-ink); border-color:var(--da-ink); color:#fff }
+:host([theme="dark"]) .nfeed.on { background:#fff; border-color:#fff; color:#111 }
+.nchip.more { background:var(--da-subtle); color:var(--da-muted) }
+.ncaught { display:flex; align-items:center; justify-content:center; gap:6px; padding:8px 0 4px; color:var(--da-muted); font-size:13px } .ncaught svg { width:14px; height:14px }
+.ndot { min-width:16px; width:auto; height:16px; padding:0 4px; top:-6px; right:-9px; color:#fff; font-size:10px; font-weight:700; line-height:16px; text-align:center }
+.nart { margin:0 -16px; padding:0 0 8px } .nart .nimg { aspect-ratio:16/8.4 } .nvideo { position:relative; aspect-ratio:16/9; background:#000 } .nvideo iframe { position:absolute; inset:0; width:100%; height:100%; border:0 }
+.ninner { display:flex; flex-direction:column; gap:12px; padding:20px 20px 8px }
+.ntitle { margin:0; font-size:20px; font-weight:700; line-height:1.3; letter-spacing:-.01em; color:var(--da-text) }
+.nby { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--da-muted) } .nby b { color:var(--da-text); font-weight:600 }
+.nby .nav { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; overflow:hidden; background:var(--da-lavender); color:var(--da-primary); font-size:12px; font-weight:700 } .nby .nav img { width:100%; height:100%; object-fit:cover }
+.nhtml { font-size:15px; line-height:1.6; color:var(--da-text); overflow-wrap:anywhere } .nhtml > :first-child { margin-top:0 }
+.nhtml p, .nhtml ul, .nhtml ol, .nhtml blockquote, .nhtml figure { margin:0 0 12px } .nhtml ul, .nhtml ol { padding-left:22px } .nhtml li { margin:4px 0 }
+.nhtml h2 { margin:20px 0 8px; font-size:17px } .nhtml h3 { margin:18px 0 6px; font-size:16px } .nhtml h4 { margin:16px 0 6px; font-size:15px }
+.nhtml img { display:block; max-width:100%; height:auto; border-radius:8px } .nhtml a { color:var(--da-primary) } .nhtml blockquote { padding-left:12px; border-left:3px solid var(--da-line); color:var(--da-muted) }
+.nhtml figcaption { font-size:12px; color:var(--da-muted) } .nhtml hr { border:0; border-top:1px solid var(--da-line); margin:16px 0 }
+.ncta { display:inline-flex; align-self:flex-start; align-items:center; gap:6px; padding:9px 14px; border-radius:8px; background:var(--da-primary); color:#fff; font-size:14px; font-weight:600; text-decoration:none }
+.ncta:hover { filter:brightness(.95) } .ncta svg { width:14px; height:14px }
+.nreact { margin:16px 20px 4px; padding:16px; border-radius:12px; background:var(--da-subtle); text-align:center } .nreact p { margin:0 0 10px; font-size:14px; font-weight:600; color:var(--da-text) }
+.nemo { display:flex; justify-content:center; gap:10px } .nemoji { width:44px; height:44px; border:0; border-radius:50%; background:transparent; font-size:24px; line-height:1; cursor:pointer; transition:transform .15s var(--da-ease), background .15s }
+.nemoji:hover { transform:scale(1.15) } .nemoji.on { background:var(--da-surface); box-shadow:0 0 0 2px var(--da-primary); transform:scale(1.1) }
+.npop { display:none; position:fixed; z-index:2147483000; right:max(20px, env(safe-area-inset-right)); bottom:calc(max(20px, env(safe-area-inset-bottom)) + 64px); width:min(320px, calc(100vw - 40px)); border-radius:14px; background:var(--da-surface); box-shadow:0 8px 40px rgba(9,14,21,.18), 0 1px 4px rgba(9,14,21,.08); font-family:var(--da-font) }
+:host([mode="launcher"]:not([open])) .npop:not([hidden]) { display:block; animation:da-pop .3s var(--da-ease) }
+.npb { display:flex; flex-direction:column; width:100%; padding:0; border:0; border-radius:14px; overflow:hidden; background:transparent; color:var(--da-text); text-align:left; cursor:pointer; font:inherit }
+.npi { display:block; aspect-ratio:16/7; overflow:hidden; background:var(--da-subtle) } .npi img { width:100%; height:100%; object-fit:cover; display:block }
+.npt { display:flex; flex-direction:column; gap:4px; padding:12px 14px 14px } .npt small { font-size:12px; color:var(--da-muted) } .npt b { font-size:14px; font-weight:600; line-height:1.35 }
+.npx { position:absolute; top:6px; right:6px; z-index:1; width:26px; height:26px; border:0; border-radius:50%; background:rgba(0,0,0,.45); color:#fff; font-size:16px; line-height:26px; cursor:pointer }
+@keyframes da-pop { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:none } }
+@media (prefers-reduced-motion: reduce) { :host([mode="launcher"]:not([open])) .npop:not([hidden]) { animation:none } .nemoji { transition:none } }
 /* Help center */
 .hsearchbar { flex:none; padding:0 12px 12px; background:var(--da-head); border-bottom:1px solid #EDEDED } :host([theme="dark"]) .hsearchbar { border-bottom-color:var(--da-line) }
 .hsearchbar[hidden] { display:none } .hsearchbar .searchbox svg { left:auto; right:12px; color:var(--da-primary) }
@@ -531,6 +564,7 @@ function md(text, srcs, api) {
 }
 const citedNumbers = (text) => { const out = new Set(); (String(text).match(/\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]/g) || []).forEach((m) => m.slice(1, -1).split(',').forEach((x) => out.add(parseInt(x, 10)))); return out; };
 const usedSources = (text, items) => { const n = citedNumbers(text); const used = (items || []).filter((s) => n.has(s.n)); return used.length ? used : (items || []).slice(0, 3); };
+const relAge = (ts) => { const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000), d = s / 86400; return s < 3600 ? Math.max(1, Math.floor(s / 60)) + 'm' : s < 86400 ? Math.floor(s / 3600) + 'h' : d < 7 ? Math.floor(d) + 'd' : d < 35 ? Math.floor(d / 7) + 'w' : d < 365 ? Math.floor(d / 30.4) + 'mo' : Math.floor(d / 365) + 'y'; };
 const relShort = (ts) => { const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000); return s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + 'm' : s < 86400 ? Math.floor(s / 3600) + 'h' : Math.floor(s / 86400) + 'd'; };
 const fmtSize = (b) => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
 const store = { get(k) { try { return sessionStorage.getItem(k); } catch { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch {} } };
@@ -623,22 +657,24 @@ class DeepAssistant extends HTMLElement {
     if (!['chat', 'messages', 'help', 'home', 'news'].includes(name) || (['help', 'home', 'news'].includes(name) && !tabs.includes(name))) return;
     const sh = this.shadowRoot, changed = name !== this._view;
     if (name !== 'help') this._helpPage = null;
+    if (name !== 'news') this._newsPage = null;
     this._view = name; this.$panel.dataset.view = name;
     ['home', 'chat', 'messages', 'help', 'news'].forEach((v) => { sh.querySelector('.view-' + v).hidden = v !== name; });
     this._paintHeader();
-    this.$panel.classList.toggle('wide', name === 'help' && !!this._helpPage && this._helpPage.page === 'article');
-    sh.querySelector('.tabbar').hidden = name === 'chat' || (name === 'help' && !!this._helpPage && this._helpPage.page === 'article') || tabs.length < 2;
+    const newsItem = name === 'news' && !!this._newsPage;
+    this.$panel.classList.toggle('wide', (name === 'help' && !!this._helpPage && this._helpPage.page === 'article') || newsItem);
+    sh.querySelector('.tabbar').hidden = name === 'chat' || (name === 'help' && !!this._helpPage && this._helpPage.page === 'article') || newsItem || tabs.length < 2;
     sh.querySelectorAll('.tab').forEach((t) => { const on = t.dataset.tab === name; t.classList.toggle('on', on); t.setAttribute('aria-current', on ? 'page' : 'false'); });
     this._closePops();
     if (name === 'messages') this._renderConversations();
     if (name === 'help' && !this._helpPage) this._renderHelp();
     if (name === 'home') this._renderHome();
-    if (name === 'news') this._renderNews();
+    if (name === 'news' && !this._newsPage) this._renderNews();
     if (name === 'chat') setTimeout(() => { if (!this._voice) this._focusInput(); }, 30); else if (changed && name !== 'home') setTimeout(() => { const t = sh.querySelector(this.$back.hidden ? '.close' : '.back'); if (t && !t.hidden) t.focus({ preventScroll: true }); }, 30);
     this._syncHome(); this._emit('view', { view: name, page: this._helpPage ? this._helpPage.page : undefined });
   }
   _paintHeader() {
-    const sh = this.shadowRoot, v = this._view, chat = v === 'chat', sub = v === 'help' && !!this._helpPage, home = this._tabs().includes('home');
+    const sh = this.shadowRoot, v = this._view, chat = v === 'chat', sub = (v === 'help' && !!this._helpPage) || (v === 'news' && !!this._newsPage), home = this._tabs().includes('home');
     ['.hav', '.brand', '.more'].forEach((s) => { sh.querySelector(s).hidden = !chat; });
     sh.querySelector('.b-history').hidden = true;
     this.$back.hidden = !(sub || (chat && (home || this._tabs().length > 1)));
@@ -648,6 +684,7 @@ class DeepAssistant extends HTMLElement {
     this.$min.hidden = true;
   }
   _goBack() {
+    if (this._view === 'news' && this._newsPage) { this._newsPage = null; this.showView('news'); return; }
     if (this._view === 'help' && this._helpPage) { const p = this._helpPage; this._helpPage = p.page === 'article' && p.from ? p.from : null; this.showView('help'); if (this._helpPage) this._paintHelpPage(); return; }
     this.showView(this._tabs().includes('home') ? 'home' : 'messages');
   }
@@ -718,6 +755,7 @@ class DeepAssistant extends HTMLElement {
     if (!this.hasAttribute('theme')) this.setAttribute('theme', local.get('da_theme') || 'light');
     sh.innerHTML = `<style>${CSS}</style>
 <button class="launcher" part="launcher" type="button" aria-label="Open the Deep assistant" aria-expanded="false"><span class="lic lic-open">${SVG.mark}</span><span class="lic lic-close">${SVG.chevdown}</span><span class="ldot" hidden></span><span class="lbadge" hidden></span></button>
+<div class="npop" role="status" aria-live="polite" hidden><button class="npx" type="button" aria-label="Dismiss">&times;</button><button class="npb" type="button"></button></div>
 <section class="panel" part="panel" data-view="chat" role="dialog" aria-label="Deep assistant">
   <header>
     <button class="hbtn back" type="button" aria-label="Back to chat" title="Back to chat" hidden>${SVG.back}</button>
@@ -822,7 +860,7 @@ class DeepAssistant extends HTMLElement {
     this.$launcher.onclick = () => this.toggle(); this.$min.onclick = () => this.close();
     this.$close.onclick = () => { if (this.getAttribute('mode') === 'launcher') { this.stopVoice(); if (this._busy) this._stop(); this.close(); } else { this._emit('close'); this.newChat(); } };
     this.$back.onclick = () => this._goBack();
-    sh.querySelectorAll('.tab').forEach((t) => { t.onclick = () => { if (t.dataset.tab === 'help') this._helpPage = null; this.showView(t.dataset.tab); }; });
+    sh.querySelectorAll('.tab').forEach((t) => { t.onclick = () => { if (t.dataset.tab === 'help') this._helpPage = null; if (t.dataset.tab === 'news') this._newsPage = null; this.showView(t.dataset.tab); }; });
     sh.querySelector('.hclose').onclick = () => this.$close.click();
     sh.querySelector('.askq').onclick = () => { this._emit('action', { action: 'home', label: 'Ask a question', kind: 'question' }); if (this._transcript.length) this.newChat(); else this.showView('chat'); };
     sh.querySelector('.bookc').onclick = () => { this._emit('action', { action: 'home', label: 'Book a call', kind: 'booking' }); this.startBooking(); };
@@ -841,7 +879,7 @@ class DeepAssistant extends HTMLElement {
     this.$panel.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || e.defaultPrevented) return;
       if (this.$menu.classList.contains('open') || sh.querySelector('.pop.open, .pmenu.open')) { this._closePops(); return; }
       if (sh.querySelector('.voice.open')) { this._showVoice(false); return; }
-      if (this._view === 'help' && this._helpPage) { this._goBack(); return; }
+      if ((this._view === 'help' && this._helpPage) || (this._view === 'news' && this._newsPage)) { this._goBack(); return; }
       if (this.getAttribute('mode') === 'launcher') this.close(); });
     // history
     sh.querySelector('.newconvo').onclick = () => this.newChat();
@@ -896,7 +934,7 @@ class DeepAssistant extends HTMLElement {
     this.$launcher.setAttribute('aria-expanded', String(open)); this.$launcher.setAttribute('aria-label', open ? 'Minimize the assistant' : 'Open the ' + this.botName + ' assistant');
     if (!launcher || open === this._wasOpen) return; this._wasOpen = open;
     this._emit(open ? 'open' : 'close');
-    if (open) { this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); this._teamCheck(); this._newsLive(true); if (this._voice && this._voice.orb) this._voice.orb.resume(); }
+    if (open) { this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); this._teamCheck(); { const np = this.shadowRoot.querySelector('.npop'); if (np) np.hidden = true; clearTimeout(this._newsPopT); } this._newsLive(true); if (this._voice && this._voice.orb) this._voice.orb.resume(); }
     else { this._bindViewport(false); this._closePops(); if (this._voice && this._voice.orb) this._voice.orb.pause(); if (this.shadowRoot.activeElement && this.shadowRoot.activeElement !== this.$launcher) this.$launcher.focus({ preventScroll: true }); }
   }
   _bindViewport(on) {  // phones: size the full-screen panel to the visual viewport so the composer stays above the keyboard
@@ -1006,51 +1044,136 @@ class DeepAssistant extends HTMLElement {
     if (x.book) return this.startBooking(typeof x.book === 'string' ? x.book : null, x.label);
     return this._send(x.ask || x.label);
   }
-  // ---------------------------------------------------------------- News (Intercom's News tab; GET /news, app/news.py)
+  // ---------------------------------------------------------------- News (Intercom's News tab, as on snitcher.com; app/news.py)
+  // List: feeds (Latest, Newsletters, Case studies, Videos...), cards with "New", the first label and "+N labels";
+  // an item opens inside the messenger with all its labels, "Shared by", the article and "How would you rate this?".
   _newsTenant() { return this.getAttribute('news-tenant') || (this._cfg && this._cfg.news && this._cfg.news.tenant) || ''; }
-  async _loadNews(force) {
+  async _loadNews(force, feed) {
     if (!this.api || !this._tabs().includes('news')) return null;
-    if (this._news && !force && Date.now() - this._news.at < 300000) return this._news;
-    try { const t = this._newsTenant(); const r = await fetch(this._url('/news' + (t ? '?tenant=' + encodeURIComponent(t) : ''))); if (r.ok) this._news = { ...(await r.json()), at: Date.now() }; } catch {}
-    return this._news || null;
+    feed = feed || 'latest'; this._newsByFeed = this._newsByFeed || {};
+    const have = this._newsByFeed[feed];
+    if (have && !force && Date.now() - have.at < 300000) return have;
+    try { const t = this._newsTenant(), q = [t ? 'tenant=' + encodeURIComponent(t) : '', feed !== 'latest' ? 'feed=' + encodeURIComponent(feed) : ''].filter(Boolean).join('&');
+      const r = await fetch(this._url('/news' + (q ? '?' + q : ''))); if (r.ok) { this._newsByFeed[feed] = { ...(await r.json()), at: Date.now() }; if (feed === 'latest') this._news = this._newsByFeed[feed]; } } catch {}
+    return this._newsByFeed[feed] || null;
   }
   // while the panel is open the feed is re-asked every 2 minutes (a 304 when nothing changed, app/main.py) and the
   // open view repaints only when an item was added, edited or taken off on the site
   _newsSig() { const d = this._news; return d && d.items ? d.items.map((i) => `${i.id}:${i.published_at}:${i.title}:${i.image || ''}`).join('|') : ''; }
   _newsLive(now) {
     clearTimeout(this._newsT); const shown = this.getAttribute('mode') !== 'launcher' || this.hasAttribute('open');
-    if (!shown || !this._tabs().includes('news')) return;
+    if (!this._tabs().includes('news')) return;
+    if (!shown) { this._newsPopup(); return; }
     const step = async () => { if (!document.hidden) { const before = this._newsSig(); await this._loadNews(true);
-      if (this._newsSig() !== before) { if (this._view === 'news') this._renderNews(); else if (this._view === 'home') this._paintHomeNews(); else this._paintNewsDot(); } }
+      if (this._newsSig() !== before) { if (this._view === 'news' && !this._newsPage) this._renderNews(); else if (this._view === 'home') this._paintHomeNews(); else this._paintNewsDot(); } }
       this._newsLive(); };
     this._newsT = setTimeout(step, now && this._news && Date.now() - this._news.at > 60000 ? 0 : 120000);
   }
-  _newsSeen() { try { return localStorage.getItem(this._key('news_seen:' + this._newsTenant())) || ''; } catch { return ''; } }
-  _paintNewsDot() { const d = this._news, dot = this.shadowRoot.querySelector('.ndot'); if (!dot) return; const top = d && d.items && d.items[0]; dot.hidden = !top || String(top.published_at) <= this._newsSeen(); }
+  // read state per item (Intercom marks an item seen once it was shown); items older than the old "seen up to" mark count as read
+  _newsKey(k) { return this._key(k + ':' + this._newsTenant()); }
+  _newsRead() { if (!this._newsReadSet) { let ids = []; try { ids = JSON.parse(localStorage.getItem(this._newsKey('news_read')) || '[]'); } catch {} this._newsReadSet = new Set(ids.map(String)); } return this._newsReadSet; }
+  _newsSeen() { try { return localStorage.getItem(this._newsKey('news_seen')) || ''; } catch { return ''; } }
+  _isNewsUnread(it) { const legacy = this._newsSeen(); return !this._newsRead().has(String(it.id)) && !(legacy && String(it.published_at) <= legacy); }
+  _markNewsRead(items) { const s = this._newsRead(); let n = 0; items.forEach((it) => { if (!s.has(String(it.id))) { s.add(String(it.id)); n++; } });
+    if (n) { try { localStorage.setItem(this._newsKey('news_read'), JSON.stringify([...s].slice(-300))); } catch {} } }
+  _newsUnread() { const d = this._news; return d && d.items ? d.items.filter((it) => this._isNewsUnread(it)).length : 0; }
+  _paintNewsDot() { const dot = this.shadowRoot.querySelector('.ndot'); if (!dot) return; const n = this._newsUnread(); dot.hidden = !n; dot.textContent = n > 9 ? '9+' : n ? String(n) : ''; }
+  _newsLabels(it, unread, all) {
+    const labels = (it.labels && it.labels.length ? it.labels : [it.label || it.kind]).filter(Boolean);
+    const chips = (unread ? '<span class="nchip new">New</span>' : '') + (it.pinned ? '<span class="nchip">Pinned</span>' : '')
+      + (all ? labels : labels.slice(0, 1)).map((l) => `<span class="nchip">${esc(l)}</span>`).join('')
+      + (!all && labels.length > 1 ? `<span class="nchip more">+ ${labels.length - 1} label${labels.length > 2 ? 's' : ''}</span>` : '')
+      + (it.updated ? '<span class="nchip upd">Updated</span>' : '');
+    return `<span class="nlabels">${chips}</span>`;
+  }
   _newsCard(it, isNew, cls) {
-    const when = it.published_at ? new Date(it.published_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
     return `<a class="${cls}" href="${esc(it.url)}" target="_blank" rel="noopener" data-id="${esc(String(it.id))}">${it.image ? `<span class="nimg"><img src="${esc(it.image)}" alt="" loading="lazy" onerror="this.parentNode.remove()"></span>` : ''}
-      <span class="nbody"><span class="nlabels">${isNew ? '<span class="nchip new">New</span>' : ''}${it.pinned ? '<span class="nchip">Pinned</span>' : ''}<span class="nchip">${esc(it.label || it.kind)}</span>${it.updated ? '<span class="nchip upd">Updated</span>' : ''}<span class="nwhen">${esc(when)}</span></span>
-      <b>${esc(it.title)}</b>${it.blurb ? `<span class="nblurb">${esc(it.blurb)}</span>` : ''}</span>${SVG.chev}</a>`;
+      <span class="nbody">${this._newsLabels(it, isNew, false)}<b>${esc(it.title)}</b>${it.blurb ? `<span class="nblurb">${esc(it.blurb)}</span>` : ''}</span>${SVG.chev}</a>`;
+  }
+  _bindNewsCards(box) {
+    box.querySelectorAll('a.ncard').forEach((a) => a.addEventListener('click', (e) => {
+      this._emit('action', { action: 'news_open', label: a.querySelector('b').textContent, kind: 'news' });
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;   // a new tab when asked for one
+      e.preventDefault(); this.openNewsItem(a.dataset.id);
+    }));
   }
   async _renderNews() {
     const box = this.shadowRoot.querySelector('.newsv'); if (!box) return;
-    if (!this._news) box.innerHTML = '<div class="sk"><span class="a"></span><span class="l"><i></i><i></i></span></div>'.repeat(3);
-    const d = await this._loadNews(); if (this._view !== 'news') return;
-    const items = (d && d.items) || [], seen = this._newsSeen(), photo = this._hostPhoto();
-    box.innerHTML = `<div class="nhead"><span><b>Latest</b><small>From Team ${esc((d && d.name) || this.botName)}</small></span>${photo ? `<span class="havs"><img src="${esc(photo)}" alt=""></span>` : ''}</div>`
-      + (items.length ? items.map((it) => this._newsCard(it, String(it.published_at) > seen, 'ncard')).join('') : '<div class="hempty">No news yet. Check back soon.</div>');
-    box.querySelectorAll('.ncard').forEach((a) => a.addEventListener('click', () => this._emit('action', { action: 'news_open', label: a.querySelector('b').textContent, kind: 'news' })));
-    if (items[0]) { try { localStorage.setItem(this._key('news_seen:' + this._newsTenant()), String(items[0].published_at)); } catch {} }
+    if (this._newsPage) return this._paintNewsItem();
+    const feed = this._newsFeed || 'latest';
+    if (!this._newsByFeed || !this._newsByFeed[feed]) box.innerHTML = '<div class="sk"><span class="a"></span><span class="l"><i></i><i></i></span></div>'.repeat(3);
+    const d = await this._loadNews(false, feed); if (this._view !== 'news' || this._newsPage || (this._newsFeed || 'latest') !== feed) return;
+    const items = (d && d.items) || [], photo = this._hostPhoto(), feeds = ((this._news || d || {}).feeds || []).filter((f) => f.count || f.key === 'latest');
+    const cur = feeds.find((f) => f.key === feed) || { label: 'Latest' };
+    box.innerHTML = `<div class="nhead"><span><b>${esc(cur.label)}</b><small>From Team ${esc((d && d.name) || this.botName)}</small></span>${photo ? `<span class="havs"><img src="${esc(photo)}" alt=""></span>` : ''}</div>`
+      + (feeds.length > 1 ? `<div class="nfeeds" role="tablist" aria-label="News feeds">${feeds.map((f) => `<button class="nfeed${f.key === feed ? ' on' : ''}" type="button" role="tab" aria-selected="${f.key === feed}" data-feed="${esc(f.key)}">${esc(f.label)}</button>`).join('')}</div>` : '')
+      + (items.length ? items.map((it) => this._newsCard(it, this._isNewsUnread(it), 'ncard')).join('') + `<div class="ncaught">${SVG.check || ''}<span>You're all caught up!</span></div>`
+        : '<div class="hempty">No news yet. Check back soon.</div>');
+    box.querySelectorAll('.nfeed').forEach((b) => { b.onclick = () => { this._newsFeed = b.dataset.feed; this._emit('action', { action: 'news_feed', label: b.textContent, kind: 'news' }); this._renderNews(); }; });
+    this._bindNewsCards(box);
+    this._markNewsRead(items);   // shown: no longer new (the chips above keep saying "New" until the next visit)
     this._paintNewsDot();
+  }
+  openNews(feed) { this._newsPage = null; if (feed) this._newsFeed = feed; this.showView('news'); }
+  openNewsItem(id) { if (!id) return; this._newsPage = { id: String(id) }; this.showView('news'); this._paintNewsItem(); }
+  async _paintNewsItem() {
+    const p = this._newsPage, box = this.shadowRoot.querySelector('.newsv'); if (!p || !box) return;
+    box.innerHTML = '<div class="sk"><span class="a"></span><span class="l"><i></i><i></i></span></div>';
+    let it = null;
+    try { const t = this._newsTenant(), q = ['visitor=' + encodeURIComponent(this._vid || this._sid || ''), t ? 'tenant=' + encodeURIComponent(t) : ''].filter(Boolean).join('&');
+      const r = await fetch(this._url(`/news/items/${encodeURIComponent(p.id)}?${q}`)); if (r.ok) it = await r.json(); } catch {}
+    if (this._newsPage !== p) return;
+    if (!it) { box.innerHTML = '<div class="hempty">This news item is no longer available.</div>'; return; }
+    this._markNewsRead([it]); this._paintNewsDot();
+    const vid = it.kind === 'video' && (/[?&]v=([\w-]{6,20})/.exec(it.url) || [])[1];
+    const host = (() => { try { return new URL(it.url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
+    const cta = it.kind === 'video' ? 'Watch on YouTube' : it.kind === 'mention' ? 'Read the article' : it.source === 'manual' && /linkedin\./.test(host) ? 'See the post on LinkedIn' : host ? `Read on ${host}` : 'Open';
+    const team = 'Team ' + (((this._news || {}).name) || this.botName), who = it.author || team, photo = this._hostPhoto();
+    const av = (!it.author || it.author === team || (this._cfg && it.author === this._cfg.host_name)) && photo ? `<img src="${esc(photo)}" alt="">` : `<span>${esc((who.replace(/^Team /, '')[0] || '?').toUpperCase())}</span>`;
+    const opts = (it.reactions && it.reactions.options) || (this._cfg && this._cfg.news && this._cfg.news.reactions) || ['💜', '😴', '👎', '🎉'];
+    box.innerHTML = `<article class="nart" aria-label="${esc(it.title)}">
+      ${vid ? `<div class="nvideo"><iframe src="https://www.youtube-nocookie.com/embed/${esc(vid)}" title="${esc(it.title)}" loading="lazy" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>`
+        : it.image ? `<div class="nimg"><img src="${esc(it.image)}" alt="" onerror="this.parentNode.remove()"></div>` : ''}
+      <div class="ninner">${this._newsLabels(it, false, true)}<h2 class="ntitle">${esc(it.title)}</h2>
+      <div class="nby"><span class="nav">${av}</span><span>Shared by <b>${esc(who)}</b>${it.published_at ? ` • <time datetime="${esc(it.published_at)}">${esc(relAge(it.published_at))}</time>` : ''}</span></div>
+      <div class="nhtml">${it.body || ''}</div>
+      <a class="ncta" href="${esc(it.url)}" target="_blank" rel="noopener">${esc(cta)}${SVG.ext || ''}</a></div>
+      <div class="nreact"><p>How would you rate this?</p><div class="nemo" role="group" aria-label="Rate this">${opts.map((e) => `<button type="button" class="nemoji${it.reactions && it.reactions.mine === e ? ' on' : ''}" data-e="${esc(e)}" aria-pressed="${!!(it.reactions && it.reactions.mine === e)}">${esc(e)}</button>`).join('')}</div></div>
+    </article>`;
+    box.scrollTop = 0;
+    box.querySelector('.ncta').addEventListener('click', () => this._emit('action', { action: 'news_link', label: it.title, kind: 'news' }));
+    box.querySelectorAll('.nemoji').forEach((b) => { b.onclick = async () => {
+      const wasOn = b.classList.contains('on'); box.querySelectorAll('.nemoji').forEach((x) => { x.classList.remove('on'); x.setAttribute('aria-pressed', 'false'); });
+      if (!wasOn) { b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
+      this._emit('action', { action: 'news_react', label: b.dataset.e, kind: 'news' });
+      try { const t = this._newsTenant(); await fetch(this._url(`/news/items/${encodeURIComponent(it.id)}/react${t ? '?tenant=' + encodeURIComponent(t) : ''}`),
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visitor: this._vid || this._sid || 'anon', emoji: wasOn ? null : b.dataset.e }) }); } catch {}
+    }; });
   }
   async _paintHomeNews() {
     const card = this.shadowRoot.querySelector('.newsc'); if (!card) return;
     const d = await this._loadNews(); const it = d && d.items && d.items[0];
     card.hidden = !it || !this._tabs().includes('news'); if (!it) return;
-    card.innerHTML = `${it.image ? `<span class="nimg"><img src="${esc(it.image)}" alt="" loading="lazy" onerror="this.parentNode.remove()"></span>` : ''}<span class="nbody"><span class="nlabels">${String(it.published_at) > this._newsSeen() ? '<span class="nchip new">New</span>' : ''}<span class="nchip">${esc(it.label || it.kind)}</span></span><b>${esc(it.title)}</b>${it.blurb ? `<span class="nblurb">${esc(it.blurb)}</span>` : ''}</span>`;
-    card.onclick = () => this.showView('news');
+    card.innerHTML = `${it.image ? `<span class="nimg"><img src="${esc(it.image)}" alt="" loading="lazy" onerror="this.parentNode.remove()"></span>` : ''}<span class="nbody">${this._newsLabels(it, this._isNewsUnread(it), false)}<b>${esc(it.title)}</b>${it.blurb ? `<span class="nblurb">${esc(it.blurb)}</span>` : ''}</span>`;
+    card.onclick = () => this.openNewsItem(it.id);
     this._paintNewsDot();
+  }
+  // a new item pops up above the closed launcher once (Intercom's news notification); off with news-popup="off"
+  _newsPopup() {
+    const pop = this.shadowRoot.querySelector('.npop'); if (!pop) return;
+    const d = this._news, it = d && d.items && d.items.find((x) => !x.pinned);
+    const off = this.getAttribute('news-popup') === 'off' || (this._cfg && this._cfg.news && this._cfg.news.popup === false) || this.getAttribute('mode') !== 'launcher';
+    let popped = ''; try { popped = localStorage.getItem(this._newsKey('news_popped')) || ''; } catch {}
+    if (off || !it || this.hasAttribute('open') || !this._isNewsUnread(it) || popped === String(it.id) || Date.now() - new Date(it.published_at).getTime() > 7 * 86400000) { pop.hidden = true; return; }
+    clearTimeout(this._newsPopT);
+    this._newsPopT = setTimeout(() => {
+      if (this.hasAttribute('open')) return;
+      pop.querySelector('.npb').innerHTML = `${it.image ? `<span class="npi"><img src="${esc(it.image)}" alt="" onerror="this.parentNode.remove()"></span>` : ''}<span class="npt"><small>New from Team ${esc(d.name || this.botName)}</small><b>${esc(it.title)}</b></span>`;
+      pop.hidden = false; try { localStorage.setItem(this._newsKey('news_popped'), String(it.id)); } catch {}
+      this._emit('action', { action: 'news_popup', label: it.title, kind: 'news' });
+      pop.querySelector('.npb').onclick = () => { pop.hidden = true; this.setAttribute('open', ''); this.openNewsItem(it.id); };
+      pop.querySelector('.npx').onclick = () => { pop.hidden = true; };
+    }, 6000);
   }
   // ---------------------------------------------------------------- Home (Intercom: hero, recent message, ask, book, search for help)
   _hostPhoto() { const p = this._cfg && this._cfg.host_photo; return p ? (/^https?:/.test(p) ? p : this.api + p) : ''; }

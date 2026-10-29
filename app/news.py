@@ -44,6 +44,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import httpx
+from bs4 import BeautifulSoup
 
 from app.config import settings
 from app.db import conn
@@ -52,7 +53,8 @@ log = logging.getLogger("news")
 
 UA = "Mozilla/5.0 (compatible; deependhq-assistant/1.0; +https://deependhq.com)"
 NS = {"content": "http://purl.org/rss/1.0/modules/content/", "media": "http://search.yahoo.com/mrss/",
-      "atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015", "sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+      "atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015", "sm": "http://www.sitemaps.org/schemas/sitemap/0.9",
+      "dc": "http://purl.org/dc/elements/1.1/"}
 KIND_LABEL = {"post": "Blog", "video": "Video", "mention": "In the news", "news": "News", "case_studies": "Case study",
               "webinar": "Webinar", "guide": "Guide", "white_paper": "White paper", "research_paper": "Research",
               "infographic": "Infographic", "tip_sheet": "Tip sheet", "newsletter": "Newsletter", "insights": "Insights",
@@ -62,6 +64,14 @@ LAKEB2B = {"slug": "lakeb2b", "name": "LakeB2B", "blog_feed_url": "https://www.l
            "sitemap_index_url": "https://www.lakeb2b.com/sitemap_index.xml",
            "sitemap_types": ["news", "case_studies", "webinar", "guide", "white_paper", "research_paper", "infographic",
                              "tip_sheet", "newsletter", "insights"]}
+# the News tab's feeds (filter chips, like Intercom newsfeeds): key, label, kinds (None: everything, the last NEWS_DAYS)
+FEEDS = [("latest", "Latest", None), ("blog", "Blog", ("post",)), ("videos", "Videos", ("video",)),
+         ("newsletters", "Newsletters", ("newsletter",)), ("case-studies", "Case studies", ("case_studies",)),
+         ("resources", "Guides & papers", ("guide", "white_paper", "research_paper", "infographic", "tip_sheet", "insights",
+                                           "article", "corporate_brochure", "marketing_tool")),
+         ("announcements", "Announcements", ("news", "announcement", "event", "linkedin", "x")), ("press", "In the news", ("mention",))]
+REACTIONS = ["💜", "😴", "👎", "🎉"]   # Intercom's "How would you rate this?"
+BACKFILL_PER_TYPE = 6                  # a feed starts with the newest few pages of its type, not empty
 # minutes between checks, (fastest, slowest): fastest right after a change, slower while a source stays quiet
 CADENCE = {"blog": (15, 120), "sitemap": (30, 240), "youtube": (30, 360), "mention": (360, 1440), "links": (720, 1440)}
 SOURCES = tuple(CADENCE)
@@ -82,6 +92,83 @@ def text_of(html_text: str | None, limit: int = 220) -> str:
     if len(t) > limit:
         t = t[:limit].rsplit(" ", 1)[0].rstrip(",.;:") + "…"
     return t
+
+
+_ALLOWED = {"p", "br", "h2", "h3", "h4", "ul", "ol", "li", "strong", "b", "em", "i", "a", "img", "blockquote", "hr", "figure", "figcaption"}
+_DROP = ["script", "style", "iframe", "form", "input", "button", "noscript", "svg", "nav", "header", "footer", "aside", "object",
+         "embed", "video", "audio", "select", "textarea", "template"]
+
+
+def safe_html(html_text: str | None, limit: int = 40000) -> str:
+    """An article for the messenger: paragraphs, headings, lists, links, pictures and quotes only. Every other tag is
+    unwrapped and every attribute dropped, except a link's http(s)/mailto href (opened in a new tab) and a picture's
+    https src: the result is safe for innerHTML."""
+    if not (html_text or "").strip():
+        return ""
+    soup = BeautifulSoup(html_text, "lxml")
+    root = soup.body or soup
+    for t in root.find_all(_DROP):
+        t.decompose()
+    for t in root.find_all(True):
+        if t.name is None or getattr(t, "decomposed", False):
+            continue
+        if t.name == "h1":
+            t.name = "h2"
+        elif t.name in ("h5", "h6"):
+            t.name = "h4"
+        if t.name not in _ALLOWED:
+            t.unwrap()
+            continue
+        if t.name == "a":
+            href = (t.get("href") or "").strip()
+            if not re.match(r"^(https?:|mailto:)", href, re.I):
+                t.unwrap()
+                continue
+            t.attrs = {"href": href, "target": "_blank", "rel": "noopener"}
+        elif t.name == "img":
+            src = (t.get("data-src") or t.get("src") or "").strip()
+            if not src.startswith("https://"):
+                t.decompose()
+                continue
+            t.attrs = {"src": src, "alt": (t.get("alt") or "")[:200], "loading": "lazy"}
+        else:
+            t.attrs = {}
+    for p in root.find_all("p"):
+        txt = p.get_text(" ", strip=True)
+        if (not txt and not p.find("img")) or re.search(r"appeared first on", txt):   # empty, or the WordPress feed footer
+            p.decompose()
+    out, size = [], 0
+    for node in root.contents:
+        s = str(node)
+        if size + len(s) > limit:
+            break
+        out.append(s)
+        size += len(s)
+    return "".join(out).strip()
+
+
+def text_html(text: str | None, limit: int = 20000) -> str:
+    """Plain text (a video description, a typed announcement, a page's text) as paragraphs with live links."""
+    out = []
+    for para in re.split(r"\n\s*\n", (text or "").strip())[:200]:
+        p = htmlmod.escape(para.strip()).replace("\n", "<br>")
+        p = re.sub(r"(https?://[^\s<]+)", r'<a href="\1" target="_blank" rel="noopener">\1</a>', p)
+        if p:
+            out.append(f"<p>{p}</p>")
+    return "".join(out)[:limit]
+
+
+def article_html(page_html: str, url: str, boiler: set[str] | None = None) -> str:
+    """A page's article for the messenger: its content area as safe HTML, else its text (site menus dropped)."""
+    soup = BeautifulSoup(page_html or "", "lxml")
+    node = (soup.find(class_=re.compile(r"\b(entry-content|post-content|article-content|single-content|blog-content)\b"))
+            or soup.find("article") or soup.find("main"))
+    if node is not None and len(node.get_text(" ").split()) >= 60:
+        return safe_html(str(node))
+    from app import sites
+
+    page = sites.extract(url, page_html or "", boiler)
+    return text_html(page["text"]) if page else ""
 
 
 def _date(s: str | None) -> datetime | None:
@@ -123,9 +210,12 @@ def parse_rss(xml: bytes | str) -> list[dict[str, Any]]:
             img = enc.get("url")
         img = img or _first_img(full) or _first_img(desc)
         news_img = next((c.text for c in it if c.tag.endswith("}Image") and c.text), None)   # Bing: <News:Image>
+        cats = [htmlmod.unescape((c.text or "").strip()) for c in it.findall("category") if (c.text or "").strip()]
         if title and link:
             out.append({"title": htmlmod.unescape(title), "url": link, "published_at": _date(it.findtext("pubDate")),
-                        "blurb": text_of(desc or full), "image": img or news_img})
+                        "blurb": text_of(desc or full), "image": img or news_img, "body": safe_html(full or desc),
+                        "labels": [c for c in dict.fromkeys(cats) if c.lower() != "uncategorized"][:5],
+                        "author": (it.findtext("dc:creator", namespaces=NS) or "").strip() or None})
     return out
 
 
@@ -139,7 +229,9 @@ def parse_youtube(xml: bytes | str) -> list[dict[str, Any]]:
                     "url": link.get("href") if link is not None else "",
                     "published_at": _date(e.findtext("atom:published", namespaces=NS)),
                     "blurb": text_of(e.findtext("media:group/media:description", namespaces=NS)),
-                    "image": thumb.get("url") if thumb is not None else None})
+                    "image": thumb.get("url") if thumb is not None else None,
+                    "body": text_html(e.findtext("media:group/media:description", namespaces=NS)),
+                    "author": (e.findtext("atom:author/atom:name", namespaces=NS) or "").strip() or None})
     return [x for x in out if x["title"] and x["url"]]
 
 
@@ -202,9 +294,11 @@ def _client() -> httpx.Client:
 
 def tenants(enabled_only: bool = False) -> list[dict[str, Any]]:
     with conn() as c:
-        rows = c.execute("""SELECT slug, name, blog_feed_url, youtube_channel_id, mention_query, sitemap_index_url, sitemap_types, enabled
+        rows = c.execute("""SELECT slug, name, blog_feed_url, youtube_channel_id, mention_query, sitemap_index_url, sitemap_types, enabled,
+                                   site_url, kb_enabled
                             FROM news_tenants """ + ("WHERE enabled " if enabled_only else "") + "ORDER BY created_at").fetchall()
-    cols = ["slug", "name", "blog_feed_url", "youtube_channel_id", "mention_query", "sitemap_index_url", "sitemap_types", "enabled"]
+    cols = ["slug", "name", "blog_feed_url", "youtube_channel_id", "mention_query", "sitemap_index_url", "sitemap_types", "enabled",
+            "site_url", "kb_enabled"]
     return [dict(zip(cols, r)) for r in rows]
 
 
@@ -221,14 +315,16 @@ def save_tenant(data: dict[str, Any]) -> dict[str, Any]:
         types = [t.strip() for t in types.split(",") if t.strip()]
     vals = (slug, (data.get("name") or slug).strip()[:80], (data.get("blog_feed_url") or "").strip() or None,
             (data.get("youtube_channel_id") or "").strip() or None, (data.get("mention_query") or "").strip() or None,
-            (data.get("sitemap_index_url") or "").strip() or None, types, bool(data.get("enabled", True)))
+            (data.get("sitemap_index_url") or "").strip() or None, types, bool(data.get("enabled", True)),
+            (data.get("site_url") or "").strip() or None, bool(data.get("kb_enabled", True)))
     with conn() as c:
-        c.execute("""INSERT INTO news_tenants(slug, name, blog_feed_url, youtube_channel_id, mention_query, sitemap_index_url, sitemap_types, enabled)
-                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        c.execute("""INSERT INTO news_tenants(slug, name, blog_feed_url, youtube_channel_id, mention_query, sitemap_index_url, sitemap_types, enabled,
+                                              site_url, kb_enabled)
+                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                      ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, blog_feed_url = EXCLUDED.blog_feed_url,
                        youtube_channel_id = EXCLUDED.youtube_channel_id, mention_query = EXCLUDED.mention_query,
                        sitemap_index_url = EXCLUDED.sitemap_index_url, sitemap_types = EXCLUDED.sitemap_types,
-                       enabled = EXCLUDED.enabled, updated_at = now()""", vals)
+                       enabled = EXCLUDED.enabled, site_url = EXCLUDED.site_url, kb_enabled = EXCLUDED.kb_enabled, updated_at = now()""", vals)
         c.commit()
     return tenant(slug)
 
@@ -253,12 +349,16 @@ def upsert(tenant_slug: str, source: str, kind: str, item: dict[str, Any], statu
     if not item.get("url") or not item.get("title"):
         return False
     when = item.get("published_at")
+    first = KIND_LABEL.get(kind, kind.replace("_", " ").title())
+    labels = list(dict.fromkeys([first] + [l for l in item.get("labels") or [] if l and l != first]))[:6]
     with conn() as c:
         row = c.execute(
-            """INSERT INTO news_items(tenant, source, kind, title, url, published_at, blurb, image, status, lastmod)
-               VALUES (%s, %s, %s, %s, %s, COALESCE(%s::timestamptz, now()), %s, %s, %s, %s)
+            """INSERT INTO news_items(tenant, source, kind, title, url, published_at, blurb, image, status, lastmod, body, labels, author)
+               VALUES (%s, %s, %s, %s, %s, COALESCE(%s::timestamptz, now()), %s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT (tenant, url) DO UPDATE SET title = EXCLUDED.title, blurb = COALESCE(NULLIF(EXCLUDED.blurb, ''), news_items.blurb),
                  image = COALESCE(EXCLUDED.image, news_items.image),
+                 body = COALESCE(EXCLUDED.body, news_items.body), labels = EXCLUDED.labels,
+                 author = COALESCE(EXCLUDED.author, news_items.author),
                  published_at = COALESCE(%s::timestamptz, news_items.published_at),
                  lastmod = COALESCE(EXCLUDED.lastmod, news_items.lastmod),
                  status = CASE WHEN news_items.status = 'gone' THEN 'published' ELSE news_items.status END, updated_at = now()
@@ -267,9 +367,14 @@ def upsert(tenant_slug: str, source: str, kind: str, item: dict[str, Any], statu
                   OR (EXCLUDED.image IS NOT NULL AND news_items.image IS DISTINCT FROM EXCLUDED.image)
                   OR (%s::timestamptz IS NOT NULL AND news_items.published_at IS DISTINCT FROM %s::timestamptz)
                   OR (EXCLUDED.lastmod IS NOT NULL AND news_items.lastmod IS DISTINCT FROM EXCLUDED.lastmod)
+                  OR (EXCLUDED.body IS NOT NULL AND news_items.body IS DISTINCT FROM EXCLUDED.body)
+                  OR news_items.labels IS DISTINCT FROM EXCLUDED.labels
+                  OR (EXCLUDED.author IS NOT NULL AND news_items.author IS DISTINCT FROM EXCLUDED.author)
                RETURNING (xmax = 0)""",
             (tenant_slug, source, kind, item["title"][:300], item["url"][:1000], when,
-             (item.get("blurb") or "")[:600], (item.get("image") or None), status, lastmod, when, when, when)).fetchone()
+             (item.get("blurb") or "")[:600], (item.get("image") or None), status, lastmod,
+             item.get("body") or None, labels, (item.get("author") or None),
+             when, when, when)).fetchone()
         c.commit()
     return bool(row and row[0])
 
@@ -315,11 +420,17 @@ def _stored_urls(tenant_slug: str, urls: list[str]) -> set[str]:
         return {r[0] for r in c.execute("SELECT url FROM news_items WHERE tenant = %s AND url = ANY(%s)", (tenant_slug, urls)).fetchall()}
 
 
+def _missing_bodies(tenant_slug: str, source: str) -> bool:
+    with conn() as c:
+        return bool(c.execute("""SELECT 1 FROM news_items WHERE tenant = %s AND source = %s AND body IS NULL
+                                 AND status IN ('published', 'pending') LIMIT 1""", (tenant_slug, source)).fetchone())
+
+
 def poll_blog(t: dict[str, Any], get: Callable | None = None, cache: bool = False) -> int:
     if not t.get("blog_feed_url"):
         return 0
     get = get or _client().get
-    key = t["slug"] if cache else None
+    key = t["slug"] if cache and not _missing_bodies(t["slug"], "blog") else None
     r = _fetch(get, t["blog_feed_url"], key)
     if r is None:
         return 0
@@ -340,7 +451,8 @@ def poll_youtube(t: dict[str, Any], get: Callable | None = None, cache: bool = F
     if not t.get("youtube_channel_id"):
         return 0
     get = get or _client().get
-    key, url = t["slug"] if cache else None, f"https://www.youtube.com/feeds/videos.xml?channel_id={t['youtube_channel_id']}"
+    key = t["slug"] if cache and not _missing_bodies(t["slug"], "youtube") else None
+    url = f"https://www.youtube.com/feeds/videos.xml?channel_id={t['youtube_channel_id']}"
     r = _fetch(get, url, key)
     if r is None:
         return 0
@@ -413,15 +525,74 @@ def poll_sitemaps(t: dict[str, Any], get: Callable | None = None, now: datetime 
                              WHERE tenant = %s AND source = 'sitemap' AND status = 'published' AND url = ANY(%s)""", (t["slug"], removed))
             c.commit()
         for loc, lastmod in changed[:20]:   # a site-wide re-save never floods the tab
-            try:
-                meta = page_meta(get(loc).text)
-            except Exception as e:
-                log.warning("news page %s failed: %s", loc, e)
-                continue
-            if meta["title"]:
-                new += upsert(t["slug"], "sitemap", kind, {"url": loc, "published_at": lastmod, **meta}, lastmod=lastmod)
+            new += _sitemap_item(t, kind, loc, lastmod, get)
         _remember(key, child, r)
     return new
+
+
+def _sitemap_item(t: dict[str, Any], kind: str, loc: str, lastmod: datetime | None, get: Callable) -> bool:
+    """One sitemap page as an item: title, text and picture from its meta tags, its article for the messenger."""
+    try:
+        page = get(loc).text
+    except Exception as e:
+        log.warning("news page %s failed: %s", loc, e)
+        return False
+    meta = page_meta(page)
+    if not meta["title"]:
+        return False
+    from app import sites
+
+    body = article_html(page, loc, sites.boilerplate(sites.site_root(t) or loc, get))
+    return upsert(t["slug"], "sitemap", kind, {"url": loc, "published_at": lastmod, **meta, "body": body}, lastmod=lastmod)
+
+
+def backfill(t: dict[str, Any], get: Callable | None = None, per_type: int = BACKFILL_PER_TYPE) -> int:
+    """Once per tenant: the newest few pages of each chosen sitemap type become items, so a feed (Newsletters, Case
+    studies...) is not empty until the site next publishes one. They are dated by their lastmod, so the Latest list
+    (the last NEWS_DAYS) only shows the recent ones."""
+    key = f"news:backfilled:{t['slug']}"
+    with conn() as c:
+        if c.execute("SELECT 1 FROM settings WHERE key = %s", (key,)).fetchone():
+            return 0
+        rows = c.execute("""SELECT kind, url, lastmod FROM (
+                                SELECT s.kind, s.url, s.lastmod, row_number() OVER (PARTITION BY s.kind ORDER BY s.lastmod DESC) AS n
+                                FROM news_sitemap_seen s
+                                WHERE s.tenant = %s AND s.kind = ANY(%s) AND s.lastmod IS NOT NULL
+                                  AND NOT EXISTS (SELECT 1 FROM news_items i WHERE i.tenant = s.tenant AND i.url = s.url)) x
+                            WHERE n <= %s ORDER BY kind, lastmod DESC""", (t["slug"], list(t.get("sitemap_types") or []), per_type)).fetchall()
+    get = get or _client().get
+    new = sum(_sitemap_item(t, kind, url, lastmod, get) for kind, url, lastmod in rows)
+    with conn() as c:
+        c.execute("INSERT INTO settings(key, value) VALUES (%s, %s) ON CONFLICT (key) DO NOTHING", (key, str(new)))
+        c.commit()
+    return new
+
+
+def fill_bodies(t: dict[str, Any], get: Callable | None = None, limit: int = 6) -> int:
+    """Items that have no article yet (older posts no longer in the feed, items from before articles were kept) get
+    their page's article; one that has none is marked '' so it is not read again."""
+    with conn() as c:
+        rows = c.execute("""SELECT id, url FROM news_items WHERE tenant = %s AND body IS NULL AND source IN ('blog', 'sitemap')
+                            AND status = 'published' ORDER BY published_at DESC LIMIT %s""", (t["slug"], limit)).fetchall()
+    if not rows:
+        return 0
+    from app import sites
+
+    get = get or _client().get
+    boiler = sites.boilerplate(sites.site_root(t) or rows[0][1], get)
+    done = 0
+    for item_id, url in rows:
+        try:
+            r = get(url)
+            body = article_html(r.text, url, boiler) if r.status_code < 400 else ""
+        except Exception as e:
+            log.info("news article %s not read: %s", url, e)
+            continue
+        with conn() as c:
+            c.execute("UPDATE news_items SET body = %s WHERE id = %s", (body, item_id))
+            c.commit()
+        done += 1
+    return done
 
 
 def check_links(t: dict[str, Any], get: Callable | None = None, cache: bool = False) -> int:
@@ -560,6 +731,12 @@ def tick(get: Callable | None = None, now: datetime | None = None, tenant_slug: 
         for s in SOURCES:
             if configured(t, s) and (s not in states or states[s]["next_at"] <= now):
                 out[f"{t['slug']}:{s}"] = poll_source(t, s, get=get, now=now)
+        try:
+            if configured(t, "sitemap") and "sitemap" in states:   # after the first sitemap pass recorded what exists
+                backfill(t, get=get)
+            fill_bodies(t, get=get)
+        except Exception as e:
+            log.warning("news %s articles: %s", t["slug"], e)
     if any(v.get("new") or v.get("error") for v in out.values()):
         log.info("news checked: %s", out)
     return out
@@ -677,7 +854,7 @@ def discover(site: str, get: Callable | None = None) -> dict[str, Any]:
     notes.append(f"sitemap types: {', '.join(types)}" if index else "no sitemap index found")
     channel = _youtube_channel(home, get) if home else None
     notes.append(f"YouTube channel {channel}" if channel else "no YouTube channel linked from the home page")
-    return {"slug": re.sub(r"[^a-z0-9-]+", "-", host.split(".")[0]).strip("-")[:40], "name": name,
+    return {"slug": re.sub(r"[^a-z0-9-]+", "-", host.split(".")[0]).strip("-")[:40], "name": name, "site_url": root,
             "blog_feed_url": best[0] if best else None, "youtube_channel_id": channel, "mention_query": name,
             "sitemap_index_url": index, "sitemap_types": suggested, "sitemap_types_available": types, "notes": notes}
 
@@ -686,26 +863,104 @@ def discover(site: str, get: Callable | None = None) -> dict[str, Any]:
 _COLS = ["id", "tenant", "source", "kind", "title", "url", "published_at", "blurb", "image", "status", "pinned", "created_at"]
 
 
-def published(tenant_slug: str, limit: int | None = None, days: int | None = None) -> list[dict[str, Any]]:
-    """The News tab: pinned first, then newest; last `days` days (pinned excepted), at most `limit` items. `updated`:
-    the page was re-saved on the site after it was first listed."""
+def published(tenant_slug: str, limit: int | None = None, days: int | None = None, kinds: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
+    """The News tab: pinned first, then newest; last `days` days (pinned excepted), at most `limit` items; `kinds`
+    narrows it to one feed. `updated`: the page was re-saved on the site after it was first listed; `has_body`: it
+    opens as an article inside the messenger."""
     limit, days = limit or settings.news_limit, days or settings.news_days
     with conn() as c:
         rows = c.execute(
-            f"""SELECT {', '.join(_COLS)}, (lastmod IS NOT NULL AND lastmod > created_at + interval '1 hour') FROM news_items
+            f"""SELECT {', '.join(_COLS)}, (lastmod IS NOT NULL AND lastmod > created_at + interval '1 hour'), labels, author,
+                       (body IS NOT NULL AND body <> '')
+                FROM news_items
                 WHERE tenant = %s AND status = 'published' AND (pinned OR published_at > now() - make_interval(days => %s))
-                ORDER BY pinned DESC, published_at DESC LIMIT %s""", (tenant_slug, days, limit)).fetchall()
-    return [{**dict(zip(_COLS + ["updated"], r)), "label": KIND_LABEL.get(r[3], r[3].replace("_", " ").title())} for r in rows]
+                  AND (%s::text[] IS NULL OR kind = ANY(%s::text[]))
+                ORDER BY pinned DESC, published_at DESC LIMIT %s""",
+            (tenant_slug, days, list(kinds) if kinds else None, list(kinds) if kinds else None, limit)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(zip(_COLS + ["updated", "labels", "author", "has_body"], r))
+        d["label"] = KIND_LABEL.get(d["kind"], d["kind"].replace("_", " ").title())
+        d["labels"] = list(d["labels"] or []) or [d["label"]]
+        out.append(d)
+    return out
+
+
+def feed(key: str | None) -> tuple[str, str, tuple[str, ...] | None]:
+    return next((f for f in FEEDS if f[0] == (key or "latest")), FEEDS[0])
+
+
+def feeds(tenant_slug: str) -> list[dict[str, Any]]:
+    """The feeds that have something to show (Latest always), with how many items each holds."""
+    with conn() as c:
+        latest = c.execute("""SELECT count(*) FROM news_items WHERE tenant = %s AND status = 'published'
+                              AND (pinned OR published_at > now() - make_interval(days => %s))""", (tenant_slug, settings.news_days)).fetchone()[0]
+        per_kind = dict(c.execute("""SELECT kind, count(*) FROM news_items WHERE tenant = %s AND status = 'published'
+                                     AND (pinned OR published_at > now() - make_interval(days => %s)) GROUP BY kind""",
+                                  (tenant_slug, settings.news_feed_days)).fetchall())
+    out = [{"key": "latest", "label": "Latest", "count": min(latest, settings.news_limit)}]
+    for key, label, kinds in FEEDS[1:]:
+        n = sum(per_kind.get(k, 0) for k in kinds)
+        if n:
+            out.append({"key": key, "label": label, "count": min(n, settings.news_limit)})
+    return out
+
+
+def reactions(item_id: int, visitor: str | None = None) -> dict[str, Any]:
+    with conn() as c:
+        counts = dict(c.execute("SELECT emoji, count(*) FROM news_reactions WHERE item_id = %s GROUP BY emoji", (item_id,)).fetchall())
+        mine = c.execute("SELECT emoji FROM news_reactions WHERE item_id = %s AND visitor = %s", (item_id, visitor)).fetchone() if visitor else None
+    return {"options": REACTIONS, "counts": {e: counts.get(e, 0) for e in REACTIONS}, "mine": mine[0] if mine else None}
+
+
+def item(tenant_slug: str, item_id: int, visitor: str | None = None, count_view: bool = True) -> dict[str, Any] | None:
+    """One published item, opened in the messenger: its article, labels, who shared it, and the reactions."""
+    with conn() as c:
+        row = c.execute(
+            f"""{'UPDATE news_items SET views = views + 1' if count_view else 'SELECT 1 FROM news_items'}
+                WHERE id = %s AND tenant = %s AND status = 'published' {'RETURNING id' if count_view else ''}""", (item_id, tenant_slug)).fetchone()
+        if not row:
+            return None
+        c.commit()
+        r = c.execute(f"""SELECT {', '.join(_COLS)}, labels, author, body, views FROM news_items WHERE id = %s""", (item_id,)).fetchone()
+    d = dict(zip(_COLS + ["labels", "author", "body", "views"], r))
+    d["label"] = KIND_LABEL.get(d["kind"], d["kind"].replace("_", " ").title())
+    d["labels"] = list(d["labels"] or []) or [d["label"]]
+    d["body"] = d["body"] or (text_html(d["blurb"]) if d["blurb"] else "")
+    return {**d, "reactions": reactions(item_id, visitor)}
+
+
+def react(tenant_slug: str, item_id: int, visitor: str, emoji: str | None) -> dict[str, Any]:
+    """A visitor's reaction to an item (one each; the same again or None takes it back)."""
+    visitor = (visitor or "").strip()[:80]
+    if not visitor:
+        raise ValueError("visitor is required")
+    if emoji is not None and emoji not in REACTIONS:
+        raise ValueError("unknown reaction")
+    with conn() as c:
+        if not c.execute("SELECT 1 FROM news_items WHERE id = %s AND tenant = %s AND status = 'published'", (item_id, tenant_slug)).fetchone():
+            raise LookupError("no such item")
+        mine = c.execute("SELECT emoji FROM news_reactions WHERE item_id = %s AND visitor = %s", (item_id, visitor)).fetchone()
+        if emoji is None or (mine and mine[0] == emoji):
+            c.execute("DELETE FROM news_reactions WHERE item_id = %s AND visitor = %s", (item_id, visitor))
+        else:
+            c.execute("""INSERT INTO news_reactions(item_id, visitor, emoji) VALUES (%s, %s, %s)
+                         ON CONFLICT (item_id, visitor) DO UPDATE SET emoji = EXCLUDED.emoji, created_at = now()""", (item_id, visitor, emoji))
+        c.commit()
+    return reactions(item_id, visitor)
 
 
 def admin_items(tenant_slug: str | None = None, status: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
     with conn() as c:
         rows = c.execute(
-            f"""SELECT {', '.join(_COLS)} FROM news_items
+            f"""SELECT {', '.join(_COLS)}, views, labels, author, (body IS NOT NULL AND body <> ''),
+                       (SELECT coalesce(jsonb_object_agg(emoji, n), '{{}}'::jsonb) FROM
+                          (SELECT emoji, count(*) AS n FROM news_reactions r WHERE r.item_id = news_items.id GROUP BY emoji) s)
+                FROM news_items
                 WHERE (%s::text IS NULL OR tenant = %s) AND (%s::text IS NULL OR status = %s)
                 ORDER BY (status = 'pending') DESC, pinned DESC, published_at DESC LIMIT %s""",
             (tenant_slug, tenant_slug, status, status, limit)).fetchall()
-    return [{**dict(zip(_COLS, r)), "label": KIND_LABEL.get(r[3], r[3])} for r in rows]
+    return [{**dict(zip(_COLS + ["views", "labels", "author", "has_body", "reactions"], r)), "label": KIND_LABEL.get(r[3], r[3])} for r in rows]
 
 
 def moderate(item_id: int, status: str | None = None, pinned: bool | None = None) -> bool:
@@ -719,7 +974,8 @@ def moderate(item_id: int, status: str | None = None, pinned: bool | None = None
 
 
 def publish_manual(tenant_slug: str, url: str, kind: str = "announcement", title: str | None = None, blurb: str | None = None,
-                   image: str | None = None, pinned: bool = False, get: Callable | None = None) -> dict[str, Any]:
+                   image: str | None = None, pinned: bool = False, get: Callable | None = None, body: str | None = None,
+                   author: str | None = None) -> dict[str, Any]:
     """'Publish to the news': a LinkedIn / X post, a launch or an event. Title and image come from the page when it
     allows it (LinkedIn usually does not, so the title can be typed)."""
     url = (url or "").strip()
@@ -736,7 +992,8 @@ def publish_manual(tenant_slug: str, url: str, kind: str = "announcement", title
         except Exception as e:
             log.info("news manual: could not read %s: %s", url, e)
     item = {"url": url, "title": (title or meta["title"] or "").strip(), "blurb": (blurb or meta["blurb"] or "").strip(),
-            "image": image or meta["image"], "published_at": datetime.now(timezone.utc)}
+            "image": image or meta["image"], "published_at": datetime.now(timezone.utc),
+            "body": text_html(body or blurb or meta["blurb"]), "author": (author or "").strip()[:80] or None}
     if not item["title"]:
         raise ValueError("the page gave no title: type one")
     upsert(tenant_slug, "manual", kind or "announcement", item, status="published")

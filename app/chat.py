@@ -34,7 +34,7 @@ from zoneinfo import ZoneInfo
 
 from openai import OpenAI
 
-from app import inbox, lang, session_memory, team, titles, ui_cards
+from app import inbox, lang, session_memory, sites, team, titles, ui_cards
 from app.booking.service import BookingService
 from app.booking.tools import TOOLS, run_tool, schedules_prompt
 from app.config import settings
@@ -42,7 +42,7 @@ from app.db import log_event
 from app.embeddings import embed_query
 from app.guidance import get_guidance, guidance_block, match_custom_answer
 from app.rag import prompts, understand
-from app.rag.retrieve import Hit, company_names, confident, date_range, pinned_rules, search
+from app.rag.retrieve import Hit, company_names, confident, date_range, pinned_rules, rank_sites, search
 from app.security.limits import record_spend
 
 _EXPLICIT_BOOKING = re.compile(r"\b(book|schedule|call|meeting|demo|slot)\b", re.I)
@@ -325,6 +325,25 @@ def _respond(
     except Exception as e:
         log.error("retrieval failed: %s", e)
         hits = []
+    # 4b. company websites (app/sites.py): a question naming LakeB2B, SPAN, ... that their indexed pages do not answer
+    #     well, or one nothing answers, asks the site's own search live; its closest passages join the sources
+    if settings.kb_sites_enabled and settings.kb_live_search and vec is not None and not booking:
+        try:
+            known_sites = sites.sites()
+            target = sites.mentioned(search_q, known_sites)
+            site_best = max((h.score for h in hits if target and (h.metadata or {}).get("site") == target["slug"]), default=0.0)
+            if known_sites and ((target and site_best < settings.retrieval_min_score) or (not target and not confident(hits))):
+                targets = [target] if target else known_sites
+                yield status("searching", "Searching " + ", ".join(t["host"] for t in targets) + "…")
+                live = [Hit(**h) for h in sites.live_hits(search_q, vec, targets)]
+                seen_text = {h.text for h in hits}
+                live = [h for h in live if h.text not in seen_text]
+                if live:
+                    hits = rank_sites(search_q, live + hits, target["slug"] if target else None)[:settings.retrieval_top_k + 2]
+                log_event("live_search", session_id, {"sites": [t["slug"] for t in targets], "found": len(live),
+                                                      "best": round(max((h.score for h in live), default=0.0), 3), "message": message[:200]})
+        except Exception as e:
+            log.warning("live site search failed: %s", e)
     about_booking = bool(booking_context) and ABOUT_BOOKING_RE.search(query) is not None  # answered from the booking email's context
     strong = confident(hits)
     # loosely related sources: the model reads them and either answers with citations or says it couldn't find it

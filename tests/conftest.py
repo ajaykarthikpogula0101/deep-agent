@@ -51,6 +51,8 @@ def _no_live_health_or_backup_model(monkeypatch):
 
     monkeypatch.setattr(news, "seed", lambda: False)                 # nor news tenants
     monkeypatch.setattr(news, "run", lambda which=(): {})            # and never polls the real feeds
+    monkeypatch.setattr(settings, "kb_sites_enabled", False)         # never reads the company websites
+    monkeypatch.setattr(settings, "kb_live_search", False)
     monkeypatch.setattr(settings, "news_dynamic", False)             # the start-up schedules run_hourly / run_daily, i.e. run
 
 

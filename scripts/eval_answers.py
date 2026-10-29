@@ -64,8 +64,12 @@ def run(ids: list[str] | None = None, out: str | None = None) -> int:
     cases = json.loads(CASES.read_text(encoding="utf-8"))["cases"]
     if ids:
         cases = [c for c in cases if c["id"] in ids]
+    from app.booking.service import SlotsResult
+
+    # the model may also ask for open times straight away: answered as "the scheduler is unavailable" (no Zoom call)
     svc = SimpleNamespace(session_id=None, list_schedules=lambda: [
-        SimpleNamespace(slug="discovery-call", name="Discovery Call", duration_min=15)])
+        SimpleNamespace(slug="discovery-call", name="Discovery Call", duration_min=15)],
+        get_available_slots=lambda *a, **k: SlotsResult(ok=False, error="unavailable"))
     results, t_all = [], time.monotonic()
     with patch("app.chat.inbox.log_message", return_value=None), patch("app.chat.log_event"), \
             patch("app.chat.titles.maybe_generate_async"), patch("app.chat.session_memory.update_async"), \

@@ -183,7 +183,7 @@ def company_names() -> list[str]:
     """Every company with its own page on the site (the authoritative list and count); [] when the index is unreachable."""
     try:
         with conn() as c:
-            rows = c.execute("SELECT title FROM pages WHERE url LIKE %s ORDER BY title", ("%/company/%",)).fetchall()
+            rows = c.execute("SELECT title FROM pages WHERE url LIKE %s AND site IS NULL ORDER BY title", ("%/company/%",)).fetchall()
         return [r[0] for r in rows if r[0]]
     except Exception as e:
         log.warning("company list failed: %s", e)
@@ -229,6 +229,29 @@ def _pinned_hits(c, query: str, today: date | None = None) -> list[Hit]:
     return hits
 
 
+SITE_BOOST, OTHER_SITE_PENALTY = 0.05, 0.03
+
+
+def rank_sites(query: str, hits: list[Hit], target: str | None | bool = False) -> list[Hit]:
+    """Company-site pages (app/sites.py) next to deependhq.com's: a question naming a company ranks that company's
+    site first; otherwise deependhq.com's own pages win a close call. Scores stay as they are; only the order moves."""
+    if not any((h.metadata or {}).get("site") for h in hits):
+        return hits
+    if target is False:
+        try:
+            from app import sites
+
+            t = sites.mentioned(query)
+            target = t["slug"] if t else None
+        except Exception:
+            target = None
+
+    def key(h: Hit) -> float:
+        s = (h.metadata or {}).get("site")
+        return h.score + (SITE_BOOST if target and s == target else 0) - (OTHER_SITE_PENALTY if s and s != target else 0)
+    return sorted(hits, key=key, reverse=True)
+
+
 def search(query: str, k: int | None = None, vec: list[float] | None = None, today: date | None = None) -> list[Hit]:
     """`today` is the visitor's date: 'this week' or 'yesterday' then fetch the entries dated in that period."""
     k = k or settings.retrieval_top_k
@@ -241,14 +264,16 @@ def search(query: str, k: int | None = None, vec: list[float] | None = None, tod
             log.warning("pinned pages failed: %s", e)
         rows = c.execute(
             """
-            SELECT ch.url, p.title, ch.section, ch.text, 1 - (ch.embedding <=> %s::vector) AS score, ch.metadata
+            SELECT ch.url, p.title, ch.section, ch.text, 1 - (ch.embedding <=> %s::vector) AS score, ch.metadata, p.site
             FROM chunks ch JOIN pages p ON p.url = ch.url
             ORDER BY ch.embedding <=> %s::vector
             LIMIT %s
             """,
-            (vec, vec, k),
+            (vec, vec, k * 2),
         ).fetchall()
-    hits = [Hit(url=r[0], title=r[1], section=r[2], text=r[3], score=float(r[4]), metadata=r[5] or {}) for r in rows]
+    hits = [Hit(url=r[0], title=r[1], section=r[2], text=r[3], score=float(r[4]),
+                metadata={**(r[5] or {}), **({"site": r[6]} if r[6] else {})}) for r in rows]
+    hits = rank_sites(query, hits)[:k]
     if settings.help_enabled:  # help articles written for the assistant or by the owner (app/help.py) compete on score
         try:
             from app import help as help_center
@@ -266,4 +291,4 @@ def search(query: str, k: int | None = None, vec: list[float] | None = None, tod
 def confident(hits: list[Hit], floor: float | None = None) -> bool:
     """Pure decision rule (unit-tested): the best hit must clear the floor."""
     floor = settings.retrieval_min_score if floor is None else floor
-    return bool(hits) and hits[0].score >= floor
+    return bool(hits) and max(h.score for h in hits) >= floor   # the max: rank_sites may put a close second first

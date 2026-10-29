@@ -184,12 +184,19 @@
         <select name="kind"><option value="announcement">Announcement</option><option value="event">Event</option><option value="linkedin">LinkedIn post</option><option value="x">X post</option><option value="news">News</option></select>
         <input name="title" placeholder="Title (read from the page when it allows it; LinkedIn usually does not)" maxlength="300">
         <input name="image" placeholder="Image URL (optional)" maxlength="1000">
-        <input name="blurb" class="full" placeholder="One or two lines (optional)" maxlength="600">
+        <input name="blurb" class="full" placeholder="One or two lines for the card (optional)" maxlength="600">
+        <textarea name="body" class="full" rows="5" placeholder="The article people read inside the messenger (optional; blank lines make paragraphs, links work)" maxlength="20000"></textarea>
+        <input name="author" placeholder="Shared by (e.g. Deep; blank: Team name)" maxlength="80">
         <label><input type="checkbox" name="pinned"> pin on top</label>
         <div class="full" style="display:flex;gap:10px;align-items:center"><button class="btn primary" type="submit">Publish</button><span class="status" id="nwform-status"></span></div>
       </form>
     </div>
-    <div class="card"><div class="wrap"><table id="nw-table"><thead><tr><th></th><th>title</th><th>kind</th><th>date</th><th>status</th><th></th></tr></thead><tbody></tbody></table></div></div>
+    <div class="card"><div class="wrap"><table id="nw-table"><thead><tr><th></th><th>title</th><th>kind</th><th>date</th><th>read</th><th>status</th><th></th></tr></thead><tbody></tbody></table></div></div>
+    <div class="card">
+      <h2>Company websites the assistant answers from · indexed every few hours, searched live when a question needs it</h2>
+      <div class="wrap"><table id="kb-sites"><thead><tr><th>site</th><th>pages</th><th>passages</th><th>last read</th></tr></thead><tbody></tbody></table></div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:10px"><button class="btn" type="button" id="kb-run">Re-read the sites now</button><span class="status" id="kb-status"></span></div>
+    </div>
     <details class="card"><summary><b>Sources per tenant</b> · blog RSS, YouTube channel, mention search, sitemap types</summary>
       <form class="inline" id="nwdform" style="margin-top:10px">
         <input name="url" class="full" placeholder="New site? Its address, e.g. https://www.spanglobalservices.com, then Find sources" maxlength="500" required>
@@ -201,7 +208,9 @@
         <input name="youtube_channel_id" placeholder="YouTube channel id (UC…)"><input name="mention_query" placeholder="Mention search, e.g. LakeB2B">
         <input name="sitemap_index_url" class="full" placeholder="Sitemap index, e.g. https://www.lakeb2b.com/sitemap_index.xml">
         <input name="sitemap_types" class="full" placeholder="Sitemap types to show, comma-separated: news, case_studies, webinar, …">
+        <input name="site_url" class="full" placeholder="Website, e.g. https://www.lakeb2b.com (blank: from the feeds)">
         <label><input type="checkbox" name="enabled" checked> on</label>
+        <label><input type="checkbox" name="kb_enabled" checked> the assistant answers from this website</label>
         <div class="full" style="display:flex;gap:10px;align-items:center"><button class="btn primary" type="submit">Save tenant</button><span class="status" id="nwt-status"></span></div>
       </form>
     </details>
@@ -792,7 +801,7 @@ async function loadNews() {
   tsel.value = cur || NW.default_tenant || (NW.tenants[0] || {}).slug || '';
   const pending = NW.items.filter(i => i.status === 'pending').length; $('nw-badge').hidden = !pending; $('nw-badge').textContent = pending;
   const t = NW.tenants.find(x => x.slug === tsel.value); const f = $('nwtform');
-  if (t) { for (const k of ['slug', 'name', 'blog_feed_url', 'youtube_channel_id', 'mention_query', 'sitemap_index_url']) f[k].value = t[k] || ''; f.sitemap_types.value = (t.sitemap_types || []).join(', '); f.enabled.checked = !!t.enabled; }
+  if (t) { for (const k of ['slug', 'name', 'blog_feed_url', 'youtube_channel_id', 'mention_query', 'sitemap_index_url', 'site_url']) f[k].value = t[k] || ''; f.sitemap_types.value = (t.sitemap_types || []).join(', '); f.enabled.checked = !!t.enabled; f.kb_enabled.checked = t.kb_enabled !== false; }
   const ago = (d) => d ? fmt(d) : '<span class="muted">not yet</span>';
   const every = (m) => m >= 60 ? `${+(m / 60).toFixed(1)} h` : `${m} min`;
   $('nw-dyn').textContent = NW.dynamic ? 'Checked on their own: a source that just changed is checked again soon, a quiet one less often; unchanged feeds are skipped. Pages removed from the site are taken off by themselves.' : 'Fixed schedule: blog and sitemaps hourly, YouTube and mentions daily (NEWS_DYNAMIC=false).';
@@ -802,32 +811,40 @@ async function loadNews() {
   const st = (i) => i.status === 'pending' ? '<span class="warn">waiting</span>' : i.status === 'published' ? '<span class="ok">live</span>' : i.status === 'gone' ? '<span class="muted" title="the page is no longer on the site">gone</span>' : `<span class="muted">${esc(i.status)}</span>`;
   $('nw-table').querySelector('tbody').innerHTML = NW.items.map(i => `<tr><td>${i.image ? `<img src="${esc(i.image)}" alt="" style="width:64px;height:36px;object-fit:cover;border-radius:6px">` : ''}</td>
     <td><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a><div class="muted" style="font-size:12px">${esc((i.blurb || '').slice(0, 140))}</div></td>
-    <td class="muted">${esc(i.label)}${i.pinned ? ' · <b>pinned</b>' : ''}</td><td class="muted">${fmt(i.published_at)}</td><td>${st(i)}</td>
+    <td class="muted">${esc((i.labels && i.labels.length ? i.labels : [i.label]).join(', '))}${i.pinned ? ' · <b>pinned</b>' : ''}${i.has_body ? '' : ' · <span title="opens with its summary and a link">no article</span>'}</td><td class="muted">${fmt(i.published_at)}</td>
+    <td class="muted" style="white-space:nowrap">${i.views || 0} views${Object.entries(i.reactions || {}).map(([e, n]) => ` ${e}${n}`).join('')}</td><td>${st(i)}</td>
     <td style="white-space:nowrap">${i.status !== 'published' ? `<button class="btn" data-nw="${i.id}" data-st="published">${i.status === 'pending' ? 'approve' : 'show'}</button>` : `<button class="btn" data-nw="${i.id}" data-st="hidden">hide</button>`}
-      ${i.status === 'pending' ? `<button class="btn" data-nw="${i.id}" data-st="rejected">reject</button>` : ''}<button class="btn" data-nw="${i.id}" data-pin="${i.pinned ? 0 : 1}">${i.pinned ? 'unpin' : 'pin'}</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nothing here.</td></tr>';
+      ${i.status === 'pending' ? `<button class="btn" data-nw="${i.id}" data-st="rejected">reject</button>` : ''}<button class="btn" data-nw="${i.id}" data-pin="${i.pinned ? 0 : 1}">${i.pinned ? 'unpin' : 'pin'}</button></td></tr>`).join('') || '<tr><td colspan="7" class="muted">Nothing here.</td></tr>';
   $('nw-table').querySelectorAll('button[data-nw]').forEach(b => b.onclick = async () => { b.disabled = true;
     const body = b.dataset.st ? { status: b.dataset.st } : { pinned: b.dataset.pin === '1' };
     try { await api(`/admin/news/items/${b.dataset.nw}`, { method: 'POST', body: JSON.stringify(body) }); loadNews(); } catch (e) { $('nw-status-msg').textContent = e.message; b.disabled = false; } });
 }
 $('nw-tenant').onchange = loadNews; $('nw-status').onchange = loadNews;
+async function loadSites() {
+  let d; try { d = await api('/admin/sites'); } catch (e) { $('kb-status').textContent = e.message; return; }
+  $('kb-sites').querySelector('tbody').innerHTML = (d.sites || []).map(x => `<tr><td>${esc(x.site)}</td><td>${x.pages}</td><td>${x.chunks}</td><td class="muted">${fmt(x.updated_at)}</td></tr>`).join('')
+    || `<tr><td colspan="4" class="muted">${d.enabled ? 'Nothing indexed yet: the first read starts with the server.' : 'Off (KB_SITES_ENABLED=false).'}</td></tr>`;
+  const last = d.last_run; $('kb-status').textContent = last && last.at ? `last pass ${fmt(last.at)}: ` + Object.entries(last.sites || {}).map(([k, v]) => `${k} ${v.error ? 'failed' : `${v.changed || 0} new/changed, ${v.removed || 0} removed${v.left ? `, ${v.left} still to read` : ''}`}`).join(' · ') : '';
+}
+$('kb-run').onclick = async () => { try { await api('/admin/sites/run', { method: 'POST' }); $('kb-status').textContent = 'reading the sites in the background; reload in a few minutes'; } catch (e) { $('kb-status').textContent = e.message; } };
 $('nw-poll').onclick = async () => { $('nw-status-msg').textContent = 'checking the blog, sitemaps, YouTube and mentions…'; try { const r = await api('/admin/news/poll' + ($('nw-tenant').value ? '?tenant=' + encodeURIComponent($('nw-tenant').value) : ''), { method: 'POST' }); $('nw-status-msg').textContent = 'new items: ' + Object.entries(r).map(([k, v]) => `${k.split(':')[1]} ${v}`).join(', '); loadNews(); } catch (e) { $('nw-status-msg').textContent = e.message; } };
 $('nwform').onsubmit = async (e) => { e.preventDefault(); const f = e.target; $('nwform-status').textContent = 'publishing…';
-  const body = { tenant: $('nw-tenant').value, url: f.url.value, kind: f.kind.value, title: f.title.value || null, image: f.image.value || null, blurb: f.blurb.value || null, pinned: f.pinned.checked };
+  const body = { tenant: $('nw-tenant').value, url: f.url.value, kind: f.kind.value, title: f.title.value || null, image: f.image.value || null, blurb: f.blurb.value || null, pinned: f.pinned.checked, body: f.body.value || null, author: f.author.value || null };
   try { const r = await api('/admin/news/publish', { method: 'POST', body: JSON.stringify(body) }); $('nwform-status').textContent = `published: ${r.title}`; f.reset(); loadNews(); } catch (err) { $('nwform-status').textContent = err.message + (/422/.test(err.message) ? ' (type a title if the page gives none)' : ''); } };
 $('nwdform').onsubmit = async (e) => { e.preventDefault(); const f = e.target, t = $('nwtform'); $('nwd-status').textContent = 'reading the site…';
   try { const d = await api('/admin/news/discover', { method: 'POST', body: JSON.stringify({ url: f.url.value }) });
-    for (const k of ['slug', 'name', 'blog_feed_url', 'youtube_channel_id', 'mention_query', 'sitemap_index_url']) t[k].value = d[k] || '';
+    for (const k of ['slug', 'name', 'blog_feed_url', 'youtube_channel_id', 'mention_query', 'sitemap_index_url', 'site_url']) t[k].value = d[k] || '';
     t.sitemap_types.value = (d.sitemap_types || []).join(', '); t.enabled.checked = true;
     $('nwd-status').textContent = `${d.notes.join(' · ')}${d.sitemap_types_available.length ? ' (suggested: the news-like ones; edit the list, then Save tenant)' : ''}`;
   } catch (err) { $('nwd-status').textContent = err.message; } };
-$('nwtform').onsubmit = async (e) => { e.preventDefault(); const f = e.target; const body = { slug: f.slug.value, name: f.name.value, blog_feed_url: f.blog_feed_url.value, youtube_channel_id: f.youtube_channel_id.value, mention_query: f.mention_query.value, sitemap_index_url: f.sitemap_index_url.value, sitemap_types: f.sitemap_types.value, enabled: f.enabled.checked };
+$('nwtform').onsubmit = async (e) => { e.preventDefault(); const f = e.target; const body = { slug: f.slug.value, name: f.name.value, blog_feed_url: f.blog_feed_url.value, youtube_channel_id: f.youtube_channel_id.value, mention_query: f.mention_query.value, sitemap_index_url: f.sitemap_index_url.value, sitemap_types: f.sitemap_types.value, enabled: f.enabled.checked, site_url: f.site_url.value, kb_enabled: f.kb_enabled.checked };
   try { await api('/admin/news/tenants', { method: 'POST', body: JSON.stringify(body) }); $('nwt-status').textContent = 'saved'; $('nw-tenant').value = ''; loadNews(); } catch (err) { $('nwt-status').textContent = err.message; } };
 async function load() {
   const token = $('token').value.trim(); if (!token) { $('status').textContent = 'enter the admin token'; return; }
   try { sessionStorage.setItem('dh_admin', token); } catch {}
   $('status').textContent = 'loading…';
   let err = null;
-  try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadAnswers(), loadEmails(), loadOutreach(), loadHelpCenter(), loadNews()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
+  try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadAnswers(), loadEmails(), loadOutreach(), loadHelpCenter(), loadNews(), loadSites()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
   catch (e) { err = e; $('status').textContent = e.message; }
   if (!err || !/wrong token/.test(err.message)) { openHashBooking(); openHashConvo(); }  // a failing unrelated pane must not block the deep link
 }

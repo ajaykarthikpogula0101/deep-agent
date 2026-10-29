@@ -36,7 +36,8 @@ def run_ingest() -> dict:
 
     stats = {"pages_seen": len(by_url), "pages_updated": 0, "chunks_written": 0, "pages_removed": 0}
     with conn() as c:
-        existing = {r[0]: r[1] for r in c.execute("SELECT url, content_sha FROM pages").fetchall()}
+        # deependhq.com's own pages only: the company sites (pages.site set, app/sites.py) are indexed separately
+        existing = {r[0]: r[1] for r in c.execute("SELECT url, content_sha FROM pages WHERE site IS NULL").fetchall()}
         for url, group in by_url.items():
             full_text = "\n\n".join(d.text for d in group)
             sha = hashlib.sha256(f"{settings.embed_model}|{EMBED_VERSION}|{full_text}".encode("utf-8")).hexdigest()

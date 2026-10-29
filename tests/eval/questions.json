@@ -45,6 +45,10 @@
     {"id": "spanish", "q": "¿Qué es Lake B2B?", "expect": {"refused": false, "contains_any": ["es una", "empresa", "datos"]}},
     {"id": "hindi", "q": "Deep kya kaam karte hain?", "expect": {"refused": false, "contains_any": ["Champions", "CMO", "12", "B2B"]}},
 
-    {"id": "short_answer", "q": "what is Champ.fit?", "expect": {"refused": false, "max_words": 160}}
+    {"id": "short_answer", "q": "what is Champ.fit?", "expect": {"refused": false, "max_words": 160}},
+
+    {"id": "lakeb2b_healthcare", "q": "What healthcare email lists does LakeB2B offer?", "expect": {"refused": false, "cited": true, "contains_any": ["healthcare", "physician", "medical"], "source_contains": "lakeb2b.com"}},
+    {"id": "lakeb2b_case_study", "q": "Is there a LakeB2B case study about a pharmaceutical brand?", "expect": {"refused": false, "cited": true, "contains_any": ["pharma"], "source_contains": "lakeb2b.com"}},
+    {"id": "span_accuracy", "q": "How accurate is SPAN Global Services' healthcare email list?", "expect": {"refused": false, "cited": true, "contains_any": ["90", "95"], "source_contains": "spanglobalservices.com"}}
   ]
 }

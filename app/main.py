@@ -39,6 +39,7 @@ from app.booking.email import send_host_brief, send_test
 from app import chat as chat_mod
 from app import help as help_center
 from app import news
+from app import sites
 from app.chat import respond, sse
 from app.config import settings
 from app.db import init_schema, log_event, spend_today
@@ -49,7 +50,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.29.5"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.29.6"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -143,6 +144,11 @@ def _startup() -> None:
                                id="news_hourly", replace_existing=True, misfire_grace_time=1800, next_run_time=datetime.now(timezone.utc))
             _scheduler.add_job(news.run_daily, CronTrigger.from_crontab("30 6 * * *", timezone=settings.host_timezone),
                                id="news_daily", replace_existing=True, misfire_grace_time=6 * 3600, next_run_time=datetime.now(timezone.utc))
+    if settings.kb_sites_enabled:  # the company websites in the knowledge (app/sites.py): an incremental pass every few hours
+        _scheduler.add_job(sites.run, "interval", hours=max(1, settings.kb_sites_every_hours), id="kb_sites", replace_existing=True,
+                           misfire_grace_time=3600, max_instances=1, coalesce=True)
+        if sites.due():   # a site never read yet: start now, in the background
+            sites.run_async()
     if settings.health_checks:  # every 10 min: model key, credit, failed answers, database, email, booking robot (app/health.py)
         _scheduler.add_job(health.run, CronTrigger.from_crontab(settings.health_cron, timezone=settings.host_timezone),
                            id="health", replace_existing=True, misfire_grace_time=600, next_run_time=datetime.now(timezone.utc))
@@ -734,28 +740,65 @@ def widget_config(request: Request):
         raise HTTPException(403, "origin not allowed")
     return {**media.widget_config(), "version": APP_VERSION, "suggestions": suggestions.current(), "booking_mode": browser_booking.mode(),
             "reminders": settings.reminder_enabled, "help": settings.help_enabled,
-            "news": {"enabled": settings.news_enabled, "tenant": settings.news_tenant}, "host_photo": "/static/email/host.png",
+            "news": {"enabled": settings.news_enabled, "tenant": settings.news_tenant, "popup": settings.news_popup,
+                     "reactions": news.REACTIONS}, "host_photo": "/static/email/host.png",
             "host_name": getattr(settings, "host_full_name", "") or "Deep"}
 
 
 # ---- News tab (app/news.py)
-@app.get("/news")
-def news_feed(request: Request, tenant: str | None = None):
-    """The widget re-asks every 2 minutes while it is open: an ETag makes an unchanged feed a 304 with no body."""
+def _news_tenant(request: Request, tenant: str | None) -> dict:
     if not settings.news_enabled:
         raise HTTPException(404, "news is off")
     if not _origin_ok(request):
         raise HTTPException(403, "origin not allowed")
-    slug = (tenant or settings.news_tenant).strip().lower()
-    t = news.tenant(slug)
+    t = news.tenant((tenant or settings.news_tenant).strip().lower())
     if not t or not t["enabled"]:
         raise HTTPException(404, "no such news feed")
-    body = jsonable_encoder({"tenant": slug, "name": t["name"], "items": news.published(slug)})   # ISO dates, as before
+    return t
+
+
+@app.get("/news")
+def news_feed(request: Request, tenant: str | None = None, feed: str | None = None):
+    """The widget re-asks every 2 minutes while it is open: an ETag makes an unchanged feed a 304 with no body.
+    feed: latest (default) or one of the feeds listed in `feeds` (Newsletters, Case studies, Videos...)."""
+    t = _news_tenant(request, tenant)
+    slug = t["slug"]
+    key, _, kinds = news.feed(feed)
+    items = news.published(slug, kinds=kinds, days=settings.news_feed_days if kinds else None)
+    body = jsonable_encoder({"tenant": slug, "name": t["name"], "feed": key, "feeds": news.feeds(slug), "items": items})   # ISO dates
     etag = '"' + hashlib.sha1(json.dumps(body, sort_keys=True).encode()).hexdigest()[:20] + '"'
     headers = {"ETag": etag, "Cache-Control": "no-cache"}
     if etag in (request.headers.get("if-none-match") or ""):
         return Response(status_code=304, headers=headers)
     return Response(json.dumps(body), media_type="application/json", headers=headers)
+
+
+@app.get("/news/items/{item_id}")
+def news_item(item_id: int, request: Request, tenant: str | None = None, visitor: str | None = None):
+    """One item opened inside the messenger: its article, labels, who shared it and the reactions (Intercom News)."""
+    t = _news_tenant(request, tenant)
+    it = news.item(t["slug"], item_id, (visitor or "")[:80] or None)
+    if not it:
+        raise HTTPException(404, "no such item")
+    return jsonable_encoder(it)
+
+
+class NewsReactIn(BaseModel):
+    visitor: str = Field(min_length=1, max_length=80)
+    emoji: str | None = Field(default=None, max_length=8)
+
+
+@app.post("/news/items/{item_id}/react")
+def news_react(item_id: int, body: NewsReactIn, request: Request, tenant: str | None = None):
+    t = _news_tenant(request, tenant)
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "slow down")
+    try:
+        return news.react(t["slug"], item_id, body.visitor, body.emoji)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except LookupError as e:
+        raise HTTPException(404, str(e))
 
 
 @app.get("/admin/news")
@@ -790,6 +833,8 @@ class NewsPublishIn(BaseModel):
     blurb: str | None = Field(default=None, max_length=600)
     image: str | None = Field(default=None, max_length=1000)
     pinned: bool = False
+    body: str | None = Field(default=None, max_length=20000)    # the article shown in the messenger (plain text, links work)
+    author: str | None = Field(default=None, max_length=80)     # "Shared by"
 
 
 @app.post("/admin/news/publish")
@@ -797,7 +842,8 @@ def admin_news_publish(body: NewsPublishIn, x_admin_token: str | None = Header(d
     """'Publish to the news': a LinkedIn / X post, a launch or an event the team pastes in."""
     _require_admin(x_admin_token)
     try:
-        return news.publish_manual(body.tenant or settings.news_tenant, body.url, body.kind, body.title, body.blurb, body.image, body.pinned)
+        return news.publish_manual(body.tenant or settings.news_tenant, body.url, body.kind, body.title, body.blurb, body.image, body.pinned,
+                                   body=body.body, author=body.author)
     except ValueError as e:
         raise HTTPException(422, str(e))
     except LookupError as e:
@@ -820,6 +866,20 @@ def admin_news_poll(which: str = "blog,sitemap,youtube,mention", tenant: str | N
     if settings.news_dynamic:   # also resets each source's schedule from what it finds
         return news.check_now(chosen, tenant)
     return news.run(chosen)
+
+
+@app.get("/admin/sites")
+def admin_sites(x_admin_token: str | None = Header(default=None)):
+    """The company websites in the assistant's knowledge: pages and passages indexed per site, and the last pass."""
+    _require_admin(x_admin_token)
+    return sites.report()
+
+
+@app.post("/admin/sites/run")
+def admin_sites_run(x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    sites.run_async()
+    return {"ok": True, "started": True}
 
 
 class NewsDiscoverIn(BaseModel):

@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS chunks (
     metadata    JSONB NOT NULL DEFAULT '{{}}'::jsonb
 );
 CREATE INDEX IF NOT EXISTS chunks_url_idx ON chunks(url);
+-- company websites in the knowledge (app/sites.py): site = the News tenant's slug; deependhq.com's own pages keep NULL
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS site TEXT;
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS lastmod TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS pages_site_idx ON pages(site);
 CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks USING hnsw (embedding vector_cosine_ops);
 
 -- Operational logs required by the brief: refusals and hand-offs, plus a daily spend ledger.
@@ -507,6 +511,20 @@ CREATE TABLE IF NOT EXISTS news_items (
     UNIQUE (tenant, url)
 );
 CREATE INDEX IF NOT EXISTS news_items_feed_idx ON news_items(tenant, status, pinned DESC, published_at DESC);
+-- the item read inside the messenger (like Intercom News): its article as safe HTML, labels, who shared it, views
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS body TEXT;                       -- NULL: not read yet; '': nothing to show
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS labels TEXT[] NOT NULL DEFAULT '{{}}';
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS author TEXT;
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS views INT NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS news_reactions (                                      -- "How would you rate this?" one per visitor
+    item_id    BIGINT NOT NULL REFERENCES news_items(id) ON DELETE CASCADE,
+    visitor    TEXT NOT NULL,
+    emoji      TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (item_id, visitor)
+);
+ALTER TABLE news_tenants ADD COLUMN IF NOT EXISTS site_url TEXT;                         -- the website (else from the feeds)
+ALTER TABLE news_tenants ADD COLUMN IF NOT EXISTS kb_enabled BOOLEAN NOT NULL DEFAULT true;  -- the assistant answers from it
 CREATE TABLE IF NOT EXISTS news_sitemap_seen (
     tenant  TEXT NOT NULL,
     url     TEXT NOT NULL,
