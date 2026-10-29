@@ -83,7 +83,7 @@
 </header>
 <nav>
   <button data-pane="overview" class="on">Overview</button><button data-pane="convos">Conversations</button><button data-pane="bookings">Bookings</button><button data-pane="gaps">Gaps</button>
-  <button data-pane="sessions">Sessions</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="help">Help center</button><button data-pane="emails">Emails</button><button data-pane="outreach">Outreach <span class="chip" id="or-badge" hidden style="padding:0 7px;font-size:11px"></span></button>
+  <button data-pane="sessions">Sessions</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="help">Help center</button><button data-pane="news">News <span class="chip" id="nw-badge" hidden style="padding:0 7px;font-size:11px"></span></button><button data-pane="emails">Emails</button><button data-pane="outreach">Outreach <span class="chip" id="or-badge" hidden style="padding:0 7px;font-size:11px"></span></button>
 </nav>
 <main>
   <section class="pane on" id="overview">
@@ -167,6 +167,38 @@
         <div class="full" style="display:flex;gap:10px;align-items:center"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" id="hcc-cancel">Cancel</button><button class="btn" type="button" id="hcc-del" style="margin-left:auto">Delete</button></div></form>
     </div>
     <div id="hc-list"></div>
+  </section>
+  <section class="pane" id="news">
+    <div class="card">
+      <h2>News · the widget's News tab (blog and YouTube publish themselves; press mentions wait for your approval)</h2>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><label class="muted">tenant <select id="nw-tenant"></select></label>
+        <label class="muted">show <select id="nw-status"><option value="">all</option><option value="pending">waiting for approval</option><option value="published">published</option><option value="hidden">hidden</option><option value="rejected">rejected</option></select></label>
+        <button class="btn" type="button" id="nw-poll">Check the sources now</button><span class="status" id="nw-status-msg"></span></div>
+    </div>
+    <div class="card">
+      <h2>Publish to the news · a LinkedIn or X post, a launch, an event</h2>
+      <form class="inline" id="nwform">
+        <input name="url" placeholder="https://www.linkedin.com/posts/… or any link" maxlength="1000" required>
+        <select name="kind"><option value="announcement">Announcement</option><option value="event">Event</option><option value="linkedin">LinkedIn post</option><option value="x">X post</option><option value="news">News</option></select>
+        <input name="title" placeholder="Title (read from the page when it allows it; LinkedIn usually does not)" maxlength="300">
+        <input name="image" placeholder="Image URL (optional)" maxlength="1000">
+        <input name="blurb" class="full" placeholder="One or two lines (optional)" maxlength="600">
+        <label><input type="checkbox" name="pinned"> pin on top</label>
+        <div class="full" style="display:flex;gap:10px;align-items:center"><button class="btn primary" type="submit">Publish</button><span class="status" id="nwform-status"></span></div>
+      </form>
+    </div>
+    <div class="card"><div class="wrap"><table id="nw-table"><thead><tr><th></th><th>title</th><th>kind</th><th>date</th><th>status</th><th></th></tr></thead><tbody></tbody></table></div></div>
+    <details class="card"><summary><b>Sources per tenant</b> · blog RSS, YouTube channel, mention search, sitemap types</summary>
+      <form class="inline" id="nwtform" style="margin-top:10px">
+        <input name="slug" placeholder="slug (lakeb2b, span, deependhq)" maxlength="40" required><input name="name" placeholder="name shown: From Team …" maxlength="80">
+        <input name="blog_feed_url" class="full" placeholder="Blog RSS, e.g. https://www.lakeb2b.com/blog/feed/">
+        <input name="youtube_channel_id" placeholder="YouTube channel id (UC…)"><input name="mention_query" placeholder="Mention search, e.g. LakeB2B">
+        <input name="sitemap_index_url" class="full" placeholder="Sitemap index, e.g. https://www.lakeb2b.com/sitemap_index.xml">
+        <input name="sitemap_types" class="full" placeholder="Sitemap types to show, comma-separated: news, case_studies, webinar, …">
+        <label><input type="checkbox" name="enabled" checked> on</label>
+        <div class="full" style="display:flex;gap:10px;align-items:center"><button class="btn primary" type="submit">Save tenant</button><span class="status" id="nwt-status"></span></div>
+      </form>
+    </details>
   </section>
   <section class="pane" id="emails">
     <div class="card">
@@ -745,12 +777,39 @@ $('hc-del').onclick = async () => { if (!hcEditing) return; $('hc-fstatus').text
 $('hccform').onsubmit = async (e) => { e.preventDefault(); const f = e.target; const body = { title: f.title.value, description: f.description.value, position: +f.position.value || 0 };
   try { await api(hcColEditing ? `/admin/help/collections/${hcColEditing.id}` : '/admin/help/collections', { method: hcColEditing ? 'PUT' : 'POST', body: JSON.stringify(body) }); $('hc-coledit').hidden = true; loadHelpCenter(); } catch (err) { $('hc-status').textContent = err.message; } };
 $('hcc-del').onclick = async () => { if (!hcColEditing) return; try { await api(`/admin/help/collections/${hcColEditing.id}`, { method: 'DELETE' }); $('hc-coledit').hidden = true; loadHelpCenter(); } catch (err) { $('hc-status').textContent = err.message; } };
+// ---- News (app/news.py): moderation, publish, tenants
+let NW = { tenants: [], items: [] };
+async function loadNews() {
+  const tsel = $('nw-tenant'), cur = tsel.value;
+  try { NW = await api(`/admin/news?${cur ? 'tenant=' + encodeURIComponent(cur) + '&' : ''}${$('nw-status').value ? 'status=' + $('nw-status').value : ''}`); } catch (e) { $('nw-status-msg').textContent = e.message; return; }
+  tsel.innerHTML = NW.tenants.map(t => `<option value="${esc(t.slug)}">${esc(t.name)}${t.enabled ? '' : ' (off)'}</option>`).join('');
+  tsel.value = cur || NW.default_tenant || (NW.tenants[0] || {}).slug || '';
+  const pending = NW.items.filter(i => i.status === 'pending').length; $('nw-badge').hidden = !pending; $('nw-badge').textContent = pending;
+  const t = NW.tenants.find(x => x.slug === tsel.value); const f = $('nwtform');
+  if (t) { for (const k of ['slug', 'name', 'blog_feed_url', 'youtube_channel_id', 'mention_query', 'sitemap_index_url']) f[k].value = t[k] || ''; f.sitemap_types.value = (t.sitemap_types || []).join(', '); f.enabled.checked = !!t.enabled; }
+  const st = (i) => i.status === 'pending' ? '<span class="warn">waiting</span>' : i.status === 'published' ? '<span class="ok">live</span>' : `<span class="muted">${esc(i.status)}</span>`;
+  $('nw-table').querySelector('tbody').innerHTML = NW.items.map(i => `<tr><td>${i.image ? `<img src="${esc(i.image)}" alt="" style="width:64px;height:36px;object-fit:cover;border-radius:6px">` : ''}</td>
+    <td><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a><div class="muted" style="font-size:12px">${esc((i.blurb || '').slice(0, 140))}</div></td>
+    <td class="muted">${esc(i.label)}${i.pinned ? ' · <b>pinned</b>' : ''}</td><td class="muted">${fmt(i.published_at)}</td><td>${st(i)}</td>
+    <td style="white-space:nowrap">${i.status !== 'published' ? `<button class="btn" data-nw="${i.id}" data-st="published">${i.status === 'pending' ? 'approve' : 'show'}</button>` : `<button class="btn" data-nw="${i.id}" data-st="hidden">hide</button>`}
+      ${i.status === 'pending' ? `<button class="btn" data-nw="${i.id}" data-st="rejected">reject</button>` : ''}<button class="btn" data-nw="${i.id}" data-pin="${i.pinned ? 0 : 1}">${i.pinned ? 'unpin' : 'pin'}</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nothing here.</td></tr>';
+  $('nw-table').querySelectorAll('button[data-nw]').forEach(b => b.onclick = async () => { b.disabled = true;
+    const body = b.dataset.st ? { status: b.dataset.st } : { pinned: b.dataset.pin === '1' };
+    try { await api(`/admin/news/items/${b.dataset.nw}`, { method: 'POST', body: JSON.stringify(body) }); loadNews(); } catch (e) { $('nw-status-msg').textContent = e.message; b.disabled = false; } });
+}
+$('nw-tenant').onchange = loadNews; $('nw-status').onchange = loadNews;
+$('nw-poll').onclick = async () => { $('nw-status-msg').textContent = 'checking the blog, sitemaps, YouTube and mentions…'; try { const r = await api('/admin/news/poll', { method: 'POST' }); $('nw-status-msg').textContent = 'new items: ' + Object.entries(r).map(([k, v]) => `${k.split(':')[1]} ${v}`).join(', '); loadNews(); } catch (e) { $('nw-status-msg').textContent = e.message; } };
+$('nwform').onsubmit = async (e) => { e.preventDefault(); const f = e.target; $('nwform-status').textContent = 'publishing…';
+  const body = { tenant: $('nw-tenant').value, url: f.url.value, kind: f.kind.value, title: f.title.value || null, image: f.image.value || null, blurb: f.blurb.value || null, pinned: f.pinned.checked };
+  try { const r = await api('/admin/news/publish', { method: 'POST', body: JSON.stringify(body) }); $('nwform-status').textContent = `published: ${r.title}`; f.reset(); loadNews(); } catch (err) { $('nwform-status').textContent = err.message + (/422/.test(err.message) ? ' (type a title if the page gives none)' : ''); } };
+$('nwtform').onsubmit = async (e) => { e.preventDefault(); const f = e.target; const body = { slug: f.slug.value, name: f.name.value, blog_feed_url: f.blog_feed_url.value, youtube_channel_id: f.youtube_channel_id.value, mention_query: f.mention_query.value, sitemap_index_url: f.sitemap_index_url.value, sitemap_types: f.sitemap_types.value, enabled: f.enabled.checked };
+  try { await api('/admin/news/tenants', { method: 'POST', body: JSON.stringify(body) }); $('nwt-status').textContent = 'saved'; $('nw-tenant').value = ''; loadNews(); } catch (err) { $('nwt-status').textContent = err.message; } };
 async function load() {
   const token = $('token').value.trim(); if (!token) { $('status').textContent = 'enter the admin token'; return; }
   try { sessionStorage.setItem('dh_admin', token); } catch {}
   $('status').textContent = 'loading…';
   let err = null;
-  try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadAnswers(), loadEmails(), loadOutreach(), loadHelpCenter()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
+  try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadAnswers(), loadEmails(), loadOutreach(), loadHelpCenter(), loadNews()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
   catch (e) { err = e; $('status').textContent = e.message; }
   if (!err || !/wrong token/.test(err.message)) { openHashBooking(); openHashConvo(); }  // a failing unrelated pane must not block the deep link
 }

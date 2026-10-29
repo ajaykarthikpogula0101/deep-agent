@@ -14,7 +14,8 @@
  *   greeting     intro line on the welcome screen
  *   suggestions  "|"-separated welcome actions (default: picked from the host page, see page-context)
  *   page-context "general" | "product" | "solutions" | "contact" (default: inferred from the page URL)
- *   tabs         sections, comma-separated from home,messages,help (default all; "messages" is always kept)
+ *   tabs         sections, comma-separated from home,messages,help,news (default all; "messages" is always kept)
+ *   news-tenant  whose News to show (default: the server's NEWS_TENANT, e.g. lakeb2b; app/news.py)
  *   shortcut     "Label|https://…" external scheduler link in Help (default: the Zoom booking page); "" hides it
  *   privacy-url  footer link (default: the server's PRIVACY_URL)
  * Methods      ask(text), book(callType?), open(), close(), toggle(), newChat() / reset(), openConversation(id),
@@ -27,15 +28,15 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.29.3';
+const VERSION = '2026.10.29.4';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
   when_now: 'When is my call now?' };
 const EMAIL_STATUS = { confirmed: 'confirmed', pending_zoom: 'waiting for you to confirm on Zoom', cancelled: 'cancelled' };
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
-const ALL_TABS = ['home', 'messages', 'help'];
-const TAB_LABEL = { home: 'Home', messages: 'Messages', help: 'Help' };
+const ALL_TABS = ['home', 'messages', 'help', 'news'];
+const TAB_LABEL = { home: 'Home', messages: 'Messages', help: 'Help', news: 'News' };
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
 // voice languages: code -> BCP-47 tag for speech recognition / synthesis, native name, and the call-view labels
 const VOICE_LANGS = { auto: ['', 'Auto'], en: ['en-US', 'English'], hi: ['hi-IN', 'हिन्दी'], te: ['te-IN', 'తెలుగు'], ta: ['ta-IN', 'தமிழ்'], es: ['es-ES', 'Español'], fr: ['fr-FR', 'Français'], de: ['de-DE', 'Deutsch'], pt: ['pt-BR', 'Português'], it: ['it-IT', 'Italiano'], nl: ['nl-NL', 'Nederlands'], ar: ['ar-SA', 'العربية'], zh: ['zh-CN', '中文'], ja: ['ja-JP', '日本語'], ko: ['ko-KR', '한국어'], ru: ['ru-RU', 'Русский'], bn: ['bn-IN', 'বাংলা'] };
@@ -408,6 +409,20 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
 /* Messages */
 .view-messages .hist { padding:8px 8px 96px } .newconvo.askq { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:3; width:auto; min-height:40px; padding:0 18px; border-radius:20px; box-shadow:0 4px 14px rgba(85,70,247,.35) }
 .convo { padding:12px; border-radius:12px } .avatar { width:40px; height:40px; border-radius:50%; overflow:hidden } .avatar img { width:100%; height:100%; object-fit:cover }
+/* News (Intercom's News tab) */
+.view-news { overflow:hidden } .newsv { flex:1; min-height:0; overflow-y:auto; padding:0 16px 20px }
+.nhead { display:flex; align-items:center; justify-content:space-between; padding:20px 4px 12px } .nhead b { display:block; font-size:16px; font-weight:600 } .nhead small { display:block; font-size:14px; color:var(--da-muted) }
+.nhead .havs img { border-color:var(--da-surface) }
+.ncard, .hcard.newsc { position:relative; display:flex; flex-direction:column; width:100%; margin:0 0 12px; padding:0; border:0; border-radius:12px; overflow:hidden; background:var(--da-surface); color:var(--da-text); text-decoration:none; text-align:left; box-shadow:var(--da-card-shadow); cursor:pointer }
+.hcard.newsc { margin:0; align-items:stretch; gap:0 }
+.ncard:hover { box-shadow:0 4px 28px rgba(9,14,21,.1), 0 1px 4px rgba(9,14,21,.08) }
+.nimg { display:block; aspect-ratio:16/8; background:var(--da-subtle); overflow:hidden } .nimg img { width:100%; height:100%; object-fit:cover; display:block }
+.nbody { display:flex; flex-direction:column; gap:6px; padding:14px 40px 16px 16px } .nbody b { font-size:14.5px; font-weight:600; line-height:1.4 }
+.nblurb { font-size:14px; line-height:1.45; color:var(--da-muted); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+.nlabels { display:flex; align-items:center; gap:6px; flex-wrap:wrap } .nchip { padding:2px 9px; border-radius:999px; background:var(--da-lavender); color:var(--da-primary); font-size:12px; font-weight:600 }
+.nchip.new { background:var(--da-primary); color:#fff } .nwhen { font-size:12px; color:var(--da-muted) }
+.ncard > svg { position:absolute; right:14px; bottom:18px; width:16px; height:16px; color:var(--da-primary) }
+.ndot { position:absolute; top:-1px; right:-2px; width:9px; height:9px; border-radius:50%; background:#DF2020; box-shadow:0 0 0 2px var(--da-surface) }
 /* Help center */
 .hsearchbar { flex:none; padding:0 12px 12px; background:var(--da-head); border-bottom:1px solid #EDEDED } :host([theme="dark"]) .hsearchbar { border-bottom-color:var(--da-line) }
 .hsearchbar[hidden] { display:none } .hsearchbar .searchbox svg { left:auto; right:12px; color:var(--da-primary) }
@@ -473,6 +488,7 @@ const SVG = {
   user: I('<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/>'),
   chat: I('<path d="M4 5h16v11H8l-4 4z"/>'),
   home: I('<path d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/>'),
+  news: I('<path d="M3.5 10.5v3a1 1 0 0 0 1 1h2.2l5.3 4V5.5l-5.3 4H4.5a1 1 0 0 0-1 1z"/><path d="M15.5 9a3.5 3.5 0 0 1 0 6M18 6.5a7 7 0 0 1 0 11"/>'),
   askarrow: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.4 3.6l16.1 7.5a1 1 0 0 1 0 1.8L4.4 20.4a.7.7 0 0 1-1-.8L5.2 13l8.3-1-8.3-1L3.4 4.4a.7.7 0 0 1 1-.8z"/></svg>',
   clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/>', 2),
@@ -604,11 +620,11 @@ class DeepAssistant extends HTMLElement {
   showView(name) {
     if (name === 'history') name = 'messages';
     const tabs = this._tabs();
-    if (!['chat', 'messages', 'help', 'home'].includes(name) || ((name === 'help' || name === 'home') && !tabs.includes(name))) return;
+    if (!['chat', 'messages', 'help', 'home', 'news'].includes(name) || (['help', 'home', 'news'].includes(name) && !tabs.includes(name))) return;
     const sh = this.shadowRoot, changed = name !== this._view;
     if (name !== 'help') this._helpPage = null;
     this._view = name; this.$panel.dataset.view = name;
-    ['home', 'chat', 'messages', 'help'].forEach((v) => { sh.querySelector('.view-' + v).hidden = v !== name; });
+    ['home', 'chat', 'messages', 'help', 'news'].forEach((v) => { sh.querySelector('.view-' + v).hidden = v !== name; });
     this._paintHeader();
     this.$panel.classList.toggle('wide', name === 'help' && !!this._helpPage && this._helpPage.page === 'article');
     sh.querySelector('.tabbar').hidden = name === 'chat' || (name === 'help' && !!this._helpPage && this._helpPage.page === 'article') || tabs.length < 2;
@@ -617,6 +633,7 @@ class DeepAssistant extends HTMLElement {
     if (name === 'messages') this._renderConversations();
     if (name === 'help' && !this._helpPage) this._renderHelp();
     if (name === 'home') this._renderHome();
+    if (name === 'news') this._renderNews();
     if (name === 'chat') setTimeout(() => { if (!this._voice) this._focusInput(); }, 30); else if (changed && name !== 'home') setTimeout(() => { const t = sh.querySelector(this.$back.hidden ? '.close' : '.back'); if (t && !t.hidden) t.focus({ preventScroll: true }); }, 30);
     this._syncHome(); this._emit('view', { view: name, page: this._helpPage ? this._helpPage.page : undefined });
   }
@@ -625,7 +642,7 @@ class DeepAssistant extends HTMLElement {
     ['.hav', '.brand', '.more'].forEach((s) => { sh.querySelector(s).hidden = !chat; });
     sh.querySelector('.b-history').hidden = true;
     this.$back.hidden = !(sub || (chat && (home || this._tabs().length > 1)));
-    const vt = sh.querySelector('.vtitle'); vt.hidden = chat; vt.textContent = v === 'messages' ? 'Messages' : 'Help';
+    const vt = sh.querySelector('.vtitle'); vt.hidden = chat; vt.textContent = v === 'messages' ? 'Messages' : v === 'news' ? 'News' : 'Help';
     sh.querySelector('.hspacer.l').hidden = chat || sub; sh.querySelector('.hspacer.r').hidden = true;
     sh.querySelector('.hsearchbar').hidden = !(v === 'help' && (!this._helpPage || this._helpPage.page !== 'article'));
     this.$min.hidden = true;
@@ -691,7 +708,7 @@ class DeepAssistant extends HTMLElement {
   _key(s) { return 'da:' + this.api + ':' + s; }
   _url(p) { return this.api + p; }
   _headers(json = true) { const h = { 'X-Session-Id': this._sid }; if (json) h['Content-Type'] = 'application/json'; if (this._vid) h['X-Visitor-Id'] = this._vid; const t = this.getAttribute('token'); if (t) h['X-Visitor-Token'] = t; return h; }
-  _tabs() { const raw = (this.getAttribute('tabs') || ALL_TABS.join(',')).split(',').map((s) => s.trim().toLowerCase()).filter((s) => ALL_TABS.includes(s)); if (!raw.includes('messages')) raw.push('messages'); return ALL_TABS.filter((t) => raw.includes(t)); }
+  _tabs() { const raw = (this.getAttribute('tabs') || ALL_TABS.join(',')).split(',').map((s) => s.trim().toLowerCase()).filter((s) => ALL_TABS.includes(s) && !(s === 'news' && this._cfg && this._cfg.news && this._cfg.news.enabled === false)); if (!raw.includes('messages')) raw.push('messages'); return ALL_TABS.filter((t) => raw.includes(t)); }
   _shortcut() { const a = this.getAttribute('shortcut'); if (a === '') return null; const [label, href] = (a || DEFAULT_SHORTCUT).split('|'); return href ? { label: label.trim(), href: href.trim() } : null; }
   _isDark() { const t = this.getAttribute('theme'); return t === 'dark' || (t === 'auto' && !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)); }
   _focusInput() { if (this._coarse || this._view !== 'chat') return; try { this.$q.focus({ preventScroll: true }); } catch {} }
@@ -733,6 +750,7 @@ class DeepAssistant extends HTMLElement {
           <button class="hcard askq" type="button"><span class="ht"><b>Ask a question</b><small>AI Agent and team can help</small></span>${SVG.askarrow}</button>
           <button class="hcard bookc" type="button"><span class="hci">${SVG.cal}</span><span class="ht"><b>Book a call with Deep</b><small>Pick a time that suits you, right here</small></span>${SVG.chev}</button>
           <div class="hcard searchc"><button class="hsearch" type="button"><span>Search for help</span>${SVG.search}</button><div class="alist harts"></div></div>
+          <button class="hcard newsc" type="button" hidden></button>
         </div>
       </div>
     </section>
@@ -772,6 +790,7 @@ class DeepAssistant extends HTMLElement {
       </div>
       <button class="btn primary newconvo askq" type="button"><span>Ask a question</span>${SVG.help}</button>
     </section>
+    <section class="view view-news" aria-label="News" hidden><div class="newsv scroll"></div></section>
     <section class="view view-help" aria-label="Help" hidden>
       <div class="hsearchbar"><div class="searchbox"><label class="vh" for="hq">Search for help</label><input id="hq" class="hq" type="search" placeholder="Search for help" autocomplete="off">${SVG.search}</div></div>
       <div class="help scroll"></div>
@@ -781,6 +800,7 @@ class DeepAssistant extends HTMLElement {
     <button class="tab" type="button" data-tab="home"><span class="ti">${SVG.home}</span><span>Home</span></button>
     <button class="tab" type="button" data-tab="messages"><span class="ti">${SVG.chat}<span class="tbadge" hidden></span></span><span>Messages</span></button>
     <button class="tab" type="button" data-tab="help"><span class="ti">${SVG.help}</span><span>Help</span></button>
+    <button class="tab" type="button" data-tab="news"><span class="ti">${SVG.news}<span class="ndot" hidden></span></span><span>News</span></button>
   </nav>
   <div class="voice" role="dialog" aria-label="Voice conversation">
     <div class="vhead"><b>Deep · Voice</b><span class="live" aria-hidden="true"></span><span class="vtimer" aria-label="Call duration">00:00</span><button type="button" class="hbtn v-min" aria-label="Minimize the call view (the call continues)" title="Back to chat">${SVG.chevdown}</button></div>
@@ -884,7 +904,7 @@ class DeepAssistant extends HTMLElement {
     if (on && !this._vvH) { this._vvH = () => { this.$panel.style.setProperty('--da-vvh', Math.round(vv.height) + 'px'); this.$panel.style.setProperty('--da-vv-top', Math.round(vv.offsetTop) + 'px'); }; vv.addEventListener('resize', this._vvH); vv.addEventListener('scroll', this._vvH); this._vvH(); }
     else if (!on && this._vvH) { vv.removeEventListener('resize', this._vvH); vv.removeEventListener('scroll', this._vvH); this._vvH = null; }
   }
-  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); this._applyFooter(); this._applyComposerCaps(); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); } } catch {} }
+  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); this._applyFooter(); this._applyComposerCaps(); this._applyTabs(); this._loadNews().then(() => this._paintNewsDot()); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); } } catch {} }
   _setBusy(on) { this._busy = on; this.shadowRoot.querySelector('.i-send').hidden = on; this.shadowRoot.querySelector('.i-stop').hidden = !on; this.$send.classList.toggle('stop', on); this.$send.setAttribute('aria-label', on ? 'Stop generating' : 'Send'); this.$send.title = on ? 'Stop' : 'Send'; this.$log.setAttribute('aria-busy', String(on)); this._setStatus(on ? 'work' : (this._voice ? 'call' : 'idle')); this._syncSend(); }
   _setStatus(mode) {
     const sh = this.shadowRoot, st = sh.querySelector('.st'); if (!st) return;
@@ -986,6 +1006,41 @@ class DeepAssistant extends HTMLElement {
     if (x.book) return this.startBooking(typeof x.book === 'string' ? x.book : null, x.label);
     return this._send(x.ask || x.label);
   }
+  // ---------------------------------------------------------------- News (Intercom's News tab; GET /news, app/news.py)
+  _newsTenant() { return this.getAttribute('news-tenant') || (this._cfg && this._cfg.news && this._cfg.news.tenant) || ''; }
+  async _loadNews(force) {
+    if (!this.api || !this._tabs().includes('news')) return null;
+    if (this._news && !force && Date.now() - this._news.at < 300000) return this._news;
+    try { const t = this._newsTenant(); const r = await fetch(this._url('/news' + (t ? '?tenant=' + encodeURIComponent(t) : ''))); if (r.ok) this._news = { ...(await r.json()), at: Date.now() }; } catch {}
+    return this._news || null;
+  }
+  _newsSeen() { try { return localStorage.getItem(this._key('news_seen:' + this._newsTenant())) || ''; } catch { return ''; } }
+  _paintNewsDot() { const d = this._news, dot = this.shadowRoot.querySelector('.ndot'); if (!dot) return; const top = d && d.items && d.items[0]; dot.hidden = !top || String(top.published_at) <= this._newsSeen(); }
+  _newsCard(it, isNew, cls) {
+    const when = it.published_at ? new Date(it.published_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+    return `<a class="${cls}" href="${esc(it.url)}" target="_blank" rel="noopener" data-id="${esc(String(it.id))}">${it.image ? `<span class="nimg"><img src="${esc(it.image)}" alt="" loading="lazy" onerror="this.parentNode.remove()"></span>` : ''}
+      <span class="nbody"><span class="nlabels">${isNew ? '<span class="nchip new">New</span>' : ''}${it.pinned ? '<span class="nchip">Pinned</span>' : ''}<span class="nchip">${esc(it.label || it.kind)}</span><span class="nwhen">${esc(when)}</span></span>
+      <b>${esc(it.title)}</b>${it.blurb ? `<span class="nblurb">${esc(it.blurb)}</span>` : ''}</span>${SVG.chev}</a>`;
+  }
+  async _renderNews() {
+    const box = this.shadowRoot.querySelector('.newsv'); if (!box) return;
+    if (!this._news) box.innerHTML = '<div class="sk"><span class="a"></span><span class="l"><i></i><i></i></span></div>'.repeat(3);
+    const d = await this._loadNews(); if (this._view !== 'news') return;
+    const items = (d && d.items) || [], seen = this._newsSeen(), photo = this._hostPhoto();
+    box.innerHTML = `<div class="nhead"><span><b>Latest</b><small>From Team ${esc((d && d.name) || this.botName)}</small></span>${photo ? `<span class="havs"><img src="${esc(photo)}" alt=""></span>` : ''}</div>`
+      + (items.length ? items.map((it) => this._newsCard(it, String(it.published_at) > seen, 'ncard')).join('') : '<div class="hempty">No news yet. Check back soon.</div>');
+    box.querySelectorAll('.ncard').forEach((a) => a.addEventListener('click', () => this._emit('action', { action: 'news_open', label: a.querySelector('b').textContent, kind: 'news' })));
+    if (items[0]) { try { localStorage.setItem(this._key('news_seen:' + this._newsTenant()), String(items[0].published_at)); } catch {} }
+    this._paintNewsDot();
+  }
+  async _paintHomeNews() {
+    const card = this.shadowRoot.querySelector('.newsc'); if (!card) return;
+    const d = await this._loadNews(); const it = d && d.items && d.items[0];
+    card.hidden = !it || !this._tabs().includes('news'); if (!it) return;
+    card.innerHTML = `${it.image ? `<span class="nimg"><img src="${esc(it.image)}" alt="" loading="lazy" onerror="this.parentNode.remove()"></span>` : ''}<span class="nbody"><span class="nlabels">${String(it.published_at) > this._newsSeen() ? '<span class="nchip new">New</span>' : ''}<span class="nchip">${esc(it.label || it.kind)}</span></span><b>${esc(it.title)}</b>${it.blurb ? `<span class="nblurb">${esc(it.blurb)}</span>` : ''}</span>`;
+    card.onclick = () => this.showView('news');
+    this._paintNewsDot();
+  }
   // ---------------------------------------------------------------- Home (Intercom: hero, recent message, ask, book, search for help)
   _hostPhoto() { const p = this._cfg && this._cfg.host_photo; return p ? (/^https?:/.test(p) ? p : this.api + p) : ''; }
   _renderHome() {
@@ -998,6 +1053,7 @@ class DeepAssistant extends HTMLElement {
     if (last) { const who = last.role === 'user' ? 'You' : (last.agent ? (last.author || 'Deep') : this.botName);
       rc.innerHTML = `<span class="rl">Recent message</span><span class="rr"><span class="ra">${photo ? `<img src="${esc(photo)}" alt="">` : SVG.mark}</span><span class="rp"><span>${esc(trunc(plain(last.text), 90))}</span><small>${esc(who)} • ${relShort(last.ts)}</small></span>${SVG.chev}</span>`;
       rc.onclick = () => this.showView('chat'); }
+    this._paintHomeNews();
     this._loadHelp().then((d) => {
       const box = sh.querySelector('.harts'); const items = (d && d.top) || [];
       sh.querySelector('.searchc').hidden = !this._tabs().includes('help');

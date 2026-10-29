@@ -47,6 +47,10 @@ def _no_live_health_or_backup_model(monkeypatch):
     from app import help as help_center
 
     monkeypatch.setattr(help_center, "seed_async", lambda: None)   # the app's start-up never writes help content in tests
+    from app import news
+
+    monkeypatch.setattr(news, "seed", lambda: False)                 # nor news tenants
+    monkeypatch.setattr(news, "run", lambda which=(): {})            # and never polls the real feeds
 
 
 @pytest.fixture(autouse=True)

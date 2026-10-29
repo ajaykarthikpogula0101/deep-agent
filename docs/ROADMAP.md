@@ -11,7 +11,7 @@ identification (`radar.min.js`) and HubSpot. Its help center (help.snitcher.com)
 | **Home** tab: greeting, "Ask a question" card, "Search for help" with top articles, featured news card | Welcome screen inside the chat view, quick replies, outreach pop-ups | **Done 2026-10-29**: Home tab (hero, recent message, Ask a question, Book a call, Search for help + top articles) |
 | **Messages** tab: conversation list, unread badge, "Ask a question" | Messages view with AI titles, unread badge (`app/conversations.py`) | Done |
 | **Help** tab: searchable help center, 8 collections, 99 articles; Fin answers from it | Help view is "Get in touch" actions; answers come from the crawled site | **Done 2026-10-29** (`app/help.py`): collections, articles, search, article view, Console → Help center; owner and builtin articles are answer sources ("Get in touch" kept under the collections) |
-| **News** tab: product updates with labels, images, unread dot | None | **On hold: the user will provide the sites to post from** |
+| **News** tab: product updates with labels, images, unread dot | None | **Done 2026-10-29** (`app/news.py`): LakeB2B blog RSS + typed sitemaps (hourly), YouTube (daily), Bing News mentions (daily, approval), "Publish to the news" with pins; per tenant. Instagram / Facebook parked (need a Meta app); LinkedIn / X only by pasting a post |
 | AI agent grounded in support content, cites sources, many languages | RAG with citations, multilingual, guidance, custom answers, small talk, follow-ups, date-scoped questions | Done |
 | "The team can also help": hand-off **in the same conversation**, team replies appear in the messenger, email when the visitor has left | Hand-over form, then email to Deep; Deep answers by email | **Done 2026-10-29** (`app/team.py`): console reply → widget + email when unread; waiting / replied / closed |
 | Resolution tracking and CSAT at the end of a conversation | Thumbs on each answer | **Done 2026-10-29**: 1–5 conversation rating + "I don't know" answers in the gap list |
@@ -32,4 +32,6 @@ identification (`radar.min.js`) and HubSpot. Its help center (help.snitcher.com)
 4. **Insights and safety** (saved email queue, one runner for scheduled jobs, the regression question set and nightly
    backups done 2026-10-29; still to do:) topics and resolution dashboards, regression question set, saved email queue, one-runner
    lock for scheduled jobs, nightly database backups, numbered migrations, booking as a background job.
-5. **News tab:** after the user names the sources.
+5. **News tab (done 2026-10-29):** the sources the user gave: blog RSS, typed sitemaps, YouTube, Bing News mentions with
+   approval, a publish form for LinkedIn / X posts and pinned announcements; tenants LakeB2B (first), SPAN and deependhq
+   added in Console -> News when their values are known.

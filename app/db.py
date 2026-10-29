@@ -475,6 +475,45 @@ CREATE TABLE IF NOT EXISTS outbox (
     sent_at     TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS outbox_status_idx ON outbox(status, updated_at);
+
+-- News (app/news.py): per-tenant sources, the items shown in the widget's News tab, and the sitemap state diffed each run
+CREATE TABLE IF NOT EXISTS news_tenants (
+    slug               TEXT PRIMARY KEY,
+    name               TEXT NOT NULL,
+    blog_feed_url      TEXT,
+    youtube_channel_id TEXT,
+    mention_query      TEXT,
+    sitemap_index_url  TEXT,
+    sitemap_types      TEXT[] NOT NULL DEFAULT '{{}}',
+    enabled            BOOLEAN NOT NULL DEFAULT true,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS news_items (
+    id           BIGSERIAL PRIMARY KEY,
+    tenant       TEXT NOT NULL REFERENCES news_tenants(slug) ON DELETE CASCADE,
+    source       TEXT NOT NULL,                  -- blog | sitemap | youtube | bing | manual
+    kind         TEXT NOT NULL,                  -- post | video | mention | news | case_studies | webinar | announcement | ...
+    title        TEXT NOT NULL,
+    url          TEXT NOT NULL,
+    published_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    blurb        TEXT NOT NULL DEFAULT '',
+    image        TEXT,
+    status       TEXT NOT NULL DEFAULT 'published',   -- published | pending | rejected | hidden
+    pinned       BOOLEAN NOT NULL DEFAULT false,
+    lastmod      TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (tenant, url)
+);
+CREATE INDEX IF NOT EXISTS news_items_feed_idx ON news_items(tenant, status, pinned DESC, published_at DESC);
+CREATE TABLE IF NOT EXISTS news_sitemap_seen (
+    tenant  TEXT NOT NULL,
+    url     TEXT NOT NULL,
+    kind    TEXT NOT NULL,
+    lastmod TIMESTAMPTZ,
+    PRIMARY KEY (tenant, url)
+);
 """
 
 _pool: ConnectionPool | None = None

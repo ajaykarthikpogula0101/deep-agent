@@ -35,6 +35,7 @@ from app.leader import Leader
 from app.booking.email import send_host_brief, send_test
 from app import chat as chat_mod
 from app import help as help_center
+from app import news
 from app.chat import respond, sse
 from app.config import settings
 from app.db import init_schema, log_event, spend_today
@@ -45,7 +46,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.29.3"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.29.4"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -126,6 +127,15 @@ def _startup() -> None:
         backup.take_if_stale_async()
     if settings.help_enabled:  # starter help center + missing article vectors, in the background (app/help.py)
         help_center.seed_async()
+    if settings.news_enabled:  # News tab (app/news.py): LakeB2B as tenant one; blog + sitemaps hourly, YouTube + mentions daily
+        try:
+            news.seed()
+        except Exception as e:
+            log.warning("news seed failed: %s", e)
+        _scheduler.add_job(news.run_hourly, CronTrigger.from_crontab("20 * * * *", timezone=settings.host_timezone),
+                           id="news_hourly", replace_existing=True, misfire_grace_time=1800, next_run_time=datetime.now(timezone.utc))
+        _scheduler.add_job(news.run_daily, CronTrigger.from_crontab("30 6 * * *", timezone=settings.host_timezone),
+                           id="news_daily", replace_existing=True, misfire_grace_time=6 * 3600, next_run_time=datetime.now(timezone.utc))
     if settings.health_checks:  # every 10 min: model key, credit, failed answers, database, email, booking robot (app/health.py)
         _scheduler.add_job(health.run, CronTrigger.from_crontab(settings.health_cron, timezone=settings.host_timezone),
                            id="health", replace_existing=True, misfire_grace_time=600, next_run_time=datetime.now(timezone.utc))
@@ -716,8 +726,83 @@ def widget_config(request: Request):
     if not _origin_ok(request):
         raise HTTPException(403, "origin not allowed")
     return {**media.widget_config(), "version": APP_VERSION, "suggestions": suggestions.current(), "booking_mode": browser_booking.mode(),
-            "reminders": settings.reminder_enabled, "help": settings.help_enabled, "host_photo": "/static/email/host.png",
+            "reminders": settings.reminder_enabled, "help": settings.help_enabled,
+            "news": {"enabled": settings.news_enabled, "tenant": settings.news_tenant}, "host_photo": "/static/email/host.png",
             "host_name": getattr(settings, "host_full_name", "") or "Deep"}
+
+
+# ---- News tab (app/news.py)
+@app.get("/news")
+def news_feed(request: Request, tenant: str | None = None):
+    if not settings.news_enabled:
+        raise HTTPException(404, "news is off")
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    slug = (tenant or settings.news_tenant).strip().lower()
+    t = news.tenant(slug)
+    if not t or not t["enabled"]:
+        raise HTTPException(404, "no such news feed")
+    return {"tenant": slug, "name": t["name"], "items": news.published(slug)}
+
+
+@app.get("/admin/news")
+def admin_news(tenant: str | None = None, status: str | None = None, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return {"tenants": news.tenants(), "items": news.admin_items(tenant, status), "default_tenant": settings.news_tenant}
+
+
+class NewsModerateIn(BaseModel):
+    status: str | None = None     # published | pending | rejected | hidden
+    pinned: bool | None = None
+
+
+@app.post("/admin/news/items/{item_id}")
+def admin_news_moderate(item_id: int, body: NewsModerateIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    try:
+        ok = news.moderate(item_id, body.status, body.pinned)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    if not ok:
+        raise HTTPException(404, "no such item")
+    return {"ok": True}
+
+
+class NewsPublishIn(BaseModel):
+    tenant: str | None = None
+    url: str = Field(min_length=8, max_length=1000)
+    kind: str = Field(default="announcement", max_length=40)
+    title: str | None = Field(default=None, max_length=300)
+    blurb: str | None = Field(default=None, max_length=600)
+    image: str | None = Field(default=None, max_length=1000)
+    pinned: bool = False
+
+
+@app.post("/admin/news/publish")
+def admin_news_publish(body: NewsPublishIn, x_admin_token: str | None = Header(default=None)):
+    """'Publish to the news': a LinkedIn / X post, a launch or an event the team pastes in."""
+    _require_admin(x_admin_token)
+    try:
+        return news.publish_manual(body.tenant or settings.news_tenant, body.url, body.kind, body.title, body.blurb, body.image, body.pinned)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/admin/news/tenants")
+def admin_news_tenant(body: dict, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    try:
+        return news.save_tenant(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/admin/news/poll")
+def admin_news_poll(which: str = "blog,sitemap,youtube,mention", x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return news.run(tuple(w for w in which.split(",") if w in news.POLLERS))
 
 
 # ---- help center (app/help.py): the widget's Help tab and Home search
