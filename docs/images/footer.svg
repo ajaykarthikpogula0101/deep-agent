@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 120" width="1200" height="120" role="img" aria-label="ask deep · built for Champions Group">
+  <title>ask deep · built for Champions Group</title>
+  <defs>
+    <linearGradient id="w" x1="0" x2="1">
+      <stop offset="0" stop-color="#0B1033"/><stop offset=".5" stop-color="#3A2BC4"/><stop offset="1" stop-color="#5546F7"/>
+    </linearGradient>
+    <linearGradient id="w2" x1="0" x2="1">
+      <stop offset="0" stop-color="#5546F7" stop-opacity=".55"/><stop offset="1" stop-color="#8B7CFF" stop-opacity=".35"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#w2)">
+    <animate attributeName="d" dur="9s" repeatCount="indefinite"
+      values="M0 58 C 200 30, 400 86, 600 58 S 1000 30, 1200 58 V120 H0 Z;
+              M0 58 C 200 86, 400 30, 600 58 S 1000 86, 1200 58 V120 H0 Z;
+              M0 58 C 200 30, 400 86, 600 58 S 1000 30, 1200 58 V120 H0 Z"/>
+  </path>
+  <path fill="url(#w)">
+    <animate attributeName="d" dur="7s" repeatCount="indefinite"
+      values="M0 74 C 250 54, 450 96, 700 74 S 1050 56, 1200 74 V120 H0 Z;
+              M0 74 C 250 96, 450 54, 700 74 S 1050 94, 1200 74 V120 H0 Z;
+              M0 74 C 250 54, 450 96, 700 74 S 1050 56, 1200 74 V120 H0 Z"/>
+  </path>
+  <text x="600" y="106" text-anchor="middle" font-family="'Segoe UI', Inter, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="600" letter-spacing="2" fill="#fff" fill-opacity=".9">ASK DEEP  ·  BUILT FOR CHAMPIONS GROUP  ·  DEEPENDHQ.COM</text>
+</svg>
