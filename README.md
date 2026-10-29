@@ -162,8 +162,8 @@ Rate limits, a spend cap, signed links, injection fences, sanitised HTML, nightl
 <sub><b>OPENING</b></sub>
 
 A two-second welcome plays when the launcher is tapped. A coral and violet wash settles over the page like frosted
-glass, a diamond of dots forms at its centre and glows, then the colour lifts off the top as white rises, and the
-greeting arrives on the chat. Soft, airy, and skipped for visitors who prefer reduced motion; `intro="off"` turns it
+glass, a diamond of dots forms at its centre and glows, then the colour lifts off the top as white rises, and Home
+arrives with its greeting. Soft, airy, and skipped for visitors who prefer reduced motion; `intro="off"` turns it
 off.
 
 </td>

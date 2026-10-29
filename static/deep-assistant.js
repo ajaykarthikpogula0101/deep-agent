@@ -17,7 +17,7 @@
  *   tabs         sections, comma-separated from home,messages,help,news (default all; "messages" is always kept)
  *   news-tenant  whose News to show (default: the server's NEWS_TENANT, e.g. lakeb2b; app/news.py)
  *   news-popup   "off": no pop-up above the closed launcher when there is a new news item
- *   intro        "off": no opening animation when the launcher opens (it is also skipped for reduced motion)
+ *   intro        "off": no opening animation when the launcher opens (lands on Home; skipped for reduced motion)
  *   shortcut     "Label|https://…" external scheduler link in Help (default: the Zoom booking page); "" hides it
  *   privacy-url  footer link (default: the server's PRIVACY_URL)
  * Methods      ask(text), book(callType?), open(), close(), toggle(), newChat() / reset(), openConversation(id),
@@ -31,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.30.1';
+const VERSION = '2026.10.30.2';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -481,7 +481,7 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
 .panel.intro-run .intro { display:block }
 .panel.intro-run { background:transparent; box-shadow:none }
 .panel.intro-run > :not(.intro) { visibility:hidden }
-.panel.intro-out > :not(.intro) { visibility:visible } .panel.intro-run.intro-out { background:var(--da-bg) } .panel.intro-run .welcome, .panel.intro-run .foot { animation:none; opacity:0 }
+.panel.intro-out > :not(.intro) { visibility:visible } .panel.intro-run.intro-out { background:var(--da-bg) } .panel.intro-run .welcome, .panel.intro-run .foot, .panel.intro-run .hi, .panel.intro-run .hcards > *, .panel.intro-run .htopbar { animation:none; opacity:0 }
 .panel.intro-out .intro { opacity:0; transition:opacity .2s cubic-bezier(.4,0,1,1) }
 .ig-glass { position:absolute; inset:0; background:rgba(255,255,255,.22); -webkit-backdrop-filter:blur(16px) saturate(1.15); backdrop-filter:blur(16px) saturate(1.15); opacity:0; animation:ig-in .35s cubic-bezier(.2,.7,.2,1) forwards }
 .ig-stage { position:absolute; inset:0; animation:ig-lift .5s cubic-bezier(.55,0,.8,.25) 1.1s forwards }
@@ -508,6 +508,14 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
 .panel.intro-greet .welcome > p { animation-delay:.06s }
 .panel.intro-greet .welcome > :not(h2):not(p) { animation-delay:.14s }
 .panel.intro-greet .foot { animation:ig-up .35s cubic-bezier(.2,.7,.2,1) .1s both }
+.panel.intro-greet .htopbar { animation:ig-fade-in .3s cubic-bezier(.2,.7,.2,1) both }
+.panel.intro-greet .hi1 { display:block; animation:ig-up .32s cubic-bezier(.2,.7,.2,1) both }
+.panel.intro-greet .hi2 { display:block; animation:ig-up .32s cubic-bezier(.2,.7,.2,1) .07s both }
+.panel.intro-greet .hcards > * { animation:ig-up .34s cubic-bezier(.2,.7,.2,1) both }
+.panel.intro-greet .hcards > :nth-child(1) { animation-delay:.12s } .panel.intro-greet .hcards > :nth-child(2) { animation-delay:.16s }
+.panel.intro-greet .hcards > :nth-child(3) { animation-delay:.2s } .panel.intro-greet .hcards > :nth-child(4) { animation-delay:.24s }
+.panel.intro-greet .hcards > :nth-child(5) { animation-delay:.28s }
+@keyframes ig-fade-in { from { opacity:0 } to { opacity:1 } }
 .foot .aidisc { white-space:nowrap }
 @media (prefers-reduced-motion: reduce) { .panel.intro-run .intro { display:none } .panel.intro-run > :not(.intro) { visibility:visible } }
 /* Help center */
@@ -1001,13 +1009,11 @@ class DeepAssistant extends HTMLElement {
       dots.push(`<i style="left:${c * 15}px;top:${(r - 3) * 15}px;animation-delay:${350 + d * 55}ms"></i>`); } });
     ov.innerHTML = `<div class="ig-glass"></div><div class="ig-stage"><div class="ig-solid"></div><div class="ig-blob ig-coral"></div><div class="ig-blob ig-violet"></div><div class="ig-melt"></div><div class="ig-dots"></div><div class="ig-logo">${dots.join('')}</div></div><div class="ig-rise"></div>`;
     p.prepend(ov); p.classList.add('intro-run'); this._introEl = ov;
-    const from = this._view;
-    this._introT1 = setTimeout(() => {           // 1600 ms: white everywhere; the chat underneath shows as the overlay melts away
-      if (from === 'home' && this._view === 'home' && this._tabs().includes('home')) this.showView('chat');   // only the default landing; never a page the visitor picked
+    this._introT1 = setTimeout(() => {           // 1600 ms: white everywhere; the messenger (Home) shows as the overlay melts away
       p.classList.add('intro-out');
       this._introT2 = setTimeout(() => {         // 1800 ms: the greeting and the disclaimer arrive
         p.classList.remove('intro-run', 'intro-out'); ov.remove(); this._introEl = null;
-        p.classList.add('intro-greet'); this._introT3 = setTimeout(() => p.classList.remove('intro-greet'), 900);
+        p.classList.add('intro-greet'); this._introT3 = setTimeout(() => p.classList.remove('intro-greet'), 1000);
       }, 200);
     }, 1600);
   }

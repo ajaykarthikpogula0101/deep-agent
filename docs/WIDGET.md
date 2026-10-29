@@ -29,7 +29,7 @@ as below. Live demo: `/demo` on the assistant (`WIDGET_DEMO=true`); site-style t
 | `suggestions` | `a\|b\|c` | up to four welcome actions; booking phrasings ("Book…", "Schedule…") open the booking card, others are sent as questions. Default: picked from the page (see `page-context`) |
 | `page-context` | `general` / `product` / `solutions` / `contact` | which welcome actions to show; default inferred from the host page URL (`/product…`, `/solutions…`, `/contact…`, `/pricing…`) |
 | `tabs` | `home,messages,help` | sections; leaving out `help` removes Help from the ⋯ menu; History is always kept |
-| `intro` | on | `off`: no opening animation when the launcher opens (a ~2 s colour wash, dot diamond and sweep into the chat; always skipped for reduced motion) |
+| `intro` | on | `off`: no opening animation when the launcher opens (a ~2 s colour wash, dot diamond and sweep into Home; always skipped for reduced motion) |
 | `shortcut` | `Label\|https://…` | external scheduler link in Help (default: the Zoom booking page); `""` hides it |
 
 Methods: `ask(text)`, `book(callType?)` (opens the in-chat booking card; `callType` such as `'walkthrough'` marks the
