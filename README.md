@@ -1,115 +1,187 @@
 <div align="center">
 
-# ask deep `>_`
-
-### The AI messenger for deependhq.com and the Champions Group companies
-
-It answers questions with sources from **deependhq.com**, **lakeb2b.com** and **spanglobalservices.com**, books calls
-on Deep's Zoom calendar right inside the chat, keeps a live **News** feed, and gives Deep a brief on every lead before
-the call.
-
-![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
-![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
-![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
-![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-682%20passing-2EA44F)
-![Answer check](https://img.shields.io/badge/answer%20check-43%2F43-2EA44F)
-
-[Highlights](#-highlights) · [Screenshots](#-a-closer-look) · [How it works](#-how-it-works) ·
-[Quick start](#-quick-start) · [Embed it](#-embed-it) · [Tests](#-tests) · [Project layout](#-project-layout) ·
-[Docs](#-documentation)
+<img src="docs/images/hero.png" alt="ask deep: the AI messenger that answers with sources, books calls and keeps the news fresh" width="100%">
 
 <br>
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/images/home.png" width="190" alt="Home: greeting, ask a question, book a call, search for help, the latest news"><br><sub><b>Home</b></sub></td>
-    <td align="center"><img src="docs/images/chat_answer.png" width="190" alt="An answer with numbered sources from deependhq.com and lakeb2b.com"><br><sub><b>Answers with sources</b></sub></td>
-    <td align="center"><img src="docs/images/news.png" width="190" alt="News: a featured story and a row of small cards per feed"><br><sub><b>News at a glance</b></sub></td>
-    <td align="center"><img src="docs/images/news_article.png" width="190" alt="A news article read inside the messenger"><br><sub><b>Read inside the chat</b></sub></td>
-  </tr>
-</table>
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Postgres](https://img.shields.io/badge/Postgres_16-pgvector-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![Web Component](https://img.shields.io/badge/Web_Component-Shadow_DOM-5546F7?style=for-the-badge&logo=javascript&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+
+![Tests](https://img.shields.io/badge/tests-682_passing-2EA44F?style=flat-square)
+![Answer check](https://img.shields.io/badge/answer_check-43%2F43-2EA44F?style=flat-square)
+![Browser check](https://img.shields.io/badge/browser_check-all_passing-2EA44F?style=flat-square)
+
+**[✨ Highlights](#-highlights)** &nbsp;·&nbsp; **[📱 Tour](#-take-a-tour)** &nbsp;·&nbsp; **[🏗 How it works](#-how-it-works)** &nbsp;·&nbsp;
+**[🚀 Quick start](#-quick-start)** &nbsp;·&nbsp; **[🔌 Embed](#-embed-it)** &nbsp;·&nbsp; **[📚 Docs](#-documentation)**
 
 </div>
 
----
+<br>
+
+<div align="center">
+
+| 🌐 **3** | 📚 **5,600+** | 📰 **8** | 🎯 **43 / 43** | ✅ **682** |
+|:---:|:---:|:---:|:---:|:---:|
+| websites it answers from | passages it can cite | News feeds | real questions answered right | automated tests |
+
+</div>
+
+<br>
+
+> **ask deep** is the assistant on [deependhq.com](https://deependhq.com) for Champions Group. It answers questions
+> about Deep and his companies from **deependhq.com, lakeb2b.com and spanglobalservices.com**, always with sources,
+> books calls on Deep's Zoom calendar without leaving the chat, keeps a live **News** feed from every company, and
+> hands Deep a brief on each lead before the call.
 
 ## ✨ Highlights
 
-### For visitors
-
-| | |
-|---|---|
-| 💬 **Answers with sources** | Every answer cites the pages it came from: deependhq.com first, then the companies' own websites. Off-topic questions get a polite "I'd rather not guess", never an invented answer. |
-| 🌐 **Knows the company websites** | LakeB2B and SPAN Global Services are read page by page and kept fresh every few hours. A question the index can't answer yet is searched live on that company's own site. |
-| 📅 **Book a call in the chat** | Call type → date → time → confirm, with guests, a Zoom link and a calendar invite. Reschedule or cancel from the chat or from any email. |
-| 📰 **News, like Intercom's** | Blog posts, videos, case studies, newsletters and announcements from each company. A featured story, a sideways row per feed, articles that open inside the chat, labels, "Shared by" and 💜😴👎🎉 reactions. |
-| 🧭 **Help center** | Collections and articles in the Help tab, searchable by meaning, editable by Deep. |
-| 🎙️ **Voice in any language** | A mic button and a hands-free voice call; answers come back in the visitor's language. |
-| 🧠 **Remembers you** | "Welcome back", your last topic, upcoming calls and earlier conversations, on any device you open it from. |
-
-### For Deep and the team
-
-| | |
-|---|---|
-| 📋 **Pre-call brief & honest lead score** | Who they are, what they asked, what they read, where they came from, and a 0–100 score where every point is backed by evidence the visitor can't just type. |
-| 🖥️ **Owner console** (`/admin`) | Conversations, bookings, knowledge gaps, help center, news moderation, email templates, outreach rules and source health in one place. |
-| 👥 **Team replies in the chat** | Reply from the console; the answer appears in the visitor's chat, and they get an email if they've left. |
-| 📈 **Learns every day** | Unanswered questions become drafted answers to approve; call outcomes re-weight the lead score. |
-| 🔔 **Tells you when something breaks** | Health checks on the model key, credit, database, email, backups and news sources, with an alert email. |
-
-### Under the hood
-
-| | |
-|---|---|
-| ⚡ **News that checks itself** | Each source is checked again soon after it changes and less often while quiet; unchanged feeds cost one 304. Edited pages show "Updated", removed pages leave by themselves. |
-| 🔎 **One search over every site** | deependhq.com's own pages are always scored in full, so the larger company sites can never crowd them out; a company that is named gets its own pages first. |
-| 🛡️ **Safe by default** | CORS allow-list, rate limits, a daily spend cap, signed email links, prompt-injection fences, sanitised news HTML, retention purges. |
-| 💾 **Hard to lose** | Nightly database backups, a saved email queue that resends after a crash, a backup chat model, and one scheduler runner across instances. |
-
-> The full list, with every rule and setting behind each feature, is in **[docs/FEATURES.md](docs/FEATURES.md)**.
-
-## 🖼 A closer look
-
 <table>
-  <tr>
-    <td align="center" width="50%"><img src="docs/images/news_feed.png" width="250" alt="A feed as a compact list"><br><sub>A feed as a compact list: picture, label, age, title</sub></td>
-    <td align="center" width="50%"><img src="docs/images/help.png" width="250" alt="The help center"><br><sub>The help center, written from deependhq.com</sub></td>
-  </tr>
+<tr>
+<td width="33%" valign="top">
+
+### 💬 Answers with sources
+Every answer cites the pages it came from. Off-topic questions get a polite "I'd rather not guess", never an
+invented answer.
+
+</td>
+<td width="33%" valign="top">
+
+### 🌐 Knows every company site
+LakeB2B and SPAN are read page by page and kept fresh every few hours. Anything not indexed yet is searched
+**live** on the company's own site.
+
+</td>
+<td width="33%" valign="top">
+
+### 📅 Booking in the chat
+Call type → date → time → confirm, with guests, a Zoom link and a calendar invite. Reschedule or cancel from the
+chat or any email.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 📰 News, like Intercom
+A featured story, a sideways row per feed, articles that open inside the chat, labels, "Shared by" and
+💜 😴 👎 🎉 reactions.
+
+</td>
+<td width="33%" valign="top">
+
+### ⚡ News that checks itself
+Sources are checked again soon after they change and less often while quiet. Edited pages show **Updated**;
+removed pages leave by themselves.
+
+</td>
+<td width="33%" valign="top">
+
+### 🧭 Help center
+Collections and articles in the Help tab, searchable by meaning, written from deependhq.com and editable by Deep.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 📋 Pre-call brief
+Who they are, what they asked and read, where they came from, and a 0–100 lead score where every point is
+backed by evidence.
+
+</td>
+<td width="33%" valign="top">
+
+### 👥 Team replies in the chat
+Answer from the console; the reply lands in the visitor's chat, and they get an email if they've left.
+
+</td>
+<td width="33%" valign="top">
+
+### 📈 Learns every day
+Unanswered questions become drafted answers to approve; call outcomes re-weight the lead score.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 🎙 Voice, any language
+A mic button and a hands-free voice call; answers come back in the visitor's own language.
+
+</td>
+<td width="33%" valign="top">
+
+### 🔔 Tells you when it breaks
+Health checks on the model key, credit, database, email, backups and news sources, with an alert email.
+
+</td>
+<td width="33%" valign="top">
+
+### 🛡 Safe and hard to lose
+Rate limits, a spend cap, signed links, injection fences, sanitised HTML, nightly backups and a saved email queue.
+
+</td>
+</tr>
 </table>
 
-<p align="center"><img src="docs/images/console_news.png" width="820" alt="Console → News: every source with its last check, last change and next check"><br>
-<sub>Console → News: every source with its last check, last change, next check and status</sub></p>
+> [!TIP]
+> Every rule and setting behind these features is written up in **[docs/FEATURES.md](docs/FEATURES.md)**.
+
+## 📱 Take a tour
+
+<table>
+<tr>
+<td align="center" width="25%"><img src="docs/images/news.png" width="200" alt="News at a glance"><br><b>News at a glance</b><br><sub>a featured story, a row per feed</sub></td>
+<td align="center" width="25%"><img src="docs/images/news_feed.png" width="200" alt="A feed as a compact list"><br><b>One feed</b><br><sub>a quick list: picture, label, age</sub></td>
+<td align="center" width="25%"><img src="docs/images/news_article.png" width="200" alt="An article inside the chat"><br><b>Read inside the chat</b><br><sub>labels, "Shared by", reactions</sub></td>
+<td align="center" width="25%"><img src="docs/images/help.png" width="200" alt="The help center"><br><b>Help center</b><br><sub>written from deependhq.com</sub></td>
+</tr>
+</table>
+
+<div align="center">
+<img src="docs/images/console_news.png" width="90%" alt="Console → News: every source with its last check, last change, next check and status">
+<br><sub><b>Console → News</b>: every source with its last check, last change, next check and status</sub>
+</div>
 
 ## 🏗 How it works
 
 ```mermaid
 flowchart LR
-    V([Visitor]) -->|chat · voice · news| W["&lt;deep-assistant&gt;<br/>web component"]
-    W -->|SSE stream| API[FastAPI]
-    API --> R[Retrieval<br/>pgvector + bge-small]
-    R --- KB[(Knowledge<br/>deependhq.com · lakeb2b.com · spanglobalservices.com)]
-    API -->|live site search| WP[Company websites<br/>WordPress search]
-    API --> L[Chat model<br/>any OpenAI-compatible API]
-    API --> Z[Zoom Scheduler<br/>API · public page · browser worker]
-    API --> M[SMTP<br/>saved email queue]
-    NW[News sources<br/>blog RSS · sitemaps · YouTube · Bing News] -->|checked when due| API
-    C[[Scheduler<br/>recrawl · site index · news · digest · reminders · health · backups]] --> API
-    API --- DB[(Postgres 16<br/>+ pgvector)]
-    D([Deep & team]) -->|/admin · host booking page| API
+    V([👤 Visitor]) -->|chat · voice · news| W["&lt;deep-assistant&gt;<br/>web component"]
+    W -->|SSE stream| API[⚙️ FastAPI]
+    API --> R[🔎 Retrieval<br/>pgvector + bge-small]
+    R --- KB[(📚 deependhq.com<br/>lakeb2b.com<br/>spanglobalservices.com)]
+    API -->|live site search| WP[🌐 Company websites]
+    API --> L[🤖 Chat model<br/>+ backup model]
+    API --> Z[📅 Zoom Scheduler]
+    API --> M[✉️ Email queue]
+    NW[📰 Blog RSS · sitemaps<br/>YouTube · Bing News] -->|checked when due| API
+    API --- DB[(🐘 Postgres 16<br/>+ pgvector)]
+    D([👔 Deep & team]) -->|/admin| API
+
+    classDef you fill:#5546F7,stroke:#3B2BD9,color:#fff
+    classDef core fill:#0B1033,stroke:#3B2BD9,color:#fff
+    classDef data fill:#EEF0FF,stroke:#5546F7,color:#1A1A4E
+    classDef ext fill:#fff,stroke:#9AA0C3,color:#1A1A4E
+    class V,D you
+    class W,API core
+    class R,KB,DB data
+    class WP,L,Z,M,NW ext
 ```
+
+| | Step | What happens |
+|:---:|---|---|
+| 1️⃣ | **Understand** | Small talk is answered warmly; a follow-up ("tell me more") is rewritten into a full question. |
+| 2️⃣ | **Search** | deependhq.com, the company websites and the help center are searched together; dates, day numbers and company names get special handling. |
+| 3️⃣ | **Look further** | A company question the index can't answer goes to that company's own site search, live. |
+| 4️⃣ | **Answer** | The model answers only from those sources and cites them, or says it couldn't find it and offers a call. |
+| 5️⃣ | **Act** | Booking, rescheduling and handing over to the team happen as tools inside the same chat. |
 
 Embeddings run locally (`BAAI/bge-small-en-v1.5` via fastembed: no key, no cost). The chat model is any
 OpenAI-compatible endpoint (OpenRouter, Groq or OpenAI), with a backup model if the first one fails.
-
-| Step | What happens |
-|---|---|
-| **1. Understand** | Small talk is answered warmly; a follow-up ("tell me more") is rewritten into a full question. |
-| **2. Search** | deependhq.com, the company websites and the help center are searched together; dates ("last week"), day numbers and company names are handled specially. |
-| **3. Look further** | A company question the index can't answer goes to that company's own site search, live. |
-| **4. Answer** | The model answers only from those sources and cites them, or says it couldn't find it and offers a call. |
-| **5. Act** | Booking, rescheduling and handing over to the team happen as tools inside the same chat. |
 
 ## 🚀 Quick start
 
@@ -184,7 +256,8 @@ Zoom hand-off link and the chat says so (`pending_zoom`). The widget never repor
 provider confirmed it.
 </details>
 
-Every setting, the go-live checklist and deploying to a server: **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
+> [!NOTE]
+> Every setting, the go-live checklist and deploying to a server: **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
 
 ## 🔌 Embed it
 
@@ -208,6 +281,10 @@ current Widgo chat on deependhq.com is covered step by step in [WIDGET_SWAP](doc
 
 ## 🧪 Tests
 
+<details>
+<summary><b>Unit tests, the answer check, the browser check and the live checks</b></summary>
+<br>
+
 ```bash
 pip install -r requirements-dev.txt           # pytest, pytest-asyncio, respx (not part of the runtime install)
 pytest                                        # 682 passed, 2 skipped; no network (the database tests skip without Postgres)
@@ -224,7 +301,13 @@ cd tools/openui && npm ci && npm test         # answer-card parser, renderer and
 
 On a busy Windows machine set `OPENBLAS_NUM_THREADS=1` before running pytest.
 
+</details>
+
 ## 🗂 Project layout
+
+<details>
+<summary><b>Where everything lives</b></summary>
+<br>
 
 ```
 app/
@@ -276,6 +359,8 @@ docs/                guides (below) and the README images
 data/geoip/          GeoLite2 files, downloaded at runtime (not in git)
 ```
 
+</details>
+
 ## 📚 Documentation
 
 | Guide | Covers |
@@ -301,5 +386,8 @@ data/geoip/          GeoLite2 files, downloaded at runtime (not in git)
 ---
 
 <div align="center">
-<sub>Built for <b>Champions Group</b> · deependhq.com · Private and proprietary</sub>
+
+<sub><b>ask deep</b> · built for <b>Champions Group</b> · <a href="https://deependhq.com">deependhq.com</a></sub><br>
+<sub>Private and proprietary</sub>
+
 </div>
