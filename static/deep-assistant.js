@@ -31,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender --da-dot
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.30.4';
+const VERSION = '2026.10.30.5';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -530,6 +530,23 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
   background-image:linear-gradient(to bottom, var(--da-bg) 0, transparent 48px, transparent calc(100% - 40px), var(--da-bg) 100%),
     radial-gradient(circle at 1px 1px, var(--da-dot) 1px, transparent 1.5px);
   background-size:100% 100%, 18px 18px; background-repeat:no-repeat, repeat; background-position:0 0, 8px 6px }
+/* Design polish: bot replies as white cards that float on the dot grid, the visitor's messages in the brand
+   gradient, a soft pill behind the active tab, a gentle focus glow on the composer, small lifts on hover. */
+.view-chat .row.bot:not(.agent) .msg { background:var(--da-surface); border:1px solid var(--da-line); box-shadow:0 1px 2px rgba(21,27,50,.04), 0 8px 22px -12px rgba(21,27,50,.16) }
+:host([theme="dark"]) .view-chat .row.bot:not(.agent) .msg { background:var(--da-bot); box-shadow:0 8px 22px -12px rgba(0,0,0,.5) }
+.view-chat .row.user .msg { background:var(--da-grad); box-shadow:0 8px 20px -10px rgba(85,70,247,.55) }
+.tab .ti { isolation:isolate }
+.tab .ti::before { content:""; position:absolute; z-index:-1; inset:-4px -14px; border-radius:999px; background:var(--da-lavender); opacity:0; transform:scale(.6); transition:opacity .2s var(--da-ease), transform .3s var(--da-ease) }
+.tab.on .ti::before { opacity:1; transform:none }
+.tab { transition:color .15s }
+.cbox:focus-within { border-color:#B9B2FB; border-color:color-mix(in srgb, var(--da-primary) 45%, var(--da-line)); box-shadow:0 0 0 4px rgba(85,70,247,.1); box-shadow:0 0 0 4px color-mix(in srgb, var(--da-primary) 12%, transparent) }
+.view-messages .newconvo.askq { background:var(--da-grad) }
+@media (hover:hover) {
+  .hcard:not(.searchc) { transition:transform .18s var(--da-ease), box-shadow .18s var(--da-ease) }
+  .hcard:not(.searchc):hover { transform:translateY(-1px); box-shadow:0 12px 30px -14px rgba(21,27,50,.28) }
+  .convo { transition:background .15s } .convo:hover { background:var(--da-subtle) }
+}
+@media (prefers-reduced-motion: reduce) { .tab .ti::before, .hcard:not(.searchc) { transition:none } .hcard:not(.searchc):hover { transform:none } }
 /* Help center */
 .hsearchbar { flex:none; padding:0 12px 12px; background:var(--da-head); border-bottom:1px solid #EDEDED } :host([theme="dark"]) .hsearchbar { border-bottom-color:var(--da-line) }
 .hsearchbar[hidden] { display:none } .hsearchbar .searchbox svg { left:auto; right:12px; color:var(--da-primary) }

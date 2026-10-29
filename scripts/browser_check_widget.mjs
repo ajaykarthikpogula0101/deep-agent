@@ -151,7 +151,7 @@ try {
   check(ag.sourcesRow && ag.toolsRow, "agent: sources row and action icons under the answer");
 
   check(b.tools >= 3, "thumbs and copy tools rendered");
-  check(await evaluate(P("panel", "(() => { const m = [...sh.querySelectorAll('.row.bot .msg')].pop(); const cs = getComputedStyle(m); return cs.borderTopLeftRadius === '20px' && cs.backgroundColor === 'rgb(245, 245, 245)' && /Deep • AI Agent • /.test(m.parentElement.querySelector('.meta').textContent); })()")), "restyle (Intercom): grey rounded bot bubble and a 'Deep • AI Agent • time' meta line");
+  check(await evaluate(P("panel", "(() => { const m = [...sh.querySelectorAll('.row.bot .msg')].pop(); const cs = getComputedStyle(m); return cs.borderTopLeftRadius === '20px' && cs.backgroundColor === 'rgb(255, 255, 255)' && cs.borderTopWidth === '1px' && /Deep • AI Agent • /.test(m.parentElement.querySelector('.meta').textContent); })()")), "restyle: white rounded bot card (hairline border) and a 'Deep • AI Agent • time' meta line");
   check(await evaluate("document.getElementById('events').textContent.includes('panel  answer')"), "host page received the deep-assistant:answer event");
   await shot("widget_panel.png");
 
