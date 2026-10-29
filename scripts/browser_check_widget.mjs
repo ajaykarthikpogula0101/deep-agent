@@ -290,6 +290,10 @@ try {
   check(me && me.signed_in === true && me.email === DEMO_EMAIL, `launcher identifies the signed-in user (${me && me.name})`);
   await evaluate("(document.getElementById('open').click(), true)"); await sleep(300);
   check(await evaluate("document.getElementById('launcher').hasAttribute('open')"), "launcher opens from the host page");
+  // the opening animation (colour wash, dot diamond, sweep up, greeting) runs about 2 s and leaves nothing behind
+  check(await evaluate(P("launcher", "sh.querySelector('.panel').classList.contains('intro-run') && sh.querySelectorAll('.intro .ig-logo i').length === 25")), "intro: plays on open, with the 25-dot diamond");
+  await sleep(2300);
+  check(await evaluate(P("launcher", "!sh.querySelector('.intro') && !/intro-(run|out)/.test(sh.querySelector('.panel').className) && el._view === 'chat' && getComputedStyle(sh.querySelector('.view-chat')).visibility === 'visible'")), "intro: ends on the chat, overlay gone");
   // clean up: the demo address may hold test bookings from earlier runs (the per-email cap would refuse a new one)
   try { const bl = await (await fetch(`${BASE}/admin/bookings?days=60`, { headers: { "X-Admin-Token": TOKEN } })).json(); for (const b of bl.items.filter((x) => x.email === DEMO_EMAIL && ["confirmed", "pending_zoom"].includes(x.status))) await fetch(`${BASE}/admin/bookings/${b.id}/cancel`, { method: "POST", headers: { "X-Admin-Token": TOKEN } }); } catch {}
   await ask("launcher", "I want to book a meeting with Deep");

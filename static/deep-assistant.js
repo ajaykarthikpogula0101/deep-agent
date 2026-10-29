@@ -17,6 +17,7 @@
  *   tabs         sections, comma-separated from home,messages,help,news (default all; "messages" is always kept)
  *   news-tenant  whose News to show (default: the server's NEWS_TENANT, e.g. lakeb2b; app/news.py)
  *   news-popup   "off": no pop-up above the closed launcher when there is a new news item
+ *   intro        "off": no opening animation when the launcher opens (it is also skipped for reduced motion)
  *   shortcut     "Label|https://…" external scheduler link in Help (default: the Zoom booking page); "" hides it
  *   privacy-url  footer link (default: the server's PRIVACY_URL)
  * Methods      ask(text), book(callType?), open(), close(), toggle(), newChat() / reset(), openConversation(id),
@@ -30,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.29.8';
+const VERSION = '2026.10.30.1';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -473,6 +474,42 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
 .ncard.nrow:last-child { border-bottom:0 } .ncard.nrow:hover { box-shadow:none; background:var(--da-subtle) }
 .nth { flex:none; display:flex; align-items:center; justify-content:center; width:72px; height:52px; border-radius:8px; overflow:hidden; background:var(--da-subtle); color:var(--da-muted) } .nth img { width:100%; height:100%; object-fit:cover; display:block }
 .nrb { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px } .nrb b { font-size:13.5px; font-weight:600; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+/* Opening animation (launcher tap, ~2 s): colour wash 0–350 ms, the dot diamond forms 350–650, hold to 1100, the colour
+   is lifted off the top 1100–1600 while white rises, then the chat's greeting and disclaimer arrive 1800–2100.
+   Ease-out for what arrives, ease-in for what leaves. Off with intro="off" or prefers-reduced-motion. */
+.intro { position:absolute; inset:0; z-index:60; display:none; overflow:hidden; border-radius:inherit; pointer-events:none }
+.panel.intro-run .intro { display:block }
+.panel.intro-run { background:transparent; box-shadow:none }
+.panel.intro-run > :not(.intro) { visibility:hidden }
+.panel.intro-out > :not(.intro) { visibility:visible } .panel.intro-run.intro-out { background:var(--da-bg) } .panel.intro-run .welcome, .panel.intro-run .foot { animation:none; opacity:0 }
+.panel.intro-out .intro { opacity:0; transition:opacity .2s cubic-bezier(.4,0,1,1) }
+.ig-glass { position:absolute; inset:0; background:rgba(255,255,255,.22); -webkit-backdrop-filter:blur(16px) saturate(1.15); backdrop-filter:blur(16px) saturate(1.15); opacity:0; animation:ig-in .35s cubic-bezier(.2,.7,.2,1) forwards }
+.ig-stage { position:absolute; inset:0; animation:ig-lift .5s cubic-bezier(.55,0,.8,.25) 1.1s forwards }
+.ig-solid { position:absolute; inset:0; background:#FBF7FD; opacity:0; animation:ig-in .3s cubic-bezier(.2,.7,.2,1) .35s forwards }
+.ig-blob { position:absolute; width:78%; aspect-ratio:1; border-radius:50%; filter:blur(56px); opacity:0; animation:ig-blob .35s cubic-bezier(.2,.7,.2,1) forwards, ig-drift 3.4s ease-in-out infinite alternate }
+.ig-coral { left:-26%; top:4%; background:#F0566A }
+.ig-violet { right:-26%; top:-4%; background:#7B6CF0; animation-delay:0s, -1.7s }
+.ig-melt { position:absolute; left:0; right:0; bottom:0; height:58%; background:linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,.92) 72%, #fff) }
+.ig-dots { position:absolute; inset:0; background-image:radial-gradient(rgba(255,255,255,.75) .9px, transparent 1.3px); background-size:15px 15px; opacity:0; animation:ig-dots .35s ease-out forwards }
+.ig-logo { position:absolute; left:50%; top:44%; width:0; height:0; animation:ig-glow 1.1s ease-in-out .65s infinite alternate }
+.ig-logo i { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; border-radius:50%; background:#fff; opacity:0; transform:scale(.35); box-shadow:0 0 8px rgba(255,255,255,.75); animation:ig-dot .22s cubic-bezier(.2,.7,.2,1) forwards }
+.ig-rise { position:absolute; inset:-140px 0 0; background:linear-gradient(to bottom, rgba(255,255,255,0), #fff 140px); transform:translateY(100%); animation:ig-rise .5s cubic-bezier(.6,0,.4,1) 1.1s forwards }
+@keyframes ig-in { to { opacity:1 } }
+@keyframes ig-blob { to { opacity:.78 } }
+@keyframes ig-dots { to { opacity:.5 } }
+@keyframes ig-dot { to { opacity:1; transform:scale(1) } }
+@keyframes ig-drift { from { transform:translate(0, 0) scale(1) } to { transform:translate(7%, 5%) scale(1.08) } }
+@keyframes ig-glow { from { filter:drop-shadow(0 0 1px rgba(255,255,255,.4)) } to { filter:drop-shadow(0 0 10px rgba(255,255,255,.95)) } }
+@keyframes ig-lift { to { transform:translateY(-24%); opacity:0 } }
+@keyframes ig-rise { to { transform:none } }
+@keyframes ig-up { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:none } }
+.panel.intro-greet .welcome { animation:none }
+.panel.intro-greet .welcome > * { animation:ig-up .3s cubic-bezier(.2,.7,.2,1) both }
+.panel.intro-greet .welcome > p { animation-delay:.06s }
+.panel.intro-greet .welcome > :not(h2):not(p) { animation-delay:.14s }
+.panel.intro-greet .foot { animation:ig-up .35s cubic-bezier(.2,.7,.2,1) .1s both }
+.foot .aidisc { white-space:nowrap }
+@media (prefers-reduced-motion: reduce) { .panel.intro-run .intro { display:none } .panel.intro-run > :not(.intro) { visibility:visible } }
 /* Help center */
 .hsearchbar { flex:none; padding:0 12px 12px; background:var(--da-head); border-bottom:1px solid #EDEDED } :host([theme="dark"]) .hsearchbar { border-bottom-color:var(--da-line) }
 .hsearchbar[hidden] { display:none } .hsearchbar .searchbox svg { left:auto; right:12px; color:var(--da-primary) }
@@ -833,7 +870,7 @@ class DeepAssistant extends HTMLElement {
           </div>
         </form>
       </div>
-      <div class="foot">By chatting, you agree to our <a class="privacy" href="#" target="_blank" rel="noopener">Privacy Policy</a></div>
+      <div class="foot"><span class="aidisc">AI answers, with sources; they can be wrong.</span> By chatting, you agree to our <a class="privacy" href="#" target="_blank" rel="noopener">Privacy Policy</a></div>
     </section>
     <section class="view view-messages" aria-label="History" hidden>
       <div class="hist scroll">
@@ -951,9 +988,30 @@ class DeepAssistant extends HTMLElement {
     this.$launcher.setAttribute('aria-expanded', String(open)); this.$launcher.setAttribute('aria-label', open ? 'Minimize the assistant' : 'Open the ' + this.botName + ' assistant');
     if (!launcher || open === this._wasOpen) return; this._wasOpen = open;
     this._emit(open ? 'open' : 'close');
-    if (open) { this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); this._teamCheck(); { const np = this.shadowRoot.querySelector('.npop'); if (np) np.hidden = true; clearTimeout(this._newsPopT); } this._newsLive(true); if (this._voice && this._voice.orb) this._voice.orb.resume(); }
-    else { this._bindViewport(false); this._closePops(); if (this._voice && this._voice.orb) this._voice.orb.pause(); if (this.shadowRoot.activeElement && this.shadowRoot.activeElement !== this.$launcher) this.$launcher.focus({ preventScroll: true }); }
+    if (open) { if (this._introOn()) this._playIntro(); this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); this._teamCheck(); { const np = this.shadowRoot.querySelector('.npop'); if (np) np.hidden = true; clearTimeout(this._newsPopT); } this._newsLive(true); if (this._voice && this._voice.orb) this._voice.orb.resume(); }
+    else { this._stopIntro(); this._bindViewport(false); this._closePops(); if (this._voice && this._voice.orb) this._voice.orb.pause(); if (this.shadowRoot.activeElement && this.shadowRoot.activeElement !== this.$launcher) this.$launcher.focus({ preventScroll: true }); }
   }
+  // ---------------------------------------------------------------- opening animation (launcher tap)
+  _introOn() { return this.getAttribute('mode') === 'launcher' && this.getAttribute('intro') !== 'off' && !this._reduced && !(this._cfg && this._cfg.intro === false); }
+  _playIntro() {
+    const p = this.$panel; this._stopIntro();
+    const ov = document.createElement('div'); ov.className = 'intro'; ov.setAttribute('aria-hidden', 'true');
+    // the logo: a diamond of dots in rows of 1, 3, 5, 7, 5, 3, 1, popping in from the centre outward
+    const dots = []; [1, 3, 5, 7, 5, 3, 1].forEach((n, r) => { for (let k = 0; k < n; k++) { const c = k - (n - 1) / 2, d = Math.abs(r - 3) + Math.abs(c);
+      dots.push(`<i style="left:${c * 15}px;top:${(r - 3) * 15}px;animation-delay:${350 + d * 55}ms"></i>`); } });
+    ov.innerHTML = `<div class="ig-glass"></div><div class="ig-stage"><div class="ig-solid"></div><div class="ig-blob ig-coral"></div><div class="ig-blob ig-violet"></div><div class="ig-melt"></div><div class="ig-dots"></div><div class="ig-logo">${dots.join('')}</div></div><div class="ig-rise"></div>`;
+    p.prepend(ov); p.classList.add('intro-run'); this._introEl = ov;
+    const from = this._view;
+    this._introT1 = setTimeout(() => {           // 1600 ms: white everywhere; the chat underneath shows as the overlay melts away
+      if (from === 'home' && this._view === 'home' && this._tabs().includes('home')) this.showView('chat');   // only the default landing; never a page the visitor picked
+      p.classList.add('intro-out');
+      this._introT2 = setTimeout(() => {         // 1800 ms: the greeting and the disclaimer arrive
+        p.classList.remove('intro-run', 'intro-out'); ov.remove(); this._introEl = null;
+        p.classList.add('intro-greet'); this._introT3 = setTimeout(() => p.classList.remove('intro-greet'), 900);
+      }, 200);
+    }, 1600);
+  }
+  _stopIntro() { clearTimeout(this._introT1); clearTimeout(this._introT2); clearTimeout(this._introT3); if (this._introEl) { this._introEl.remove(); this._introEl = null; } if (this.$panel) this.$panel.classList.remove('intro-run', 'intro-out', 'intro-greet'); }
   _bindViewport(on) {  // phones: size the full-screen panel to the visual viewport so the composer stays above the keyboard
     const vv = window.visualViewport; if (!vv) return;
     if (on && !this._vvH) { this._vvH = () => { this.$panel.style.setProperty('--da-vvh', Math.round(vv.height) + 'px'); this.$panel.style.setProperty('--da-vv-top', Math.round(vv.offsetTop) + 'px'); }; vv.addEventListener('resize', this._vvH); vv.addEventListener('scroll', this._vvH); this._vvH(); }

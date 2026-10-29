@@ -152,6 +152,24 @@ Rate limits, a spend cap, signed links, injection fences, sanitised HTML, nightl
 </tr>
 </table>
 
+<table>
+<tr>
+<td width="40%" align="center" valign="middle">
+<img src="docs/images/intro.gif" width="250" alt="The opening animation: a coral and violet wash, the dot diamond, the colour lifting away, the greeting">
+</td>
+<td width="60%" valign="middle">
+
+<sub><b>OPENING</b></sub>
+
+A two-second welcome plays when the launcher is tapped. A coral and violet wash settles over the page like frosted
+glass, a diamond of dots forms at its centre and glows, then the colour lifts off the top as white rises, and the
+greeting arrives on the chat. Soft, airy, and skipped for visitors who prefer reduced motion; `intro="off"` turns it
+off.
+
+</td>
+</tr>
+</table>
+
 <p align="center"><img src="docs/images/divider.svg" width="100%" alt=""></p>
 
 ## Architecture
