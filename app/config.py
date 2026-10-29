@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     team_reply_author: str = Field(default="Deep", alias="TEAM_REPLY_AUTHOR")            # name shown on console replies
     team_email_after_minutes: int = Field(default=3, alias="TEAM_EMAIL_AFTER_MINUTES")  # unread team reply -> email
     team_host_notify_minutes: int = Field(default=15, alias="TEAM_HOST_NOTIFY_MINUTES")  # "visitor wrote again" throttle
+    # every email saved before sending, re-sent after a restart (app/mailer.py)
+    mail_outbox: bool = Field(default=True, alias="MAIL_OUTBOX")
+    # only one process runs the scheduled jobs (app/leader.py); false = every process runs them (the old behaviour)
+    scheduler_lock: bool = Field(default=True, alias="SCHEDULER_LOCK")
     # nightly database backups outside Docker (app/backup.py); relative BACKUP_DIR = inside the project
     backup_enabled: bool = Field(default=True, alias="BACKUP_ENABLED")
     backup_dir: str = Field(default="backups", alias="BACKUP_DIR")

@@ -108,6 +108,11 @@ def run_checks(get: Callable = httpx.get, count: Callable[[str, tuple], int] = _
     counted("email", "SELECT count(*) FROM events WHERE kind = 'mail_failed' AND ts > %s", (now - timedelta(hours=6),),
             "no email gave up in the last 6 hours",
             lambda n: _check("fail", f"{n} email(s) gave up after 3 attempts in the last 6 hours; check SMTP_USER / SMTP_PASSWORD"))
+    if settings.mail_outbox:
+        counted("outbox", "SELECT count(*) FROM outbox WHERE status IN ('queued', 'sending') AND updated_at < %s",
+                (now - timedelta(minutes=30),), "no email waiting in the saved queue for more than 30 minutes",
+                lambda n: _check("warn", f"{n} email(s) have waited over 30 minutes in the saved queue; the mail worker or "
+                                         "the scheduler may be stuck, see the server log"))
     if settings.browser_booking_enabled:
         counted("booking", "SELECT count(*) FROM events WHERE kind = 'booking_pending' AND detail->>'zoom_error' LIKE %s "
                            "AND ts > %s", ("browser booking%", now - timedelta(hours=24)),

@@ -31,6 +31,7 @@ from app.booking import availability as avail
 from app.booking import browser_booking
 from app.booking import email_html, flow, ics, zoom_mail
 from app.booking.service import BookingService
+from app.leader import Leader
 from app.booking.email import send_host_brief, send_test
 from app import chat as chat_mod
 from app import help as help_center
@@ -74,6 +75,7 @@ from app import setup_page  # noqa: E402  (first-run /setup; local-only, gone on
 app.include_router(setup_page.router)
 
 _scheduler = BackgroundScheduler()
+_leader = Leader()   # app/leader.py: which process runs the scheduled jobs
 _track_limiter = RateLimiter(per_minute=60, per_day=3000)  # beacons and visitor-scoped reads (history, bookings, availability); separate from the chat budget
 _booking_limiter = RateLimiter(per_minute=4, per_day=12)     # confirm attempts per session (plus the per-email active cap)
 _booking_service = BookingService()                         # shared: schedule cache + Zoom token
@@ -167,7 +169,12 @@ def _startup() -> None:
             import dns.resolver  # noqa: F401  (app/enrich.py checks business email domains with it)
         except ImportError:
             log.warning("dnspython missing: email domains read as not checked")
-    _scheduler.start()
+    # emails a restart left unsent go out again (app/mailer.py); only the scheduler leader runs this
+    _scheduler.add_job(mailer.default.recover, CronTrigger.from_crontab("*/5 * * * *", timezone=settings.host_timezone),
+                       id="outbox_recover", replace_existing=True, misfire_grace_time=300)
+    # the jobs run in one process only: start paused, the holder of the scheduler lock resumes it (app/leader.py)
+    _scheduler.start(paused=True)
+    _leader.start(on_lead=_scheduler.resume, on_lose=_scheduler.pause)
     log.info("recrawl scheduled: '%s' (%s); tracking=%s geo=%s ip_mode=%s retention=%sd",
              settings.recrawl_cron, settings.recrawl_tz, settings.tracking_enabled, ",".join(chain) or "none",
              settings.track_ip_mode, settings.track_retention_days)
@@ -176,6 +183,7 @@ def _startup() -> None:
 @app.on_event("shutdown")
 def _shutdown() -> None:
     _scheduler.shutdown(wait=False)
+    _leader.stop()
 
 
 def _clipped(n: int) -> BeforeValidator:

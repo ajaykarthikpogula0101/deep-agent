@@ -42,6 +42,8 @@ def _no_live_health_or_backup_model(monkeypatch):
     monkeypatch.setattr(settings, "health_checks", False)
     monkeypatch.setattr(settings, "chat_fallback_model", "")
     monkeypatch.setattr(settings, "backup_enabled", False)   # never runs pg_dump against the real database
+    monkeypatch.setattr(settings, "mail_outbox", False)      # the app mailer keeps emails in memory (tests/test_outbox.py turns it on)
+    monkeypatch.setattr(settings, "scheduler_lock", False)   # a test start-up never takes (or waits for) the live server's lock
     from app import help as help_center
 
     monkeypatch.setattr(help_center, "seed_async", lambda: None)   # the app's start-up never writes help content in tests

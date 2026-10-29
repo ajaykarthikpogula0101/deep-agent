@@ -454,6 +454,27 @@ CREATE TABLE IF NOT EXISTS help_articles (
 );
 CREATE INDEX IF NOT EXISTS help_articles_collection_idx ON help_articles(collection_id, position);
 ALTER TABLE help_articles ADD COLUMN IF NOT EXISTS embedding vector({EMBED_DIM});  -- re-added after a model change
+
+-- Saved email queue (app/mailer.py): every email is stored before it is sent, so a restart cannot lose it
+CREATE TABLE IF NOT EXISTS outbox (
+    id          BIGSERIAL PRIMARY KEY,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    kind        TEXT NOT NULL,
+    to_addr     TEXT NOT NULL,
+    subject     TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    html        TEXT,
+    attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
+    reply_to    TEXT,
+    ref         TEXT,
+    status      TEXT NOT NULL DEFAULT 'queued',   -- queued | sending | sent | failed
+    attempts    INT NOT NULL DEFAULT 0,
+    recovered   INT NOT NULL DEFAULT 0,          -- times a later process picked it up again
+    last_error  TEXT,
+    sent_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS outbox_status_idx ON outbox(status, updated_at);
 """
 
 _pool: ConnectionPool | None = None

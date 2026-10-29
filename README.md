@@ -11,7 +11,7 @@ gives Deep a brief on every lead before the call.
 ![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-649%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-658%20passing-2EA44F)
 
 [Features](#features) · [Features in detail](#features-in-detail) · [Quick start](#quick-start) ·
 [Configuration](#configuration) · [Visitor tracking and IP lookup](#visitor-tracking-and-ip-lookup) ·
@@ -570,6 +570,16 @@ in the wrong alphabet is read again (`STT_HINT_RECHECK`). Answers are spoken bac
   taken at start-up when the newest is over a day old, and the health check alerts when it is over 36 hours. Added
   after a Docker Desktop reset on 2026-10-28 wiped the database volume. `python -m app.backup list | now | restore <file>`
   (restore replaces the database contents; tested into a throwaway database).
+* **Saved email queue** (`MAIL_OUTBOX`, `app/mailer.py`): every email is written to the `outbox` table before it is
+  sent and marked sent or failed afterwards; every 5 minutes emails a restart or crash left unsent are sent again
+  (after 10 minutes, at most 3 times), and the health check warns when one waits over 30 minutes.
+* **One runner for scheduled jobs** (`SCHEDULER_LOCK`, `app/leader.py`): with several workers or servers only the
+  process holding a Postgres advisory lock runs the reminders, nudges, digests, backups and the rest; the others wait
+  and take over within a minute if it stops. Verified with two copies on one database.
+* **Answer-quality check** (`python scripts/eval_answers.py`): 38 real questions in `tests/eval/questions.json`
+  (greetings, who Deep is, all 12 companies, dated questions, follow-ups, refusals, injection, booking, Spanish,
+  Hindi) asked through the real index and model and graded; exit code 1 on any failure, so run it after a recrawl or a
+  prompt change. A few cents per run.
 * **Docker database start**: `run.cmd` starts Docker Desktop and `docker compose up -d db` when `.env` names the
   compose database and it is not running, instead of switching to an empty embedded database.
 
@@ -814,7 +824,7 @@ with a MaxMind key, downloads the GeoLite2 files in the background if they are m
 
 ```bash
 pip install -r requirements-dev.txt           # pytest, pytest-asyncio, respx (not part of the runtime install)
-pytest                                        # 649 passed, 2 skipped; no network (the database tests skip without Postgres)
+pytest                                        # 658 passed, 2 skipped; no network (the database tests skip without Postgres)
 python -m app.tracking 49.207.200.10 'Acme' a@acme.com   # one IP through GEOIP_PROVIDER and the network rules, no database
 python -m app.geoip_update                    # download or refresh the GeoLite2 files (needs MAXMIND_LICENSE_KEY)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)

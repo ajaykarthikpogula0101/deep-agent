@@ -29,6 +29,7 @@ identification (`radar.min.js`) and HubSpot. Its help center (help.snitcher.com)
    and CSAT; live hand-off thread (console reply in the widget, email when away, open/waiting/closed).
 3. **Help center + Home tab + Intercom look (done 2026-10-29):** articles and collections (owner-written, plus generated from site pages), search, article
    view, answers that cite articles; Home tab with search, top articles and a featured card.
-4. **Insights and safety:** topics and resolution dashboards, regression question set, saved email queue, one-runner
+4. **Insights and safety** (saved email queue, one runner for scheduled jobs, the regression question set and nightly
+   backups done 2026-10-29; still to do:) topics and resolution dashboards, regression question set, saved email queue, one-runner
    lock for scheduled jobs, nightly database backups, numbered migrations, booking as a background job.
 5. **News tab:** after the user names the sources.
