@@ -50,7 +50,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.29.6"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.29.8"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -313,7 +313,7 @@ class OutreachTryIn(BaseModel):
 
 
 class OrgPatchIn(BaseModel):
-    """Owner edits to one organisation in Outreach → Organisations visiting."""
+    """Owner edits to one organisation in Outreach â†’ Organisations visiting."""
     org: str | None = Field(default=None, max_length=60)
     industry: str | None = Field(default=None, max_length=40)
     line: str | None = Field(default=None, max_length=170)
@@ -765,7 +765,8 @@ def news_feed(request: Request, tenant: str | None = None, feed: str | None = No
     slug = t["slug"]
     key, _, kinds = news.feed(feed)
     items = news.published(slug, kinds=kinds, days=settings.news_feed_days if kinds else None)
-    body = jsonable_encoder({"tenant": slug, "name": t["name"], "feed": key, "feeds": news.feeds(slug), "items": items})   # ISO dates
+    body = jsonable_encoder({"tenant": slug, "name": t["name"], "feed": key, "feeds": news.feeds(slug), "items": items,   # ISO dates
+                             **({"sections": news.sections(slug)} if key == "latest" else {})})   # Latest: a row per feed
     etag = '"' + hashlib.sha1(json.dumps(body, sort_keys=True).encode()).hexdigest()[:20] + '"'
     headers = {"ETag": etag, "Cache-Control": "no-cache"}
     if etag in (request.headers.get("if-none-match") or ""):
@@ -1204,7 +1205,7 @@ def booking_manage(booking_id: int, t: str = ""):
                         f"<a style='color:#F28C28' href='{settings.site_base_url}'>{settings.site_base_url.replace('https://', '')}</a> and say "
                         f"\"reschedule my call\". Or cancel below, then pick a new one in the chat on "
                         f"<a style='color:#F28C28' href='{settings.site_base_url}'>{settings.site_base_url.replace('https://', '')}</a>.</p>"
-                        f"<p><a href='/booking/{booking_id}/cancel?t={tq}' style='{_RED_PILL}'>Cancel this booking…</a></p>")
+                        f"<p><a href='/booking/{booking_id}/cancel?t={tq}' style='{_RED_PILL}'>Cancel this bookingâ€¦</a></p>")
 
 
 @app.post("/booking/{booking_id}/reschedule")

@@ -30,7 +30,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.29.6';
+const VERSION = '2026.10.29.8';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -456,6 +456,23 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
 .npx { position:absolute; top:6px; right:6px; z-index:1; width:26px; height:26px; border:0; border-radius:50%; background:rgba(0,0,0,.45); color:#fff; font-size:16px; line-height:26px; cursor:pointer }
 @keyframes da-pop { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:none } }
 @media (prefers-reduced-motion: reduce) { :host([mode="launcher"]:not([open])) .npop:not([hidden]) { animation:none } .nemoji { transition:none } }
+/* quick view: featured story, rows of small cards per feed, compact lists */
+.nfeat { margin-bottom:18px } .nfeat .nimg { aspect-ratio:16/7 } .nfeat .nblurb { -webkit-line-clamp:1 } .nfeat .nbody { gap:5px; padding:12px 40px 13px 14px }
+.nmi.none, .nth.none { background:linear-gradient(135deg, var(--da-lavender), var(--da-subtle)) } .nmi, .nth { position:relative } .nmi img, .nth img { position:absolute; inset:0 } .nmi:not(.none) em, .nth:not(.none) em { display:none } .nmi em, .nth em { font-style:normal; font-size:12px; font-weight:700; color:var(--da-primary); letter-spacing:.02em; padding:0 6px; text-align:center }
+.nsec { margin:0 0 18px } .nsech { display:flex; align-items:center; justify-content:space-between; margin:0 2px 8px } .nsech b { font-size:14px; font-weight:700; color:var(--da-text) }
+.nsee { display:inline-flex; align-items:center; gap:2px; padding:4px 6px; border:0; border-radius:6px; background:transparent; color:var(--da-primary); font:inherit; font-size:13px; font-weight:600; cursor:pointer }
+.nsee:hover { background:var(--da-subtle) } .nsee svg { width:14px; height:14px }
+.nrail { display:flex; gap:10px; overflow-x:auto; scroll-snap-type:x mandatory; scroll-padding:0 16px; margin:0 -16px; padding:2px 16px 8px; scrollbar-width:none } .nrail::-webkit-scrollbar { display:none }
+.ncard.nmini { flex:none; width:158px; margin:0; scroll-snap-align:start; box-shadow:0 1px 3px rgba(9,14,21,.1), 0 0 0 1px rgba(9,14,21,.04) }
+.nmi { display:flex; align-items:center; justify-content:center; aspect-ratio:16/9; overflow:hidden; background:var(--da-subtle); color:var(--da-muted) } .nmi img { width:100%; height:100%; object-fit:cover; display:block } .nmi svg, .nth svg { width:22px; height:22px; opacity:.6 }
+.nmb { display:flex; flex-direction:column; gap:6px; padding:9px 10px 11px } .nmb b { font-size:13px; font-weight:600; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+.nmeta { display:flex; align-items:center; gap:6px; min-width:0 } .nmeta .nchip { padding:1px 7px; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:110px } .nmeta .nwhen { font-size:11.5px; white-space:nowrap }
+.nnew { flex:none; width:8px; height:8px; border-radius:50%; background:var(--da-primary) }
+.nlist { display:flex; flex-direction:column; border-radius:12px; overflow:hidden; background:var(--da-surface); box-shadow:var(--da-card-shadow) }
+.ncard.nrow { flex-direction:row; align-items:center; gap:12px; margin:0; padding:10px 12px; border-radius:0; box-shadow:none; border-bottom:1px solid var(--da-line) }
+.ncard.nrow:last-child { border-bottom:0 } .ncard.nrow:hover { box-shadow:none; background:var(--da-subtle) }
+.nth { flex:none; display:flex; align-items:center; justify-content:center; width:72px; height:52px; border-radius:8px; overflow:hidden; background:var(--da-subtle); color:var(--da-muted) } .nth img { width:100%; height:100%; object-fit:cover; display:block }
+.nrb { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px } .nrb b { font-size:13.5px; font-weight:600; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
 /* Help center */
 .hsearchbar { flex:none; padding:0 12px 12px; background:var(--da-head); border-bottom:1px solid #EDEDED } :host([theme="dark"]) .hsearchbar { border-bottom-color:var(--da-line) }
 .hsearchbar[hidden] { display:none } .hsearchbar .searchbox svg { left:auto; right:12px; color:var(--da-primary) }
@@ -1092,10 +1109,29 @@ class DeepAssistant extends HTMLElement {
   }
   _bindNewsCards(box) {
     box.querySelectorAll('a.ncard').forEach((a) => a.addEventListener('click', (e) => {
-      this._emit('action', { action: 'news_open', label: a.querySelector('b').textContent, kind: 'news' });
+      this._emit('action', { action: 'news_open', label: (a.querySelector('b') || a).textContent, kind: 'news' });
       if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;   // a new tab when asked for one
       e.preventDefault(); this.openNewsItem(a.dataset.id);
     }));
+  }
+  // quick view: Latest = one featured story, then a row of small cards per feed (swipe sideways, "See all");
+  // a feed = a compact list (thumbnail, label, age, title), so a long feed is a short scroll
+  _newsThumb(it, cls) { const l = esc(((it.labels && it.labels[0]) || it.label || it.kind || '').slice(0, 14));   // the label shows when there is no picture
+    return `<span class="${cls}${it.image ? '' : ' none'}"><em>${l}</em>${it.image ? `<img src="${esc(it.image)}" alt="" loading="lazy" onerror="this.parentNode.classList.add('none');this.remove()">` : ''}</span>`; }
+  _newsRow(it, isNew) {
+    const first = (it.labels && it.labels[0]) || it.label || it.kind;
+    return `<a class="ncard nrow" href="${esc(it.url)}" target="_blank" rel="noopener" data-id="${esc(String(it.id))}">${this._newsThumb(it, 'nth')}
+      <span class="nrb"><span class="nmeta">${isNew ? '<i class="nnew" aria-label="New"></i>' : ''}<span class="nchip">${esc(first)}</span>${it.pinned ? '<span class="nchip">Pinned</span>' : ''}${it.published_at ? `<span class="nwhen">${esc(relAge(it.published_at))}</span>` : ''}</span>
+      <b>${esc(it.title)}</b></span></a>`;
+  }
+  _newsMini(it, isNew) {
+    return `<a class="ncard nmini" href="${esc(it.url)}" target="_blank" rel="noopener" data-id="${esc(String(it.id))}">${this._newsThumb(it, 'nmi')}
+      <span class="nmb"><span class="nmeta">${isNew ? '<i class="nnew" aria-label="New"></i>' : ''}<span class="nchip">${esc((it.labels && it.labels[0]) || it.label || it.kind)}</span>${it.published_at ? `<span class="nwhen">${esc(relAge(it.published_at))}</span>` : ''}</span><b>${esc(it.title)}</b></span></a>`;
+  }
+  _newsRail(key, label, items, count) {
+    if (!items.length) return '';
+    return `<section class="nsec" aria-label="${esc(label)}"><div class="nsech"><b>${esc(label)}</b>${key ? `<button class="nsee" type="button" data-feed="${esc(key)}">See all${count ? ` ${count}` : ''} ${SVG.chev}</button>` : ''}</div>
+      <div class="nrail">${items.map((it) => this._newsMini(it, this._isNewsUnread(it))).join('')}</div></section>`;
   }
   async _renderNews() {
     const box = this.shadowRoot.querySelector('.newsv'); if (!box) return;
@@ -1104,14 +1140,26 @@ class DeepAssistant extends HTMLElement {
     if (!this._newsByFeed || !this._newsByFeed[feed]) box.innerHTML = '<div class="sk"><span class="a"></span><span class="l"><i></i><i></i></span></div>'.repeat(3);
     const d = await this._loadNews(false, feed); if (this._view !== 'news' || this._newsPage || (this._newsFeed || 'latest') !== feed) return;
     const items = (d && d.items) || [], photo = this._hostPhoto(), feeds = ((this._news || d || {}).feeds || []).filter((f) => f.count || f.key === 'latest');
-    const cur = feeds.find((f) => f.key === feed) || { label: 'Latest' };
+    const cur = feeds.find((f) => f.key === feed) || { label: 'Latest' }, count = (k) => (feeds.find((f) => f.key === k) || {}).count;
+    let body = '';
+    if (!items.length && !(d && d.sections && d.sections.length)) body = '<div class="hempty">No news yet. Check back soon.</div>';
+    else if (feed === 'latest') {
+      const top = items[0];   // the newest story large, then one row of small cards per feed (the story not twice)
+      body = (top ? this._newsCard(top, this._isNewsUnread(top), 'ncard nfeat') : '')
+        + ((d && d.sections) || []).map((s) => this._newsRail(s.key, s.label, s.items.filter((x) => !top || x.id !== top.id), count(s.key))).join('')
+        + `<div class="ncaught">${SVG.check || ''}<span>You're all caught up!</span></div>`;
+    } else {
+      body = `<div class="nlist">${items.map((it) => this._newsRow(it, this._isNewsUnread(it))).join('')}</div><div class="ncaught">${SVG.check || ''}<span>You're all caught up!</span></div>`;
+    }
     box.innerHTML = `<div class="nhead"><span><b>${esc(cur.label)}</b><small>From Team ${esc((d && d.name) || this.botName)}</small></span>${photo ? `<span class="havs"><img src="${esc(photo)}" alt=""></span>` : ''}</div>`
       + (feeds.length > 1 ? `<div class="nfeeds" role="tablist" aria-label="News feeds">${feeds.map((f) => `<button class="nfeed${f.key === feed ? ' on' : ''}" type="button" role="tab" aria-selected="${f.key === feed}" data-feed="${esc(f.key)}">${esc(f.label)}</button>`).join('')}</div>` : '')
-      + (items.length ? items.map((it) => this._newsCard(it, this._isNewsUnread(it), 'ncard')).join('') + `<div class="ncaught">${SVG.check || ''}<span>You're all caught up!</span></div>`
-        : '<div class="hempty">No news yet. Check back soon.</div>');
-    box.querySelectorAll('.nfeed').forEach((b) => { b.onclick = () => { this._newsFeed = b.dataset.feed; this._emit('action', { action: 'news_feed', label: b.textContent, kind: 'news' }); this._renderNews(); }; });
+      + body;
+    const go = (k, label) => { this._newsFeed = k; this._emit('action', { action: 'news_feed', label, kind: 'news' }); this._renderNews(); box.scrollTop = 0; };
+    box.querySelectorAll('.nfeed').forEach((b) => { b.onclick = () => go(b.dataset.feed, b.textContent); });
+    box.querySelectorAll('.nsee').forEach((b) => { b.onclick = () => go(b.dataset.feed, b.dataset.feed); });
+    const on = box.querySelector('.nfeed.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     this._bindNewsCards(box);
-    this._markNewsRead(items);   // shown: no longer new (the chips above keep saying "New" until the next visit)
+    this._markNewsRead(items);   // shown: no longer new (the marks above keep saying "New" until the next visit)
     this._paintNewsDot();
   }
   openNews(feed) { this._newsPage = null; if (feed) this._newsFeed = feed; this.showView('news'); }

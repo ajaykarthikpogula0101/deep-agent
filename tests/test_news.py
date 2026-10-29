@@ -346,6 +346,8 @@ def test_labels_feeds_the_article_and_reactions(tenant):
     assert feeds == {"latest": 1, "blog": 1, "newsletters": 1}                                        # only feeds with something in them
     assert [i["title"] for i in N.published(slug, kinds=N.feed("newsletters")[2], days=365)] == ["October newsletter"]
     assert N.feed("nonsense")[0] == "latest"
+    secs = {x["key"]: [i["title"] for i in x["items"]] for x in N.sections(slug)}   # Latest's quick view: a row per feed
+    assert secs == {"blog": ["What Is an AI SDR? & Why Data Matters"], "newsletters": ["October newsletter"]}
     pid = latest[0]["id"]
     full = N.item(slug, pid, visitor="v1")
     assert "<img" in full["body"] and full["views"] == 1 and full["reactions"] == {"options": N.REACTIONS, "counts": dict.fromkeys(N.REACTIONS, 0), "mine": None}

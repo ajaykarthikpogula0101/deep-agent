@@ -890,6 +890,16 @@ def feed(key: str | None) -> tuple[str, str, tuple[str, ...] | None]:
     return next((f for f in FEEDS if f[0] == (key or "latest")), FEEDS[0])
 
 
+def sections(tenant_slug: str, per: int = 8) -> list[dict[str, Any]]:
+    """The Latest view's quick overview: each feed that has items, with its newest few (a row of small cards each)."""
+    out = []
+    for key, label, kinds in FEEDS[1:]:
+        items = published(tenant_slug, limit=per, days=settings.news_feed_days, kinds=kinds)
+        if items:
+            out.append({"key": key, "label": label, "items": items})
+    return out
+
+
 def feeds(tenant_slug: str) -> list[dict[str, Any]]:
     """The feeds that have something to show (Latest always), with how many items each holds."""
     with conn() as c:

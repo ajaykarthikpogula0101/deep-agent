@@ -336,7 +336,10 @@ try {
   check(await evaluate(P("launcher", "/Reschedule your call/.test(sh.querySelector('.welcome .act.resched').textContent) && el._me.memory.upcoming.can_reschedule === true")), "reschedule: welcome screen offers 'Reschedule your call' for the upcoming booking");
   await evaluate(P("launcher", "(sh.querySelector('.welcome .act.resched').click(), true)")); await waitFor(P("launcher", "!!sh.querySelector('.avail .time')"), 30000, "reschedule grid"); await sleep(300);
   check(await evaluate(P("launcher", "/Pick a new time/.test(sh.querySelector('.bk-t').textContent) && /Step 1 of 2/.test(sh.querySelector('.bk-t').textContent) && /Currently /.test(sh.querySelector('.ahead').textContent)")), "reschedule: 'Pick a new time', step 1 of 2, current time shown");
-  await evaluate(P("launcher", "(() => { const ts = [...sh.querySelectorAll('.avail .time')]; (ts[1] || ts[0]).click(); return true; })()")); await sleep(300);
+  // never the time the call already has (at some hours the first day's second time is it: "That is the time you already
+  // have"): a time on the last open day of the two weeks
+  await evaluate(P("launcher", "(() => { const ds = [...sh.querySelectorAll('.avail .date:not(.off)')]; if (ds.length > 1) ds[ds.length - 1].click(); return true; })()")); await sleep(400);
+  await evaluate(P("launcher", "(() => { const ts = [...sh.querySelectorAll('.avail .time:not(.off)')]; (ts[1] || ts[0]).click(); return true; })()")); await sleep(300);
   check(await evaluate(P("launcher", "/Confirm the change/.test(sh.querySelector('.bk-t').textContent) && /Currently/.test(sh.querySelector('.sumbox').textContent) && /New time/.test(sh.querySelector('.sumbox').textContent) && /Move my call/.test(sh.querySelector('.avail .confirm').textContent)")), "reschedule: review shows the current and the new time with 'Move my call'");
   await evaluate(P("launcher", "(sh.querySelector('.avail .confirm').click(), true)")); await waitFor(P("launcher", "!!sh.querySelector('.booked')"), 60000, "reschedule result"); await sleep(300);
   const moved = await evaluate(P("launcher", "(() => { const b = sh.querySelector('.booked'); return { text: b.textContent, hist: el._history[el._history.length - 1].content }; })()"));
