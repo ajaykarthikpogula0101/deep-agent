@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 330" width="1200" height="330" role="img" aria-label="How one question is answered: understand, search, look further, answer, act">
+  <title>How one question is answered: understand, search, look further, answer, act</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1033"><animate attributeName="stop-color" values="#0B1033;#10164A;#0B1033" dur="12s" repeatCount="indefinite"/></stop>
+      <stop offset=".6" stop-color="#16135A"/>
+      <stop offset="1" stop-color="#2A1E8C"><animate attributeName="stop-color" values="#2A1E8C;#3A2BC4;#2A1E8C" dur="12s" repeatCount="indefinite"/></stop>
+    </linearGradient>
+    <radialGradient id="ga"><stop offset="0" stop-color="#8B7CFF" stop-opacity=".45"/><stop offset="1" stop-color="#8B7CFF" stop-opacity="0"/></radialGradient>
+    <radialGradient id="gb"><stop offset="0" stop-color="#3FA9FF" stop-opacity=".28"/><stop offset="1" stop-color="#3FA9FF" stop-opacity="0"/></radialGradient>
+    <radialGradient id="core" cx=".35" cy=".3"><stop offset="0" stop-color="#8B7CFF"/><stop offset=".6" stop-color="#5546F7"/><stop offset="1" stop-color="#2A1E8C"/></radialGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".11"/><stop offset="1" stop-color="#fff" stop-opacity=".05"/></linearGradient>
+    <linearGradient id="edge" x1="0" x2="1"><stop offset="0" stop-color="#8B7CFF"/><stop offset="1" stop-color="#3FA9FF"/></linearGradient>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4"/></filter>
+    <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.1" fill="#fff" fill-opacity=".08"/></pattern>
+    <clipPath id="clip"><rect width="1200" height="330" rx="26"/></clipPath>
+  </defs>
+  <g clip-path="url(#clip)" font-family="'Segoe UI', Inter, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">
+    <rect width="1200" height="330" fill="url(#bg)"/>
+    <rect width="1200" height="330" fill="url(#dots)"/>
+    <circle cx="983.9999999999999" cy="39.6" r="230.99999999999997" fill="url(#ga)"><animate attributeName="cx" values="983.9999999999999;864.0;983.9999999999999" dur="15s" repeatCount="indefinite"/></circle>
+    <circle cx="144.0" cy="313.5" r="198.0" fill="url(#gb)"><animate attributeName="cx" values="144.0;288.0;144.0" dur="17s" repeatCount="indefinite"/></circle>
+    <text x="64" y="48" text-anchor="start" font-size="13" font-weight="700" letter-spacing="3" fill="#A99EFF">HOW ONE QUESTION IS ANSWERED</text>
+    <text x="64" y="78" text-anchor="start" font-size="25" font-weight="700" fill="#fff">From a visitor&#x27;s words to a cited answer, in seconds</text>
+    <line x1="150" y1="178" x2="1050" y2="178" stroke="#fff" stroke-opacity=".14" stroke-width="4" stroke-linecap="round"/>
+    <line x1="150" y1="178" x2="1050" y2="178" stroke="url(#edge)" stroke-width="4" stroke-linecap="round" stroke-dasharray="900" stroke-dashoffset="900">
+      <animate attributeName="stroke-dashoffset" values="900;0;0;900" keyTimes="0;.8;.95;1" dur="7.5s" repeatCount="indefinite"/>
+    </line>
+    <circle r="9" fill="#fff" filter="url(#soft)"><animateMotion path="M150 178 H 1050" keyPoints="0;1;1" keyTimes="0;.8;1" calcMode="linear" dur="7.5s" repeatCount="indefinite"/></circle>
+    <circle r="5" fill="#fff"><animateMotion path="M150 178 H 1050" keyPoints="0;1;1" keyTimes="0;.8;1" calcMode="linear" dur="7.5s" repeatCount="indefinite"/></circle>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.2s" dur=".55s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 10" to="0 0" begin="0.2s" dur=".55s" fill="freeze"/>
+      <circle cx="150" cy="178" r="36" fill="#0B1033" stroke="#fff" stroke-opacity=".22" stroke-width="1.5"/>
+      <circle cx="150" cy="178" r="36" fill="url(#core)" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.000;0.020;.95;1" dur="7.5s" repeatCount="indefinite"/></circle>
+      <circle cx="150" cy="178" r="36" fill="none" stroke="#A99EFF" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.000;0.020;.95;1" dur="7.5s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="36;36;52;52" keyTimes="0;0.000;0.120;1" dur="7.5s" repeatCount="indefinite"/>
+        <animate attributeName="stroke-opacity" values="0;0;.8;0;0" keyTimes="0;0.000;0.010;0.120;1" dur="7.5s" repeatCount="indefinite"/>
+      </circle>
+      <text x="150" y="187" text-anchor="middle" font-size="25">💬</text>
+      <text x="104" y="126" font-family="Consolas, 'SF Mono', Menlo, 'Courier New', monospace" font-size="12" font-weight="700" fill="#A99EFF">01</text>
+      <text x="150" y="248" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">Understand</text>
+      <text x="150" y="271" text-anchor="middle" font-size="12.5" fill="#C9CCFF">small talk, follow-ups</text>
+      <text x="150" y="288" text-anchor="middle" font-size="12.5" fill="#C9CCFF">language</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.35s" dur=".55s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 10" to="0 0" begin="0.35s" dur=".55s" fill="freeze"/>
+      <circle cx="375" cy="178" r="36" fill="#0B1033" stroke="#fff" stroke-opacity=".22" stroke-width="1.5"/>
+      <circle cx="375" cy="178" r="36" fill="url(#core)" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.190;0.220;.95;1" dur="7.5s" repeatCount="indefinite"/></circle>
+      <circle cx="375" cy="178" r="36" fill="none" stroke="#A99EFF" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.190;0.220;.95;1" dur="7.5s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="36;36;52;52" keyTimes="0;0.200;0.320;1" dur="7.5s" repeatCount="indefinite"/>
+        <animate attributeName="stroke-opacity" values="0;0;.8;0;0" keyTimes="0;0.200;0.210;0.320;1" dur="7.5s" repeatCount="indefinite"/>
+      </circle>
+      <text x="375" y="187" text-anchor="middle" font-size="25">🔎</text>
+      <text x="329" y="126" font-family="Consolas, 'SF Mono', Menlo, 'Courier New', monospace" font-size="12" font-weight="700" fill="#A99EFF">02</text>
+      <text x="375" y="248" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">Search</text>
+      <text x="375" y="271" text-anchor="middle" font-size="12.5" fill="#C9CCFF">deependhq.com, company</text>
+      <text x="375" y="288" text-anchor="middle" font-size="12.5" fill="#C9CCFF">sites, help articles</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.5s" dur=".55s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 10" to="0 0" begin="0.5s" dur=".55s" fill="freeze"/>
+      <circle cx="600" cy="178" r="36" fill="#0B1033" stroke="#fff" stroke-opacity=".22" stroke-width="1.5"/>
+      <circle cx="600" cy="178" r="36" fill="url(#core)" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.390;0.420;.95;1" dur="7.5s" repeatCount="indefinite"/></circle>
+      <circle cx="600" cy="178" r="36" fill="none" stroke="#A99EFF" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.390;0.420;.95;1" dur="7.5s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="36;36;52;52" keyTimes="0;0.400;0.520;1" dur="7.5s" repeatCount="indefinite"/>
+        <animate attributeName="stroke-opacity" values="0;0;.8;0;0" keyTimes="0;0.400;0.410;0.520;1" dur="7.5s" repeatCount="indefinite"/>
+      </circle>
+      <text x="600" y="187" text-anchor="middle" font-size="25">🌐</text>
+      <text x="554" y="126" font-family="Consolas, 'SF Mono', Menlo, 'Courier New', monospace" font-size="12" font-weight="700" fill="#A99EFF">03</text>
+      <text x="600" y="248" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">Look further</text>
+      <text x="600" y="271" text-anchor="middle" font-size="12.5" fill="#C9CCFF">live search on the</text>
+      <text x="600" y="288" text-anchor="middle" font-size="12.5" fill="#C9CCFF">company&#x27;s own site</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.6499999999999999s" dur=".55s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 10" to="0 0" begin="0.6499999999999999s" dur=".55s" fill="freeze"/>
+      <circle cx="825" cy="178" r="36" fill="#0B1033" stroke="#fff" stroke-opacity=".22" stroke-width="1.5"/>
+      <circle cx="825" cy="178" r="36" fill="url(#core)" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.590;0.620;.95;1" dur="7.5s" repeatCount="indefinite"/></circle>
+      <circle cx="825" cy="178" r="36" fill="none" stroke="#A99EFF" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.590;0.620;.95;1" dur="7.5s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="36;36;52;52" keyTimes="0;0.600;0.720;1" dur="7.5s" repeatCount="indefinite"/>
+        <animate attributeName="stroke-opacity" values="0;0;.8;0;0" keyTimes="0;0.600;0.610;0.720;1" dur="7.5s" repeatCount="indefinite"/>
+      </circle>
+      <text x="825" y="187" text-anchor="middle" font-size="25">🤖</text>
+      <text x="779" y="126" font-family="Consolas, 'SF Mono', Menlo, 'Courier New', monospace" font-size="12" font-weight="700" fill="#A99EFF">04</text>
+      <text x="825" y="248" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">Answer</text>
+      <text x="825" y="271" text-anchor="middle" font-size="12.5" fill="#C9CCFF">only from the sources,</text>
+      <text x="825" y="288" text-anchor="middle" font-size="12.5" fill="#C9CCFF">with citations</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.8s" dur=".55s" fill="freeze"/><animateTransform attributeName="transform" type="translate" from="0 10" to="0 0" begin="0.8s" dur=".55s" fill="freeze"/>
+      <circle cx="1050" cy="178" r="36" fill="#0B1033" stroke="#fff" stroke-opacity=".22" stroke-width="1.5"/>
+      <circle cx="1050" cy="178" r="36" fill="url(#core)" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.790;0.820;.95;1" dur="7.5s" repeatCount="indefinite"/></circle>
+      <circle cx="1050" cy="178" r="36" fill="none" stroke="#A99EFF" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.790;0.820;.95;1" dur="7.5s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="36;36;52;52" keyTimes="0;0.800;0.920;1" dur="7.5s" repeatCount="indefinite"/>
+        <animate attributeName="stroke-opacity" values="0;0;.8;0;0" keyTimes="0;0.800;0.810;0.920;1" dur="7.5s" repeatCount="indefinite"/>
+      </circle>
+      <text x="1050" y="187" text-anchor="middle" font-size="25">⚡</text>
+      <text x="1004" y="126" font-family="Consolas, 'SF Mono', Menlo, 'Courier New', monospace" font-size="12" font-weight="700" fill="#A99EFF">05</text>
+      <text x="1050" y="248" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">Act</text>
+      <text x="1050" y="271" text-anchor="middle" font-size="12.5" fill="#C9CCFF">book, reschedule, hand</text>
+      <text x="1050" y="288" text-anchor="middle" font-size="12.5" fill="#C9CCFF">over to the team</text>
+    </g>
+
+  </g>
+</svg>

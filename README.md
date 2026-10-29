@@ -67,7 +67,15 @@ Guides & papers, Announcements.
 </tr>
 </table>
 
+<p align="center"><img src="docs/images/divider.svg" width="100%" alt=""></p>
+
 ## ✨ What it does
+
+<p align="center"><img src="docs/images/features.svg" width="100%" alt="What it does: answers with sources, every company site, booking, news, help center, pre-call briefs, team replies, learning, voice, alerts and safety"></p>
+
+<details>
+<summary><b>Read the features as text</b></summary>
+<br>
 
 <table>
 <tr>
@@ -157,6 +165,10 @@ Rate limits, a spend cap, signed links, injection fences, sanitised HTML, nightl
 </tr>
 </table>
 
+</details>
+
+<p align="center"><img src="docs/images/divider.svg" width="100%" alt=""></p>
+
 ## 🧠 Inside the backend
 
 <div align="center">
@@ -171,51 +183,15 @@ Rate limits, a spend cap, signed links, injection fences, sanitised HTML, nightl
 One FastAPI process does everything: the chat, the knowledge, the News engine, booking, email, the console and every
 scheduled job. Postgres with pgvector holds all of it. There is no queue server and no separate worker to run.
 
-```mermaid
-%%{init: {"theme": "base", "themeVariables": {"fontFamily": "Segoe UI, Inter, Helvetica, Arial, sans-serif", "primaryColor": "#5546F7", "primaryTextColor": "#ffffff", "primaryBorderColor": "#3A2BC4", "cScale0": "#0B1033", "cScale1": "#1B1766", "cScale2": "#2A1E8C", "cScale3": "#3A2BC4", "cScale4": "#5546F7", "cScale5": "#6E5FFF", "cScale6": "#8B7CFF", "cScale7": "#2F6FE0", "cScaleLabel0": "#ffffff", "cScaleLabel1": "#ffffff", "cScaleLabel2": "#ffffff", "cScaleLabel3": "#ffffff", "cScaleLabel4": "#ffffff", "cScaleLabel5": "#ffffff", "cScaleLabel6": "#ffffff", "cScaleLabel7": "#ffffff", "git0": "#5546F7"}}}%%
-mindmap
-  root((ask deep))
-    Answers
-      Understanding
-      Hybrid retrieval
-      Live site search
-      Citations and refusals
-      Backup model
-    Knowledge
-      deependhq.com crawl
-      Company sites index
-      Help center
-    News engine
-      Dynamic schedule
-      Change detection
-      Feeds and articles
-      Reactions
-    Booking
-      Zoom API
-      Public page fallback
-      Reschedule and cancel
-    Leads
-      Visitor tracking
-      Network lookup
-      Lead score
-      Pre-call brief
-    Learning
-      Knowledge gaps
-      Call outcomes
-      Memory
-    Operations
-      Health and alerts
-      Backups
-      Email queue
-      One scheduler
-    Security
-      Rate limits
-      Spend cap
-      Signed links
-      Privacy purges
-```
+<p align="center"><img src="docs/images/backend.svg" width="100%" alt="Inside the backend: a FastAPI core with ten modules around it: answering, knowledge, news, booking, voice, leads, memory and learning, team, reliability, security"></p>
 
 ### How one question is answered
+
+<p align="center"><img src="docs/images/pipeline.svg" width="100%" alt="How one question is answered: understand, search, look further, answer, act"></p>
+
+<details>
+<summary><b>The same, as a technical sequence</b></summary>
+<br>
 
 ```mermaid
 sequenceDiagram
@@ -239,26 +215,11 @@ sequenceDiagram
     W-->>V: answer, sources, follow-up chips
 ```
 
+</details>
+
 ### How News stays fresh
 
-```mermaid
-flowchart LR
-    T[["⏱ every 5 min"]] --> D{"source due?"}
-    D -- no --> Z["wait"]
-    D -- yes --> F["fetch with ETag / Last-Modified"]
-    F -->|"304 or same bytes"| Q["quiet: check 1.5× later"]
-    F -->|"changed"| P["parse RSS · sitemaps · YouTube · Bing News"]
-    P --> U["save only real changes"]
-    U --> AR["article as safe HTML · labels · author"]
-    U --> G["removed or 404 → taken off"]
-    U --> N["changed: check again soon"]
-    AR --> API[("/news + ETag")] --> X(["widget refreshes every 2 min"])
-
-    classDef hot fill:#5546F7,stroke:#3A2BC4,color:#fff
-    classDef calm fill:#EEF0FF,stroke:#5546F7,color:#1A1A4E
-    class T,API hot
-    class D,F,P,U,AR,G,N,Q,Z,X calm
-```
+<p align="center"><img src="docs/images/newsloop.svg" width="100%" alt="How News stays fresh: tick, due, fetch, parse, save, refresh; 15 minutes to 24 hours"></p>
 
 ### Every part, in detail
 
@@ -411,6 +372,8 @@ flowchart LR
 
 <sub>Times are in the host's timezone (Asia/Kolkata). With `NEWS_DYNAMIC=false`, `news_tick` is replaced by fixed hourly and daily runs.</sub>
 
+<p align="center"><img src="docs/images/divider.svg" width="100%" alt=""></p>
+
 ## 🏗 Architecture
 
 ```mermaid
@@ -452,6 +415,8 @@ flowchart LR
 <p align="center"><img src="docs/images/console_news.png" width="92%" alt="Console → News"><br><sub><b>Console → News</b>: every source with its last check, last change, next check and status</sub></p>
 
 </details>
+
+<p align="center"><img src="docs/images/divider.svg" width="100%" alt=""></p>
 
 ## 🚀 Quick start
 
@@ -529,6 +494,8 @@ provider confirmed it.
 > [!NOTE]
 > Every setting, the go-live checklist and deploying to a server: **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
 
+<p align="center"><img src="docs/images/divider.svg" width="100%" alt=""></p>
+
 ## 🔌 Embed it
 
 **On deependhq.com** (launcher bubble, greeting card):
@@ -548,6 +515,8 @@ Ready-made wrappers: [`widget/react/DeepAssistant.tsx`](widget/react/DeepAssista
 [`widget/vue/DeepAssistant.vue`](widget/vue/DeepAssistant.vue). The component fires `deep-assistant:*` events
 (`ready`, `question`, `answer`, `booking`, `handover`, `ui`, …) for the host page's analytics. Swapping out the
 current Widgo chat on deependhq.com is covered step by step in [WIDGET_SWAP](docs/WIDGET_SWAP.md).
+
+<p align="center"><img src="docs/images/divider.svg" width="100%" alt=""></p>
 
 ## 🧪 Quality
 
@@ -580,6 +549,8 @@ cd tools/openui && npm ci && npm test         # answer-card parser, renderer and
 On a busy Windows machine set `OPENBLAS_NUM_THREADS=1` before running pytest.
 
 </details>
+
+<p align="center"><img src="docs/images/divider.svg" width="100%" alt=""></p>
 
 ## 🗂 Project layout
 
@@ -638,6 +609,8 @@ data/geoip/          GeoLite2 files, downloaded at runtime (not in git)
 ```
 
 </details>
+
+<p align="center"><img src="docs/images/divider.svg" width="100%" alt=""></p>
 
 ## 📚 Documentation
 
