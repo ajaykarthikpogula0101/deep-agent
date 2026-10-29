@@ -28,10 +28,10 @@
  *              (docs/ROADMAP.md); the help center comes from GET /help* (app/help.py)
  * Events       deep-assistant:ready | :open | :close | :question | :answer | :sources | :booking | :handover
  *              | :feedback | :error | :view | :upload | :voice | :action | :ui   (CustomEvent, bubbles + composed)
- * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
+ * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender --da-dot
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.30.3';
+const VERSION = '2026.10.30.4';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -67,14 +67,14 @@ const ACTIONS = {
 };
 const CONTEXT_ACTIONS = { general: ['explore', 'fit', 'about', 'book'], product: ['product', 'usecases', 'demo', 'about'], solutions: ['fit', 'explore', 'usecases', 'book'], contact: ['book', 'human', 'fit', 'about'] };
 
-const DARK = `--da-ink:#ADA4FF; --da-bg:#0F1324; --da-surface:#171C33; --da-subtle:#1E2441; --da-line:#2A3152; --da-line-strong:#3A4268; --da-text:#ECEEF8; --da-muted:#9BA3C0;
+const DARK = `--da-ink:#ADA4FF; --da-bg:#0F1324; --da-dot:rgba(255,255,255,.075); --da-surface:#171C33; --da-subtle:#1E2441; --da-line:#2A3152; --da-line-strong:#3A4268; --da-text:#ECEEF8; --da-muted:#9BA3C0;
   --da-lavender:#26234F; --da-user:#5546F7; --da-user-text:#FFFFFF; --da-head:#171C33; --da-head-text:#ECEEF8; --da-head-muted:#9BA3C0; --da-bot:#1E2441; --da-hero:#0A0D1C; --da-primary-soft:rgba(124,112,255,.16); --da-danger-soft:rgba(232,72,108,.14); --da-danger-text:#FF9DB2; --da-ok-text:#5BE0B5;
   --da-thumb:rgba(255,255,255,.18); --da-shadow-sm:0 1px 2px rgba(0,0,0,.3); --da-shadow-md:0 10px 28px -10px rgba(0,0,0,.6); --da-shadow-lg:0 28px 64px -16px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.06)`;
 
 const CSS = `
 :host {
   /* Indigo Dream design tokens */
-  --da-primary:#5546F7; --da-primary-hover:#4537E8; --da-ink:var(--da-primary); --da-navy:#151B32; --da-lavender:#EEECFF; --da-bg:#FFFFFF; --da-surface:#FFFFFF;
+  --da-primary:#5546F7; --da-primary-hover:#4537E8; --da-ink:var(--da-primary); --da-navy:#151B32; --da-lavender:#EEECFF; --da-bg:#FFFFFF; --da-dot:rgba(21,27,50,.12); --da-surface:#FFFFFF;
   --da-success:#19B887; --da-text:#151B32; --da-muted:#68718A; --da-line:#E4E7F2; --da-line-strong:#CDD2E3; --da-subtle:#F0F2F9;
   --da-user:var(--da-primary); --da-user-text:#FFFFFF; --da-head:var(--da-surface); --da-head-text:var(--da-text); --da-head-muted:var(--da-muted);
   --da-bot:#F5F5F5; --da-hero:#0B1328; --da-card-shadow:0 4px 28px rgba(9,14,21,.06), 0 1px 4px rgba(9,14,21,.06);
@@ -524,6 +524,12 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
 @keyframes ig-fade-in { from { opacity:0 } to { opacity:1 } }
 .foot .aidisc { white-space:nowrap }
 @media (prefers-reduced-motion: reduce) { .panel.intro-run .intro { display:none } .panel.intro-run > :not(.intro) { visibility:visible } }
+/* The conversation sits on a fine dot grid; it softens near the header and the composer so they stay clean.
+   The grid stays put while messages scroll over it. --da-dot sets its colour (transparent turns it off). */
+.view-chat .log { background-color:var(--da-bg);
+  background-image:linear-gradient(to bottom, var(--da-bg) 0, transparent 48px, transparent calc(100% - 40px), var(--da-bg) 100%),
+    radial-gradient(circle at 1px 1px, var(--da-dot) 1px, transparent 1.5px);
+  background-size:100% 100%, 18px 18px; background-repeat:no-repeat, repeat; background-position:0 0, 8px 6px }
 /* Help center */
 .hsearchbar { flex:none; padding:0 12px 12px; background:var(--da-head); border-bottom:1px solid #EDEDED } :host([theme="dark"]) .hsearchbar { border-bottom-color:var(--da-line) }
 .hsearchbar[hidden] { display:none } .hsearchbar .searchbox svg { left:auto; right:12px; color:var(--da-primary) }
