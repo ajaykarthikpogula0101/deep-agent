@@ -42,6 +42,12 @@
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     setTimeout(function () { mount(true).then(function (el) { if (el.openConversation) el.openConversation(CHAT[1]); }).catch(function () {}); }, 0);
   }
+  // a help article link (app/help.py): #dh-help=<slug> opens the messenger on that article
+  var HELPA = /^#dh-help=([a-z0-9-]{1,90})$/.exec(location.hash || '');
+  if (HELPA && !ASK && !CHAT) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    setTimeout(function () { mount(true).then(function (el) { if (el.openArticle) el.openArticle(HELPA[1]); }).catch(function () {}); }, 0);
+  }
   function parseAskHash(hash) {
     var m = /^#ask-deep=([A-Za-z0-9_.-]{10,160})(?:&q=([a-z_]{1,24}))?$/.exec(hash || '');
     return m ? { t: m[1], q: m[2] || null } : null;
@@ -117,8 +123,8 @@
   btn.setAttribute('aria-label', 'Ask the site assistant');
   btn.style.cssText = [
     'position:fixed', 'right:max(20px, env(safe-area-inset-right))', 'bottom:max(20px, env(safe-area-inset-bottom))',
-    'width:56px', 'height:56px', 'border:0', 'border-radius:50%', 'z-index:2147483000', 'display:flex', 'align-items:center', 'justify-content:center',
-    'background:linear-gradient(145deg,#7466FF 0%,#5546F7 55%,#3E31D4 100%)', 'color:#FFFFFF', 'cursor:pointer', 'padding:0', 'margin:0',
+    'width:48px', 'height:48px', 'border:0', 'border-radius:50%', 'z-index:2147483000', 'display:flex', 'align-items:center', 'justify-content:center',
+    'background:#5546F7', 'color:#FFFFFF', 'cursor:pointer', 'padding:0', 'margin:0',
     'box-shadow:0 12px 28px -10px rgba(85,70,247,.65),0 2px 6px rgba(21,27,50,.18)', 'transition:transform .18s cubic-bezier(.2,.8,.2,1)'
   ].join(';');
   btn.addEventListener('mouseenter', function () { btn.style.transform = 'translateY(-2px)'; });

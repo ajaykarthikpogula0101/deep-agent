@@ -33,6 +33,7 @@ from app.booking import email_html, flow, ics, zoom_mail
 from app.booking.service import BookingService
 from app.booking.email import send_host_brief, send_test
 from app import chat as chat_mod
+from app import help as help_center
 from app.chat import respond, sse
 from app.config import settings
 from app.db import init_schema, log_event, spend_today
@@ -43,7 +44,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.29.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.10.29.3"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -121,6 +122,8 @@ def _startup() -> None:
         _scheduler.add_job(backup.run, CronTrigger.from_crontab(settings.backup_cron, timezone=settings.host_timezone),
                            id="db_backup", replace_existing=True, misfire_grace_time=6 * 3600)
         backup.take_if_stale_async()
+    if settings.help_enabled:  # starter help center + missing article vectors, in the background (app/help.py)
+        help_center.seed_async()
     if settings.health_checks:  # every 10 min: model key, credit, failed answers, database, email, booking robot (app/health.py)
         _scheduler.add_job(health.run, CronTrigger.from_crontab(settings.health_cron, timezone=settings.host_timezone),
                            id="health", replace_existing=True, misfire_grace_time=600, next_run_time=datetime.now(timezone.utc))
@@ -705,7 +708,106 @@ def widget_config(request: Request):
     if not _origin_ok(request):
         raise HTTPException(403, "origin not allowed")
     return {**media.widget_config(), "version": APP_VERSION, "suggestions": suggestions.current(), "booking_mode": browser_booking.mode(),
-            "reminders": settings.reminder_enabled}
+            "reminders": settings.reminder_enabled, "help": settings.help_enabled, "host_photo": "/static/email/host.png",
+            "host_name": getattr(settings, "host_full_name", "") or "Deep"}
+
+
+# ---- help center (app/help.py): the widget's Help tab and Home search
+def _help_guard(request: Request) -> None:
+    if not settings.help_enabled:
+        raise HTTPException(404, "help center is off")
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+
+
+@app.get("/help")
+def help_overview(request: Request):
+    _help_guard(request)
+    return help_center.overview()
+
+
+@app.get("/help/collections/{slug}")
+def help_collection(slug: str, request: Request):
+    _help_guard(request)
+    out = help_center.collection(slug)
+    if out is None:
+        raise HTTPException(404, "no such collection")
+    return out
+
+
+@app.get("/help/articles/{slug}")
+def help_article(slug: str, request: Request):
+    _help_guard(request)
+    out = help_center.article(slug)
+    if out is None:
+        raise HTTPException(404, "no such article")
+    return out
+
+
+@app.get("/help/search")
+def help_search(request: Request, q: str = ""):
+    _help_guard(request)
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    return {"q": q[:200], "items": help_center.search(q)}
+
+
+@app.get("/admin/help")
+def admin_help(x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return help_center.admin_list()
+
+
+def _help_save(fn, *args):
+    try:
+        return fn(*args)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/admin/help/collections")
+def admin_help_collection_new(body: dict, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return _help_save(help_center.save_collection, body)
+
+
+@app.put("/admin/help/collections/{cid}")
+def admin_help_collection_edit(cid: int, body: dict, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return _help_save(help_center.save_collection, body, cid)
+
+
+@app.delete("/admin/help/collections/{cid}")
+def admin_help_collection_delete(cid: int, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return {"ok": help_center.delete_collection(cid)}
+
+
+@app.post("/admin/help/articles")
+def admin_help_article_new(body: dict, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return _help_save(help_center.save_article, body)
+
+
+@app.put("/admin/help/articles/{aid}")
+def admin_help_article_edit(aid: int, body: dict, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return _help_save(help_center.save_article, body, aid)
+
+
+@app.delete("/admin/help/articles/{aid}")
+def admin_help_article_delete(aid: int, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return {"ok": help_center.delete_article(aid)}
+
+
+@app.post("/admin/help/refresh")
+def admin_help_refresh(x_admin_token: str | None = Header(default=None)):
+    """Rebuild the articles made from deependhq.com pages (articles you edited are kept)."""
+    _require_admin(x_admin_token)
+    return help_center.seed(force_site=True)
 
 
 @app.post("/upload")

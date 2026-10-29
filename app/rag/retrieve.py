@@ -249,6 +249,16 @@ def search(query: str, k: int | None = None, vec: list[float] | None = None, tod
             (vec, vec, k),
         ).fetchall()
     hits = [Hit(url=r[0], title=r[1], section=r[2], text=r[3], score=float(r[4]), metadata=r[5] or {}) for r in rows]
+    if settings.help_enabled:  # help articles written for the assistant or by the owner (app/help.py) compete on score
+        try:
+            from app import help as help_center
+
+            arts = [Hit(url=a["url"], title=a["title"], section=None, text=a["text"], score=a["score"], metadata=a["metadata"])
+                    for a in help_center.retrieval_hits(vec) if a["score"] >= settings.help_answer_min_score]
+            if arts:
+                hits = sorted(hits + arts, key=lambda h: h.score, reverse=True)[:k]
+        except Exception as e:
+            log.warning("help articles skipped: %s", e)
     seen = {h.url for h in exact}
     return exact + [h for h in hits if h.url not in seen]
 

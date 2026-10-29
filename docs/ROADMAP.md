@@ -8,9 +8,9 @@ identification (`radar.min.js`) and HubSpot. Its help center (help.snitcher.com)
 
 | Snitcher / Fin | deependhq assistant today | Gap |
 |---|---|---|
-| **Home** tab: greeting, "Ask a question" card, "Search for help" with top articles, featured news card | Welcome screen inside the chat view, quick replies, outreach pop-ups | A Home tab with search and featured content |
+| **Home** tab: greeting, "Ask a question" card, "Search for help" with top articles, featured news card | Welcome screen inside the chat view, quick replies, outreach pop-ups | **Done 2026-10-29**: Home tab (hero, recent message, Ask a question, Book a call, Search for help + top articles) |
 | **Messages** tab: conversation list, unread badge, "Ask a question" | Messages view with AI titles, unread badge (`app/conversations.py`) | Done |
-| **Help** tab: searchable help center, 8 collections, 99 articles; Fin answers from it | Help view is "Get in touch" actions; answers come from the crawled site | Articles and collections Deep can write, search, article view; Fin-style answers that cite them |
+| **Help** tab: searchable help center, 8 collections, 99 articles; Fin answers from it | Help view is "Get in touch" actions; answers come from the crawled site | **Done 2026-10-29** (`app/help.py`): collections, articles, search, article view, Console → Help center; owner and builtin articles are answer sources ("Get in touch" kept under the collections) |
 | **News** tab: product updates with labels, images, unread dot | None | **On hold: the user will provide the sites to post from** |
 | AI agent grounded in support content, cites sources, many languages | RAG with citations, multilingual, guidance, custom answers, small talk, follow-ups, date-scoped questions | Done |
 | "The team can also help": hand-off **in the same conversation**, team replies appear in the messenger, email when the visitor has left | Hand-over form, then email to Deep; Deep answers by email | **Done 2026-10-29** (`app/team.py`): console reply → widget + email when unread; waiting / replied / closed |
@@ -27,7 +27,7 @@ identification (`radar.min.js`) and HubSpot. Its help center (help.snitcher.com)
    alert emails to the owner; a 30 s timeout and a backup model for chat answers.
 2. **Conversations like Fin (done 2026-10-29):** unanswered answers ("I don't know" on a strong match) reach the gap list; resolution
    and CSAT; live hand-off thread (console reply in the widget, email when away, open/waiting/closed).
-3. **Help center + Home tab:** articles and collections (owner-written, plus generated from site pages), search, article
+3. **Help center + Home tab + Intercom look (done 2026-10-29):** articles and collections (owner-written, plus generated from site pages), search, article
    view, answers that cite articles; Home tab with search, top articles and a featured card.
 4. **Insights and safety:** topics and resolution dashboards, regression question set, saved email queue, one-runner
    lock for scheduled jobs, nightly database backups, numbered migrations, booking as a background job.

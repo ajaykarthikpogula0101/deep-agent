@@ -11,7 +11,7 @@ gives Deep a brief on every lead before the call.
 ![Postgres](https://img.shields.io/badge/Postgres-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Web Component](https://img.shields.io/badge/widget-Web%20Component-F7DF1E?logo=javascript&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-639%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-649%20passing-2EA44F)
 
 [Features](#features) · [Features in detail](#features-in-detail) · [Quick start](#quick-start) ·
 [Configuration](#configuration) · [Visitor tracking and IP lookup](#visitor-tracking-and-ip-lookup) ·
@@ -26,6 +26,8 @@ gives Deep a brief on every lead before the call.
 
 | | |
 |---|---|
+| **Messenger like Intercom's** | The widget looks and works like the Intercom messenger on snitcher.com: **Home** (a dark header with the greeting and Deep's photo, the recent conversation, "Ask a question", "Book a call with Deep", "Search for help" with top articles), **Messages** (past conversations, unread badge, "Ask a question") and **Help** (collections, articles, search), with a bottom tab bar; the chat has Intercom's header ("The team can also help"), grey bot bubbles and a two-row composer. Full screen on phones. |
+| **Help center** | Collections of articles in the Help tab (`app/help.py`): starter articles made from deependhq.com (companies, toolkit, the Now page) plus built-in ones on booking and the assistant; Deep writes and edits more in Console → Help center. Search by meaning and words; articles Deep writes also become sources for the bot's answers, and their links open inside the messenger (`#dh-help=<slug>`). |
 | **Answers with sources** | Retrieval over the crawled deependhq.com (llms-full.txt, data.js, sitemap pages), with a confidence floor: off-topic questions get a polite refusal instead of a guess. Prompt-injection fences on everything retrieved. |
 | **Booking in the chat** | Call type → date → time → details → confirm. The visitor can add guests and gets a Zoom link and an `.ics` invite. Reschedule, cancel and "book again" also work from the chat, and every email carries a private manage page with a two-step cancel. Uses Zoom's official API, a public-page fallback, or a browser worker on the public scheduler page. |
 | **Branded booking emails** | Every booking email (confirmation, new booking, cancelled, moved, reminders, the host's day-before brief, guest notes) comes in one HTML design, "Ledger", with a plain-text part that stays editable in the console. No images: it reads the same with images blocked and in dark mode. |
@@ -43,7 +45,7 @@ gives Deep a brief on every lead before the call.
 | **Remembers return visitors** | "Welcome back" with the last topic, upcoming bookings, and a conversation history page. |
 | **Proactive outreach** | Rules written in the console decide when the greeting speaks up ("45 s on the LakeB2B page → offer a walkthrough"). |
 | **Automations** | Weekly digest email, follow-up nudges, reminders the day before, lead enrichment and smart suggestions. All of it runs in the same process. |
-| **Owner console** (`/admin`) | Overview, conversations (with each one's memory), bookings with briefs and outcomes, knowledge gaps, sessions, guidance, custom answers, email templates and outreach (rules and organisations visiting). |
+| **Owner console** (`/admin`) | Overview, conversations (with each one's memory, and a reply box that answers inside the visitor's chat), bookings with briefs and outcomes, knowledge gaps, sessions, guidance, custom answers, the help center, email templates and outreach (rules and organisations visiting). |
 | **Embeds anywhere** | A single dependency-free web component (`<deep-assistant>`) in Shadow DOM. Wrappers for React/Next.js and Vue. Signed-in identity via HMAC token or Clerk JWT. |
 | **Safe by default** | CORS allow-list, rate limits, a daily spend cap, an admin token, signed one-tap email links, forwarding headers believed only from trusted proxies, optional IP masking and retention purges for tracking data and memory. |
 
@@ -812,7 +814,7 @@ with a MaxMind key, downloads the GeoLite2 files in the background if they are m
 
 ```bash
 pip install -r requirements-dev.txt           # pytest, pytest-asyncio, respx (not part of the runtime install)
-pytest                                        # 639 passed, 2 skipped; no network (the database tests skip without Postgres)
+pytest                                        # 649 passed, 2 skipped; no network (the database tests skip without Postgres)
 python -m app.tracking 49.207.200.10 'Acme' a@acme.com   # one IP through GEOIP_PROVIDER and the network rules, no database
 python -m app.geoip_update                    # download or refresh the GeoLite2 files (needs MAXMIND_LICENSE_KEY)
 LIVE=1 pytest tests/test_live_zoom.py -s      # real Zoom availability (read-only)

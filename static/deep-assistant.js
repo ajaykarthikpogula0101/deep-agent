@@ -18,13 +18,16 @@
  *   shortcut     "Label|https://…" external scheduler link in Help (default: the Zoom booking page); "" hides it
  *   privacy-url  footer link (default: the server's PRIVACY_URL)
  * Methods      ask(text), book(callType?), open(), close(), toggle(), newChat() / reset(), openConversation(id),
- *              showView('chat'|'history'|'help'), setToken(token), download(), startVoice(), stopVoice()
+ *              showView('home'|'chat'|'messages'|'help'), openHelp(focusSearch?), openArticle(slug), openCollection(slug),
+ *              setToken(token), download(), startVoice(), stopVoice()
+ * Layout       like Intercom's messenger: Home / Messages / Help tabs with a bottom bar (tabs attribute), the chat on top
+ *              (docs/ROADMAP.md); the help center comes from GET /help* (app/help.py)
  * Events       deep-assistant:ready | :open | :close | :question | :answer | :sources | :booking | :handover
  *              | :feedback | :error | :view | :upload | :voice | :action | :ui   (CustomEvent, bubbles + composed)
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.29.2';
+const VERSION = '2026.10.29.3';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -32,6 +35,7 @@ const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What 
 const EMAIL_STATUS = { confirmed: 'confirmed', pending_zoom: 'waiting for you to confirm on Zoom', cancelled: 'cancelled' };
 const DEFAULT_SHORTCUT = 'Open the Zoom scheduler|https://scheduler.zoom.us/sreedeep';
 const ALL_TABS = ['home', 'messages', 'help'];
+const TAB_LABEL = { home: 'Home', messages: 'Messages', help: 'Help' };
 const INTRO = "I can help you explore LakeB2B's solutions, answer questions about our services, or connect you with the right expert.";
 // voice languages: code -> BCP-47 tag for speech recognition / synthesis, native name, and the call-view labels
 const VOICE_LANGS = { auto: ['', 'Auto'], en: ['en-US', 'English'], hi: ['hi-IN', 'हिन्दी'], te: ['te-IN', 'తెలుగు'], ta: ['ta-IN', 'தமிழ்'], es: ['es-ES', 'Español'], fr: ['fr-FR', 'Français'], de: ['de-DE', 'Deutsch'], pt: ['pt-BR', 'Português'], it: ['it-IT', 'Italiano'], nl: ['nl-NL', 'Nederlands'], ar: ['ar-SA', 'العربية'], zh: ['zh-CN', '中文'], ja: ['ja-JP', '日本語'], ko: ['ko-KR', '한국어'], ru: ['ru-RU', 'Русский'], bn: ['bn-IN', 'বাংলা'] };
@@ -60,18 +64,19 @@ const ACTIONS = {
 const CONTEXT_ACTIONS = { general: ['explore', 'fit', 'about', 'book'], product: ['product', 'usecases', 'demo', 'about'], solutions: ['fit', 'explore', 'usecases', 'book'], contact: ['book', 'human', 'fit', 'about'] };
 
 const DARK = `--da-ink:#ADA4FF; --da-bg:#0F1324; --da-surface:#171C33; --da-subtle:#1E2441; --da-line:#2A3152; --da-line-strong:#3A4268; --da-text:#ECEEF8; --da-muted:#9BA3C0;
-  --da-lavender:#26234F; --da-user:#2D2A6E; --da-user-text:#F1EFFF; --da-head:#0A0D1C; --da-primary-soft:rgba(124,112,255,.16); --da-danger-soft:rgba(232,72,108,.14); --da-danger-text:#FF9DB2; --da-ok-text:#5BE0B5;
+  --da-lavender:#26234F; --da-user:#5546F7; --da-user-text:#FFFFFF; --da-head:#171C33; --da-head-text:#ECEEF8; --da-head-muted:#9BA3C0; --da-bot:#1E2441; --da-hero:#0A0D1C; --da-primary-soft:rgba(124,112,255,.16); --da-danger-soft:rgba(232,72,108,.14); --da-danger-text:#FF9DB2; --da-ok-text:#5BE0B5;
   --da-thumb:rgba(255,255,255,.18); --da-shadow-sm:0 1px 2px rgba(0,0,0,.3); --da-shadow-md:0 10px 28px -10px rgba(0,0,0,.6); --da-shadow-lg:0 28px 64px -16px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.06)`;
 
 const CSS = `
 :host {
   /* Indigo Dream design tokens */
-  --da-primary:#5546F7; --da-primary-hover:#4537E8; --da-ink:var(--da-primary); --da-navy:#151B32; --da-lavender:#EEECFF; --da-bg:#F6F7FC; --da-surface:#FFFFFF;
+  --da-primary:#5546F7; --da-primary-hover:#4537E8; --da-ink:var(--da-primary); --da-navy:#151B32; --da-lavender:#EEECFF; --da-bg:#FFFFFF; --da-surface:#FFFFFF;
   --da-success:#19B887; --da-text:#151B32; --da-muted:#68718A; --da-line:#E4E7F2; --da-line-strong:#CDD2E3; --da-subtle:#F0F2F9;
-  --da-user:var(--da-lavender); --da-user-text:var(--da-navy); --da-head:var(--da-navy); --da-head-text:#FFFFFF; --da-head-muted:rgba(255,255,255,.66);
+  --da-user:var(--da-primary); --da-user-text:#FFFFFF; --da-head:var(--da-surface); --da-head-text:var(--da-text); --da-head-muted:var(--da-muted);
+  --da-bot:#F5F5F5; --da-hero:#0B1328; --da-card-shadow:0 4px 28px rgba(9,14,21,.06), 0 1px 4px rgba(9,14,21,.06);
   --da-danger:#D6345B; --da-danger-soft:#FDEEF2; --da-danger-text:#A61E43; --da-ok-text:#0E8A64;
   --da-primary-soft:rgba(85,70,247,.10); --da-primary-ring:rgba(85,70,247,.35); --da-thumb:rgba(21,27,50,.20);
-  --da-radius:16px; --da-r-lg:14px; --da-r-md:10px; --da-r-sm:7px;
+  --da-radius:24px; --da-r-lg:14px; --da-r-md:10px; --da-r-sm:7px;
   --da-shadow-sm:0 1px 2px rgba(21,27,50,.06); --da-shadow-md:0 10px 28px -10px rgba(21,27,50,.22); --da-shadow-lg:0 28px 64px -16px rgba(21,27,50,.34), 0 0 0 1px rgba(21,27,50,.06);
   --da-ease:cubic-bezier(.2,.8,.2,1); --da-grad:linear-gradient(145deg, #7466FF 0%, var(--da-primary) 55%, #3E31D4 100%);
   /* isolation: reset everything the host page could leak in through inheritance */
@@ -327,6 +332,100 @@ textarea.q { display:block; flex:1; min-width:0; width:auto; min-height:32px; ma
   *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; animation-delay:0s !important; transition-duration:.001ms !important; transition-delay:0s !important }
   .chk circle, .chk path { stroke-dashoffset:0 }
 }
+/* ---------------------------------------------------------------- Intercom-style messenger (2026-10-29) */
+@media (min-width:521px) {
+  :host([mode="launcher"]) .panel { width:min(400px, calc(100vw - 40px)); height:min(704px, calc(100vh - 104px)); height:min(704px, calc(100dvh - 104px)); bottom:calc(max(20px, env(safe-area-inset-bottom)) + 64px);
+    box-shadow:0 5px 40px rgba(9,14,21,.16); transition:opacity .2s var(--da-ease), transform .26s var(--da-ease), width .25s var(--da-ease), visibility 0s linear .26s }
+  :host([mode="launcher"][open]) .panel { transition:opacity .2s var(--da-ease), transform .26s var(--da-ease), width .25s var(--da-ease), visibility 0s }
+  :host([mode="launcher"]) .panel.wide { width:min(680px, calc(100vw - 40px)) }
+}
+.panel { background:var(--da-bg) }
+.launcher { width:48px; height:48px; background:var(--da-primary); box-shadow:0 1px 6px rgba(0,0,0,.06), 0 2px 32px rgba(0,0,0,.16) } .launcher svg { width:24px; height:24px }
+.launcher:hover { transform:scale(1.06); box-shadow:0 1px 6px rgba(0,0,0,.06), 0 2px 32px rgba(0,0,0,.2) }
+/* header: white, title + subtitle (chat), centred title (tabs), back + title (help pages); hidden on Home */
+header { min-height:64px; padding:12px 12px 12px 12px; background:var(--da-head); color:var(--da-head-text); border-bottom:1px solid #EDEDED; gap:8px }
+:host([theme="dark"]) header { border-bottom-color:var(--da-line) }
+.panel[data-view="home"] header { display:none }
+.hav { width:32px; height:32px; border-radius:8px; box-shadow:none } .hav svg { width:18px; height:18px }
+.brand h1 { font-size:14px; font-weight:600; color:var(--da-head-text) } .brand p { font-size:12.5px; color:var(--da-head-muted) }
+.vtitle { text-align:center; font-size:18px; font-weight:600; color:var(--da-head-text) }
+.hbtn { width:36px; height:36px; border-radius:10px; color:var(--da-head-muted) } .hbtn svg { width:18px; height:18px }
+.hbtn:hover { background:var(--da-subtle); color:var(--da-head-text) } .hbtn:focus-visible { outline-color:var(--da-primary) } .hbtn[aria-expanded="true"] { background:var(--da-subtle); color:var(--da-head-text) }
+.hbadge { box-shadow:0 0 0 2px var(--da-head) }
+.vpill { border-color:var(--da-line); background:var(--da-subtle); color:var(--da-head-text) }
+header .hspacer { flex:1 } header .hspacer.l { flex:none; width:36px }
+/* conversation */
+.log { padding:16px 16px 12px; gap:12px }
+.bav { display:none } .col { max-width:88% } .row.user .col { max-width:80% } .row.wide .col { max-width:100% }
+.msg { padding:12px 16px; border-radius:20px; font-size:14px; line-height:1.5 }
+.bot .msg { background:var(--da-bot); border:0; box-shadow:none; border-top-left-radius:20px }
+.bot .msg.hascard { background:var(--da-bot) }
+.user .msg { background:var(--da-user); color:var(--da-user-text); border-top-right-radius:20px }
+.user .msg a:not(.btn) { color:#fff }
+.meta { margin:6px 16px 0; font-size:12px; color:var(--da-muted) } .row.user .meta { margin-right:4px }
+.row.agent .msg { box-shadow:none; background:var(--da-lavender) }
+/* composer: text on top, tools below, round send */
+.composer { padding:8px 16px 0; background:var(--da-bg) }
+.cbox { padding:12px 12px 8px 16px; border:1px solid #E5E5E5; border-radius:16px; box-shadow:none }
+:host([theme="dark"]) .cbox { border-color:var(--da-line) }
+.cbox.focus { border-color:var(--da-primary); box-shadow:0 0 0 1px var(--da-primary) }
+textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height:24px }
+.crow { align-items:center; gap:2px; margin-top:6px } .cfill { flex:1 }
+.crow .cicon { width:30px; height:30px; border-radius:8px } .crow .cicon svg { width:18px; height:18px }
+.send { width:32px; height:32px; border-radius:50% } .send:disabled { background:var(--da-subtle); color:#A0A4AB }
+.foot { padding:8px 16px calc(10px + env(safe-area-inset-bottom)); font-size:12px }
+/* bottom tab bar */
+.tabbar { flex:none; display:flex; background:var(--da-surface); box-shadow:0 0 25px rgba(9,14,21,.06); position:relative; z-index:5 }
+.tabbar[hidden] { display:none }
+.tab { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; height:72px; padding:12px 3px 10px; border:0; background:transparent; color:#6C6F74; font-size:14px; font-weight:400; cursor:pointer }
+.tab .ti { position:relative; display:grid; place-items:center; width:26px; height:26px } .tab svg { width:24px; height:24px }
+.tab.on { color:var(--da-primary); font-weight:600 } .tab:hover { color:var(--da-text) } .tab.on:hover { color:var(--da-primary) }
+.tbadge { position:absolute; top:-4px; right:-8px; min-width:16px; height:16px; padding:0 4px; border-radius:9px; background:#DF2020; color:#fff; font:700 11px/16px system-ui, sans-serif; text-align:center }
+/* Home */
+.view-home { overflow:hidden } .homev { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; position:relative; background:var(--da-bg) }
+.hero { position:relative; padding:24px 24px 120px; color:#FAFAFA;
+  background:linear-gradient(180deg, var(--da-hero) 0%, var(--da-hero) 58%, rgba(11,19,40,0) 100%), radial-gradient(120% 70% at 85% 0%, rgba(85,70,247,.55) 0%, rgba(85,70,247,0) 60%), var(--da-hero) }
+.hero::after { content:""; position:absolute; left:0; right:0; bottom:0; height:140px; background:linear-gradient(180deg, rgba(255,255,255,0) 0%, var(--da-bg) 100%) }
+.htopbar { display:flex; align-items:center; gap:10px; height:40px; margin:8px 0 0 16px }
+.hlogo { width:32px; height:32px; border-radius:8px; display:grid; place-items:center; background:var(--da-grad); color:#fff } .hlogo svg { width:18px; height:18px }
+.havs { flex:1; display:flex; justify-content:flex-end } .havs img { width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid var(--da-hero); margin-left:-8px; background:#2A3152 }
+.hclose { width:36px; height:36px; display:grid; place-items:center; border:0; border-radius:10px; background:transparent; color:#FAFAFA; cursor:pointer } .hclose:hover { background:rgba(255,255,255,.12) } .hclose svg { width:16px; height:16px }
+.hi { position:relative; z-index:1; margin:48px 0 0 16px; font-size:28px; line-height:34px; font-weight:600; letter-spacing:-.01em; color:#FAFAFA }
+.hi span { display:block } .hi .hi2 { color:rgba(250,250,250,.86) }
+.hcards { position:relative; z-index:2; display:flex; flex-direction:column; gap:10px; margin:-96px 20px 20px }
+.hcard { display:flex; align-items:center; gap:12px; width:100%; padding:16px; border:0; border-radius:12px; background:var(--da-surface); color:var(--da-text); text-align:left; box-shadow:var(--da-card-shadow); cursor:pointer; font-size:14px }
+.hcard:hover { box-shadow:0 4px 28px rgba(9,14,21,.1), 0 1px 4px rgba(9,14,21,.08) }
+.hcard .ht { flex:1; min-width:0 } .hcard b { display:block; font-size:14px; font-weight:600; line-height:20px } .hcard small { display:block; font-size:14px; line-height:20px; color:var(--da-muted) }
+.hcard > svg { flex:none; width:18px; height:18px; color:var(--da-primary) } .hcard .hci { flex:none; width:36px; height:36px; border-radius:10px; display:grid; place-items:center; background:var(--da-lavender); color:var(--da-primary) } .hcard .hci svg { width:18px; height:18px }
+.hcard.recent { flex-direction:column; align-items:stretch; gap:10px } .hcard.recent .rl { font-size:14px; font-weight:600 }
+.hcard.recent .rr { display:flex; align-items:center; gap:12px } .hcard.recent .ra { flex:none; width:32px; height:32px; border-radius:50%; overflow:hidden; display:grid; place-items:center; background:var(--da-grad); color:#fff } .hcard.recent .ra img { width:100%; height:100%; object-fit:cover } .hcard.recent .ra svg { width:16px; height:16px }
+.hcard.recent .rp { flex:1; min-width:0 } .hcard.recent .rp span { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis } .hcard.recent .rp small { font-size:13px } .hcard.recent .rr > svg { flex:none; width:16px; height:16px; color:var(--da-primary) }
+.hcard.searchc { display:block; padding:8px; cursor:default } .hcard.searchc:hover { box-shadow:var(--da-card-shadow) }
+.hsearch { display:flex; align-items:center; justify-content:space-between; width:100%; padding:10px 12px; border:0; border-radius:8px; background:#F5F5F5; color:var(--da-text); font-size:14px; font-weight:600; cursor:pointer }
+:host([theme="dark"]) .hsearch { background:var(--da-subtle) } .hsearch svg { width:16px; height:16px; color:var(--da-primary) }
+.alist { display:flex; flex-direction:column } .arow { display:flex; align-items:center; gap:12px; width:100%; padding:8px 12px; border:0; border-radius:8px; background:transparent; color:var(--da-text); font-size:14px; line-height:21px; text-align:left; cursor:pointer }
+.arow:hover { background:var(--da-subtle) } .arow span { flex:1; min-width:0 } .arow svg { flex:none; width:16px; height:16px; color:var(--da-primary) }
+/* Messages */
+.view-messages .hist { padding:8px 8px 96px } .newconvo.askq { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:3; width:auto; min-height:40px; padding:0 18px; border-radius:20px; box-shadow:0 4px 14px rgba(85,70,247,.35) }
+.convo { padding:12px; border-radius:12px } .avatar { width:40px; height:40px; border-radius:50%; overflow:hidden } .avatar img { width:100%; height:100%; object-fit:cover }
+/* Help center */
+.hsearchbar { flex:none; padding:0 12px 12px; background:var(--da-head); border-bottom:1px solid #EDEDED } :host([theme="dark"]) .hsearchbar { border-bottom-color:var(--da-line) }
+.hsearchbar[hidden] { display:none } .hsearchbar .searchbox svg { left:auto; right:12px; color:var(--da-primary) }
+.hq { width:100%; height:42px; padding:0 40px 0 12px; border:0; border-radius:10px; background:#F5F5F5; color:var(--da-text); font-size:14px } :host([theme="dark"]) .hq { background:var(--da-subtle) } .hq:focus { box-shadow:0 0 0 2px var(--da-primary) }
+.help { padding:0 0 24px } .help .hc-h { margin:0; padding:16px 20px 12px; font-size:16px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--da-text); border-bottom:1px solid #EDEDED } :host([theme="dark"]) .help .hc-h { border-bottom-color:var(--da-line) }
+.crowl { display:flex; align-items:center; gap:12px; width:100%; padding:16px 20px; border:0; border-bottom:1px solid #EDEDED; background:transparent; color:var(--da-text); text-align:left; cursor:pointer }
+:host([theme="dark"]) .crowl { border-bottom-color:var(--da-line) } .crowl:hover { background:var(--da-subtle) }
+.crowl .ct { flex:1; min-width:0 } .crowl b { display:block; font-size:14px; font-weight:600; line-height:21px } .crowl .cdsc { display:block; font-size:14px; line-height:21px } .crowl small { display:block; font-size:14px; line-height:21px; color:var(--da-muted) }
+.crowl > svg { flex:none; width:16px; height:16px; color:var(--da-primary) }
+.cinfo { padding:16px 20px; border-bottom:1px solid #EDEDED } :host([theme="dark"]) .cinfo { border-bottom-color:var(--da-line) } .cinfo b { display:block; font-size:16px; font-weight:600 } .cinfo p { margin:4px 0 0; font-size:14px } .cinfo small { display:block; margin-top:8px; font-size:13px; color:var(--da-muted) }
+.article { padding:24px 32px 32px; font-size:15px; line-height:1.6 } .article h1 { margin:0; font-size:24px; line-height:1.3; font-weight:700; letter-spacing:-.01em } .article .asum { margin:8px 0 0; color:var(--da-muted) }
+.article .aby { display:flex; align-items:center; gap:10px; margin:16px 0 20px; font-size:13px; color:var(--da-muted) } .article .aby .ra { width:32px; height:32px; border-radius:50%; overflow:hidden; background:var(--da-grad); display:grid; place-items:center; color:#fff } .article .aby img { width:100%; height:100%; object-fit:cover }
+.abody p { margin:0 0 14px } .abody h2 { margin:22px 0 8px; font-size:17px; font-weight:650 } .abody ul { margin:0 0 14px; padding-left:20px } .abody li { margin:4px 0 } .abody a { color:var(--da-primary) } .abody b { font-weight:650 }
+.ahelp { margin-top:24px; padding:16px; border-radius:12px; background:var(--da-subtle); display:flex; align-items:center; gap:12px; font-size:14px } .ahelp span { flex:1 }
+.arel { margin-top:24px } .arel h3 { margin:0 0 6px; font-size:13px; font-weight:650; color:var(--da-muted); text-transform:none; letter-spacing:0 }
+.hcontact { padding:4px 16px 0 } .hcontact h3 { margin:20px 4px 8px }
+.hempty { padding:32px 20px; text-align:center; color:var(--da-muted); font-size:14px }
+@media (max-width:520px) { .article { padding:20px } }
 `;
 
 const I = (d, w = 1.8) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -373,6 +472,8 @@ const SVG = {
   play: I('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/>'),
   user: I('<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/>'),
   chat: I('<path d="M4 5h16v11H8l-4 4z"/>'),
+  home: I('<path d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/>'),
+  askarrow: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.4 3.6l16.1 7.5a1 1 0 0 1 0 1.8L4.4 20.4a.7.7 0 0 1-1-.8L5.2 13l8.3-1-8.3-1L3.4 4.4a.7.7 0 0 1 1-.8z"/></svg>',
   clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/>', 2),
   arrowdown: I('<path d="M12 5v14M6 13l6 6 6-6"/>', 2),
@@ -385,6 +486,19 @@ const plain = (t) => clean(t).replace(/\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]/g, '').r
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'x' + Date.now().toString(16) + Math.random().toString(16).slice(2));
 const trunc = (s, n) => (s = String(s || ''), s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
+function articleMd(src) {
+  const inline = (t) => esc(t).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\[([^\]]+)\]\(((?:https?:\/\/|#dh-help=)[^\s)]+)\)/g, (m, label, url) => `<a href="${url}"${url.startsWith('#') ? '' : ' target="_blank" rel="noopener"'}>${label}</a>`);
+  const out = []; let list = null;
+  String(src || '').split(/\n/).forEach((line) => {
+    const l = line.trim();
+    if (/^[-*]\s+/.test(l)) { if (!list) { list = []; } list.push(`<li>${inline(l.replace(/^[-*]\s+/, ''))}</li>`); return; }
+    if (list) { out.push(`<ul>${list.join('')}</ul>`); list = null; }
+    if (!l) return;
+    if (/^#{1,3}\s+/.test(l)) out.push(`<h2>${inline(l.replace(/^#{1,3}\s+/, ''))}</h2>`); else out.push(`<p>${inline(l)}</p>`);
+  });
+  if (list) out.push(`<ul>${list.join('')}</ul>`);
+  return out.join('');
+}
 function md(text, srcs, api) {
   let t = esc(clean(text));
   t = t.replace(/\[GIF\]\((https?:\/\/[^\s)]+)\)/g, (m, u) => `<img class="gif" src="${u}" alt="GIF">`);
@@ -486,22 +600,42 @@ class DeepAssistant extends HTMLElement {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `deep-chat-${new Date().toISOString().slice(0, 10)}.txt`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
   switchTheme() { const next = this._isDark() ? 'light' : 'dark'; this.setAttribute('theme', next); local.set('da_theme', next); this._syncThemeItem(); }
+  // Views like Intercom's messenger: Home / Messages / Help are tabs (bottom bar), the chat and help pages sit on top
   showView(name) {
     if (name === 'history') name = 'messages';
-    if (!['chat', 'messages', 'help'].includes(name) || (name === 'help' && !this._tabs().includes('help'))) return;
-    const sh = this.shadowRoot, sub = name !== 'chat', changed = name !== this._view;
+    const tabs = this._tabs();
+    if (!['chat', 'messages', 'help', 'home'].includes(name) || ((name === 'help' || name === 'home') && !tabs.includes(name))) return;
+    const sh = this.shadowRoot, changed = name !== this._view;
+    if (name !== 'help') this._helpPage = null;
     this._view = name; this.$panel.dataset.view = name;
-    sh.querySelector('.view-chat').hidden = name !== 'chat'; sh.querySelector('.view-messages').hidden = name !== 'messages'; sh.querySelector('.view-help').hidden = name !== 'help';
-    ['.hav', '.brand', '.b-history', '.more'].forEach((s) => { sh.querySelector(s).hidden = sub; });
-    this.$back.hidden = !sub; const vt = sh.querySelector('.vtitle'); vt.hidden = !sub; vt.textContent = name === 'messages' ? 'History' : 'Help';
+    ['home', 'chat', 'messages', 'help'].forEach((v) => { sh.querySelector('.view-' + v).hidden = v !== name; });
+    this._paintHeader();
+    this.$panel.classList.toggle('wide', name === 'help' && !!this._helpPage && this._helpPage.page === 'article');
+    sh.querySelector('.tabbar').hidden = name === 'chat' || (name === 'help' && !!this._helpPage && this._helpPage.page === 'article') || tabs.length < 2;
+    sh.querySelectorAll('.tab').forEach((t) => { const on = t.dataset.tab === name; t.classList.toggle('on', on); t.setAttribute('aria-current', on ? 'page' : 'false'); });
     this._closePops();
     if (name === 'messages') this._renderConversations();
-    if (name === 'help') this._renderHelp();
-    if (name === 'chat') setTimeout(() => { if (!this._voice) this._focusInput(); }, 30); else if (changed) setTimeout(() => this.$back.focus({ preventScroll: true }), 30);
-    this._syncHome(); this._emit('view', { view: name });
+    if (name === 'help' && !this._helpPage) this._renderHelp();
+    if (name === 'home') this._renderHome();
+    if (name === 'chat') setTimeout(() => { if (!this._voice) this._focusInput(); }, 30); else if (changed && name !== 'home') setTimeout(() => { const t = sh.querySelector(this.$back.hidden ? '.close' : '.back'); if (t && !t.hidden) t.focus({ preventScroll: true }); }, 30);
+    this._syncHome(); this._emit('view', { view: name, page: this._helpPage ? this._helpPage.page : undefined });
+  }
+  _paintHeader() {
+    const sh = this.shadowRoot, v = this._view, chat = v === 'chat', sub = v === 'help' && !!this._helpPage, home = this._tabs().includes('home');
+    ['.hav', '.brand', '.more'].forEach((s) => { sh.querySelector(s).hidden = !chat; });
+    sh.querySelector('.b-history').hidden = true;
+    this.$back.hidden = !(sub || (chat && (home || this._tabs().length > 1)));
+    const vt = sh.querySelector('.vtitle'); vt.hidden = chat; vt.textContent = v === 'messages' ? 'Messages' : 'Help';
+    sh.querySelector('.hspacer.l').hidden = chat || sub; sh.querySelector('.hspacer.r').hidden = true;
+    sh.querySelector('.hsearchbar').hidden = !(v === 'help' && (!this._helpPage || this._helpPage.page !== 'article'));
+    this.$min.hidden = true;
+  }
+  _goBack() {
+    if (this._view === 'help' && this._helpPage) { const p = this._helpPage; this._helpPage = p.page === 'article' && p.from ? p.from : null; this.showView('help'); if (this._helpPage) this._paintHelpPage(); return; }
+    this.showView(this._tabs().includes('home') ? 'home' : 'messages');
   }
   // back-to-start arrow: only in the chat view once the conversation has messages (it stays in History)
-  _syncHome() { if (this.$home) this.$home.hidden = this._view !== 'chat' || !this._transcript.length; }
+  _syncHome() { if (this.$home) this.$home.hidden = true; }
   async openConversation(sid) {
     if (!sid) return;
     if (sid !== this._sid) {
@@ -573,7 +707,9 @@ class DeepAssistant extends HTMLElement {
     <button class="hbtn home" type="button" aria-label="Back to start" title="Back to start" hidden>${SVG.back}</button>
     <span class="hav" aria-hidden="true">${SVG.mark}</span>
     <div class="brand"><h1 class="ttl"></h1><p><span class="sub"></span><span class="sep" aria-hidden="true">·</span><span class="st"><i aria-hidden="true"></i><span class="stt">Connecting…</span></span></p></div>
+    <span class="hspacer l" hidden></span>
     <h2 class="vtitle" hidden></h2>
+    <span class="hspacer r" hidden></span>
     <button class="vpill" type="button" aria-label="Return to the voice call" title="Return to the call"><i></i><span>In a call</span></button>
     <button class="hbtn b-history" type="button" aria-label="Conversation history" title="History">${SVG.history}<span class="hbadge" hidden></span></button>
     <button class="hbtn more" type="button" aria-label="More options" title="More" aria-haspopup="menu" aria-expanded="false">${SVG.more}</button>
@@ -588,6 +724,18 @@ class DeepAssistant extends HTMLElement {
     </div>
   </header>
   <div class="views">
+    <section class="view view-home" aria-label="Home" hidden>
+      <div class="homev scroll">
+        <div class="hero"><div class="htopbar"><span class="hlogo" aria-hidden="true">${SVG.mark}</span><span class="havs"></span><button class="hclose" type="button" aria-label="Close" title="Close">${SVG.close}</button></div>
+          <h2 class="hi"><span class="hi1">Hi there 👋</span><span class="hi2">How can we help?</span></h2></div>
+        <div class="hcards">
+          <button class="hcard recent" type="button" hidden></button>
+          <button class="hcard askq" type="button"><span class="ht"><b>Ask a question</b><small>AI Agent and team can help</small></span>${SVG.askarrow}</button>
+          <button class="hcard bookc" type="button"><span class="hci">${SVG.cal}</span><span class="ht"><b>Book a call with Deep</b><small>Pick a time that suits you, right here</small></span>${SVG.chev}</button>
+          <div class="hcard searchc"><button class="hsearch" type="button"><span>Search for help</span>${SVG.search}</button><div class="alist harts"></div></div>
+        </div>
+      </div>
+    </section>
     <section class="view view-chat" aria-label="Chat">
       <div class="log scroll" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation"></div>
       <div class="composer">
@@ -597,19 +745,16 @@ class DeepAssistant extends HTMLElement {
         <form class="cbox">
           <div class="attach" hidden></div>
           <div class="rec" aria-live="polite"><i></i><span class="rlabel">Listening…</span><span class="rtime">0:00</span><button type="button" class="cicon rstop" aria-label="Stop dictation" title="Stop">${SVG.stop}</button></div>
+          <label class="vh" for="q">Message Deep</label>
+          <textarea id="q" class="q" rows="1" placeholder="Ask a question…" enterkeyhint="send"></textarea>
           <div class="crow">
             <input type="file" class="file" multiple hidden>
-            <div class="plus-wrap">
-              <button type="button" class="cicon b-plus" aria-label="Attach a file, emoji or dictation" title="Add" aria-haspopup="menu" aria-expanded="false">${SVG.plus}</button>
-              <div class="pmenu" role="menu" aria-label="Add to your message">
-                <button type="button" role="menuitem" class="b-clip">${SVG.clip}<span>Attach a file</span></button>
-                <button type="button" role="menuitem" class="b-emoji" aria-haspopup="dialog">${SVG.emoji}<span>Emoji</span></button>
-                <button type="button" role="menuitem" class="b-gif" aria-haspopup="dialog" hidden>${SVG.gif}<span>GIF</span></button>
-                <button type="button" role="menuitem" class="b-mic">${SVG.mic}<span>Dictate</span></button>
-              </div>
-            </div>
-            <label class="vh" for="q">Message Deep</label>
-            <textarea id="q" class="q" rows="1" placeholder="Ask anything…" enterkeyhint="send"></textarea>
+            <button type="button" class="cicon b-clip" aria-label="Attach a file" title="Attach a file">${SVG.clip}</button>
+            <button type="button" class="cicon b-emoji" aria-label="Emoji" title="Emoji" aria-haspopup="dialog">${SVG.emoji}</button>
+            <button type="button" class="cicon b-gif" aria-label="GIF" title="GIF" aria-haspopup="dialog" hidden>${SVG.gif}</button>
+            <button type="button" class="cicon b-mic" aria-label="Dictate" title="Dictate">${SVG.mic}</button>
+            <div class="plus-wrap" hidden><button type="button" class="cicon b-plus" aria-label="More" aria-haspopup="menu" aria-expanded="false" tabindex="-1">${SVG.plus}</button><div class="pmenu" role="menu" aria-label="Add to your message"></div></div>
+            <span class="cfill"></span>
             <button type="button" class="cicon speak" aria-label="Start a voice conversation with Deep" title="Voice conversation">${SVG.wave}</button>
             <button type="submit" class="send" aria-label="Send" title="Send" disabled><span class="i-send">${SVG.send}</span><span class="i-stop" hidden>${SVG.stop}</span></button>
           </div>
@@ -621,14 +766,22 @@ class DeepAssistant extends HTMLElement {
       <div class="hist scroll">
         <div class="htop">
           <div class="searchbox">${SVG.search}<label class="vh" for="msearch">Search conversations</label><input id="msearch" class="msearch" type="search" placeholder="Search conversations" autocomplete="off"></div>
-          <button class="btn primary block newconvo" type="button">${SVG.plus}<span>New conversation</span></button>
         </div>
         <div class="bookings" hidden><div class="mgroup" role="presentation">Your bookings</div><div class="brows" role="list" aria-label="Your bookings"></div></div>
         <div class="mrows" role="list" aria-label="Conversations"></div>
       </div>
+      <button class="btn primary newconvo askq" type="button"><span>Ask a question</span>${SVG.help}</button>
     </section>
-    <section class="view view-help" aria-label="Help" hidden><div class="help scroll"></div></section>
+    <section class="view view-help" aria-label="Help" hidden>
+      <div class="hsearchbar"><div class="searchbox"><label class="vh" for="hq">Search for help</label><input id="hq" class="hq" type="search" placeholder="Search for help" autocomplete="off">${SVG.search}</div></div>
+      <div class="help scroll"></div>
+    </section>
   </div>
+  <nav class="tabbar" aria-label="Sections">
+    <button class="tab" type="button" data-tab="home"><span class="ti">${SVG.home}</span><span>Home</span></button>
+    <button class="tab" type="button" data-tab="messages"><span class="ti">${SVG.chat}<span class="tbadge" hidden></span></span><span>Messages</span></button>
+    <button class="tab" type="button" data-tab="help"><span class="ti">${SVG.help}</span><span>Help</span></button>
+  </nav>
   <div class="voice" role="dialog" aria-label="Voice conversation">
     <div class="vhead"><b>Deep · Voice</b><span class="live" aria-hidden="true"></span><span class="vtimer" aria-label="Call duration">00:00</span><button type="button" class="hbtn v-min" aria-label="Minimize the call view (the call continues)" title="Back to chat">${SVG.chevdown}</button></div>
     <div class="vbody"><div class="vglow" aria-hidden="true"></div>
@@ -648,7 +801,15 @@ class DeepAssistant extends HTMLElement {
     // header
     this.$launcher.onclick = () => this.toggle(); this.$min.onclick = () => this.close();
     this.$close.onclick = () => { if (this.getAttribute('mode') === 'launcher') { this.stopVoice(); if (this._busy) this._stop(); this.close(); } else { this._emit('close'); this.newChat(); } };
-    this.$back.onclick = () => this.showView('chat');
+    this.$back.onclick = () => this._goBack();
+    sh.querySelectorAll('.tab').forEach((t) => { t.onclick = () => { if (t.dataset.tab === 'help') this._helpPage = null; this.showView(t.dataset.tab); }; });
+    sh.querySelector('.hclose').onclick = () => this.$close.click();
+    sh.querySelector('.askq').onclick = () => { this._emit('action', { action: 'home', label: 'Ask a question', kind: 'question' }); if (this._transcript.length) this.newChat(); else this.showView('chat'); };
+    sh.querySelector('.bookc').onclick = () => { this._emit('action', { action: 'home', label: 'Book a call', kind: 'booking' }); this.startBooking(); };
+    sh.querySelector('.hsearch').onclick = () => this.openHelp(true);
+    let hqT = null; sh.querySelector('.hq').addEventListener('input', (e) => { const v = e.target.value; clearTimeout(hqT); hqT = setTimeout(() => this._helpSearch(v), 300); });
+    // links to help articles (#dh-help=<slug>) open inside the messenger, from answers and from articles
+    sh.addEventListener('click', (e) => { const a = e.composedPath().find((n) => n.tagName === 'A' && n.getAttribute && /#dh-help=/.test(n.getAttribute('href') || '')); if (!a) return; e.preventDefault(); this.openArticle(decodeURIComponent(a.getAttribute('href').split('#dh-help=')[1] || '')); });
     this.$home = sh.querySelector('.home'); this.$home.onclick = () => this.newChat();
     sh.querySelector('.b-history').onclick = () => this.showView('messages');
     const more = sh.querySelector('.more'); more.onclick = (e) => { e.stopPropagation(); const o = !this.$menu.classList.contains('open'); this._closePops(); this.$menu.classList.toggle('open', o); more.setAttribute('aria-expanded', String(o)); if (o) this.$menu.querySelector('button').focus(); };
@@ -660,7 +821,7 @@ class DeepAssistant extends HTMLElement {
     this.$panel.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || e.defaultPrevented) return;
       if (this.$menu.classList.contains('open') || sh.querySelector('.pop.open, .pmenu.open')) { this._closePops(); return; }
       if (sh.querySelector('.voice.open')) { this._showVoice(false); return; }
-      if (this._view !== 'chat') { this.showView('chat'); return; }
+      if (this._view === 'help' && this._helpPage) { this._goBack(); return; }
       if (this.getAttribute('mode') === 'launcher') this.close(); });
     // history
     sh.querySelector('.newconvo').onclick = () => this.newChat();
@@ -695,16 +856,19 @@ class DeepAssistant extends HTMLElement {
     this._onVis = () => { const v = this._voice; if (v && v.orb) { if (document.visibilityState === 'hidden') v.orb.pause(); else if (this.hasAttribute('open') || this.getAttribute('mode') !== 'launcher') v.orb.resume(); } };
     document.addEventListener('visibilitychange', this._onVis);
     this._me = { signed_in: false, name: this.getAttribute('user-name'), email: this.getAttribute('user-email'), verified: false }; this._restore();  // paint at once; /me then refreshes the welcome (memory) without touching a live conversation
-    this._loadMe().then(() => { this._refreshWelcome(); this._refreshBadge(); }); this._autosize(); this._syncSend(); this._track(); this._health(); this._loadConfig();
+    this.showView(this._tabs().includes('home') ? 'home' : 'chat');
+    this._loadMe().then(() => { this._refreshWelcome(); this._refreshBadge(); if (this._view === 'home') this._renderHome(); }); this._autosize(); this._syncSend(); this._track(); this._health(); this._loadConfig();
     console.info('deep-assistant v' + VERSION + ' ready (api ' + this.api + ')');
     this._emit('ready', { sessionId: this._sid, version: VERSION });
   }
   _closePops() { const sh = this.shadowRoot; this.$menu.classList.remove('open'); sh.querySelector('.more').setAttribute('aria-expanded', 'false'); sh.querySelectorAll('.pop').forEach((p) => p.classList.remove('open')); sh.querySelectorAll('.b-emoji, .b-gif').forEach((b) => b.classList.remove('on')); sh.querySelector('.pmenu').classList.remove('open'); sh.querySelector('.b-plus').setAttribute('aria-expanded', 'false'); }
   _togglePop(which) { const p = this.shadowRoot.querySelector('.pop-' + which); const o = !p.classList.contains('open'); this._closePops(); p.classList.toggle('open', o); this.shadowRoot.querySelector('.b-' + which).classList.toggle('on', o); if (o) { p.querySelector('.search').focus(); if (which === 'gif' && !p.querySelector('.ggrid').children.length) this._searchGifs(''); } }
-  _applyCopy() { const sh = this.shadowRoot; sh.querySelector('.ttl').textContent = this.botName; sh.querySelector('.sub').textContent = this.getAttribute('subtitle') || 'AI assistant'; this.$panel.setAttribute('aria-label', this.botName + ' assistant'); }
+  _applyCopy() { const sh = this.shadowRoot; sh.querySelector('.ttl').textContent = this.botName; sh.querySelector('.sub').textContent = this.getAttribute('subtitle') || 'The team can also help'; this.$panel.setAttribute('aria-label', this.botName + ' assistant'); }
   _applyMode() { const launcher = this.getAttribute('mode') === 'launcher'; this.$min.hidden = !launcher; this.$close.hidden = !launcher; this.$panel.setAttribute('role', launcher ? 'dialog' : 'region'); }
   _applyFooter() { const a = this.shadowRoot.querySelector('.privacy'); a.href = this.getAttribute('privacy-url') || this._cfg.privacy_url || 'https://deependhq.com/privacy'; this.shadowRoot.querySelector('.foot').title = 'deep-assistant v' + VERSION + (this._cfg.version ? ' · server ' + this._cfg.version : ''); }
-  _applyTabs() { const help = this._tabs().includes('help'); this.$menu.querySelector('[data-act="help"]').hidden = !help; if (!help && this._view === 'help') this.showView('chat'); }
+  _applyTabs() { const tabs = this._tabs(), help = tabs.includes('help'); this.$menu.querySelector('[data-act="help"]').hidden = !help;
+    this.shadowRoot.querySelectorAll('.tab').forEach((t) => { t.hidden = !tabs.includes(t.dataset.tab); });
+    if ((!help && this._view === 'help') || (!tabs.includes('home') && this._view === 'home')) this.showView('chat'); else if (this._view) this.showView(this._view); }
   _syncThemeItem() { const b = this.$menu && this.$menu.querySelector('[data-act="theme"]'); if (!b) return; const dark = this._isDark(); b.querySelector('.ti').outerHTML = `<span class="ti">${dark ? SVG.sun : SVG.theme}</span>`; b.querySelector('.tl').textContent = dark ? 'Light theme' : 'Dark theme'; }
   _applyComposerCaps() { const sh = this.shadowRoot; sh.querySelector('.b-gif').hidden = !this._cfg.gif; const listen = this._canListen(); sh.querySelector('.b-mic').hidden = !listen; this.$speak.dataset.off = listen ? '' : '1'; this._syncSend(); }
   _applyOpen() {
@@ -720,7 +884,7 @@ class DeepAssistant extends HTMLElement {
     if (on && !this._vvH) { this._vvH = () => { this.$panel.style.setProperty('--da-vvh', Math.round(vv.height) + 'px'); this.$panel.style.setProperty('--da-vv-top', Math.round(vv.offsetTop) + 'px'); }; vv.addEventListener('resize', this._vvH); vv.addEventListener('scroll', this._vvH); this._vvH(); }
     else if (!on && this._vvH) { vv.removeEventListener('resize', this._vvH); vv.removeEventListener('scroll', this._vvH); this._vvH = null; }
   }
-  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); this._applyFooter(); this._applyComposerCaps(); if (this._view === 'help') this._renderHelp(); } } catch {} }
+  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); this._applyFooter(); this._applyComposerCaps(); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); } } catch {} }
   _setBusy(on) { this._busy = on; this.shadowRoot.querySelector('.i-send').hidden = on; this.shadowRoot.querySelector('.i-stop').hidden = !on; this.$send.classList.toggle('stop', on); this.$send.setAttribute('aria-label', on ? 'Stop generating' : 'Send'); this.$send.title = on ? 'Stop' : 'Send'; this.$log.setAttribute('aria-busy', String(on)); this._setStatus(on ? 'work' : (this._voice ? 'call' : 'idle')); this._syncSend(); }
   _setStatus(mode) {
     const sh = this.shadowRoot, st = sh.querySelector('.st'); if (!st) return;
@@ -822,8 +986,85 @@ class DeepAssistant extends HTMLElement {
     if (x.book) return this.startBooking(typeof x.book === 'string' ? x.book : null, x.label);
     return this._send(x.ask || x.label);
   }
+  // ---------------------------------------------------------------- Home (Intercom: hero, recent message, ask, book, search for help)
+  _hostPhoto() { const p = this._cfg && this._cfg.host_photo; return p ? (/^https?:/.test(p) ? p : this.api + p) : ''; }
+  _renderHome() {
+    const sh = this.shadowRoot; if (!this._rendered) return; const first = this._firstName();
+    sh.querySelector('.hi1').textContent = first ? `Hi ${first} 👋` : 'Hi there 👋';
+    const photo = this._hostPhoto(); sh.querySelector('.havs').innerHTML = photo ? `<img src="${esc(photo)}" alt="${esc((this._cfg && this._cfg.host_name) || 'Deep')}">` : '';
+    sh.querySelector('.hclose').hidden = this.getAttribute('mode') !== 'launcher';
+    const rc = sh.querySelector('.recent'), last = [...this._transcript].reverse().find((m) => m.text && !m.err);
+    rc.hidden = !last;
+    if (last) { const who = last.role === 'user' ? 'You' : (last.agent ? (last.author || 'Deep') : this.botName);
+      rc.innerHTML = `<span class="rl">Recent message</span><span class="rr"><span class="ra">${photo ? `<img src="${esc(photo)}" alt="">` : SVG.mark}</span><span class="rp"><span>${esc(trunc(plain(last.text), 90))}</span><small>${esc(who)} • ${relShort(last.ts)}</small></span>${SVG.chev}</span>`;
+      rc.onclick = () => this.showView('chat'); }
+    this._loadHelp().then((d) => {
+      const box = sh.querySelector('.harts'); const items = (d && d.top) || [];
+      sh.querySelector('.searchc').hidden = !this._tabs().includes('help');
+      box.innerHTML = items.map((a) => `<button class="arow" type="button" data-slug="${esc(a.slug)}"><span>${esc(a.title)}</span>${SVG.chev}</button>`).join('');
+      box.querySelectorAll('.arow').forEach((b) => { b.onclick = () => this.openArticle(b.dataset.slug); });
+    });
+  }
+  // ---------------------------------------------------------------- Help center (GET /help, /help/collections/{slug}, /help/articles/{slug}, /help/search)
+  async _loadHelp(force) {
+    if (!this.api || (this._cfg && this._cfg.help === false)) return null;
+    if (this._helpData && !force) return this._helpData;
+    try { const r = await fetch(this._url('/help')); if (r.ok) this._helpData = await r.json(); } catch {}
+    return this._helpData || null;
+  }
+  async _helpGet(path) { try { const r = await fetch(this._url(path)); return r.ok ? await r.json() : null; } catch { return null; } }
+  openHelp(focusSearch) { this._helpPage = null; this.showView('help'); if (focusSearch) setTimeout(() => this.shadowRoot.querySelector('.hq').focus(), 40); }
+  openCollection(slug) { this._helpPage = { page: 'collection', slug }; this.showView('help'); this._paintHelpPage(); }
+  openArticle(slug) { if (!slug) return; const from = this._view === 'help' && this._helpPage && this._helpPage.page === 'collection' ? this._helpPage : null; this._helpPage = { page: 'article', slug, from }; this.showView('help'); this._paintHelpPage(); }
+  async _renderHelp() {
+    const h = this.shadowRoot.querySelector('.help'); if (!h) return;
+    const q = this.shadowRoot.querySelector('.hq'); if (q && q.value.trim()) return this._helpSearch(q.value);
+    const d = await this._loadHelp(); if (this._view !== 'help' || this._helpPage) return;
+    const cols = (d && d.collections) || [];
+    h.innerHTML = (cols.length ? `<h3 class="hc-h">${cols.length} collection${cols.length > 1 ? 's' : ''}</h3>` + cols.map((c) => `<button class="crowl" type="button" data-slug="${esc(c.slug)}"><span class="ct"><b>${esc(c.title)}</b>${c.description ? `<span class="cdsc">${esc(c.description)}</span>` : ''}<small>${c.articles} article${c.articles === 1 ? '' : 's'}</small></span>${SVG.chev}</button>`).join('') : '')
+      + '<div class="hcontact"></div>';
+    h.querySelectorAll('.crowl').forEach((b) => { b.onclick = () => this.openCollection(b.dataset.slug); });
+    this._renderContact(h.querySelector('.hcontact'));
+  }
+  async _helpSearch(q) {
+    const h = this.shadowRoot.querySelector('.help'); q = (q || '').trim();
+    if (!q) { this._helpPage = null; return this._renderHelp(); }
+    if (this._view !== 'help') { this._helpPage = null; this.showView('help'); }
+    const d = await this._helpGet('/help/search?q=' + encodeURIComponent(q)); const items = (d && d.items) || [];
+    if (this.shadowRoot.querySelector('.hq').value.trim() !== q) return;
+    this._helpPage = null; this._emit('action', { action: 'help_search', label: q, kind: 'help' });
+    h.innerHTML = items.length ? `<h3 class="hc-h">${items.length} result${items.length > 1 ? 's' : ''}</h3>` + items.map((a) => `<button class="crowl" type="button" data-slug="${esc(a.slug)}"><span class="ct"><b>${esc(a.title)}</b>${a.summary ? `<small>${esc(a.summary)}</small>` : ''}</span>${SVG.chev}</button>`).join('')
+      : `<div class="hempty">No articles match “${esc(q)}”.<br><br><button class="btn primary" type="button">${SVG.chat}<span>Ask the assistant</span></button></div>`;
+    h.querySelectorAll('.crowl').forEach((b) => { b.onclick = () => this.openArticle(b.dataset.slug); });
+    const ask = h.querySelector('.hempty .btn'); if (ask) ask.onclick = () => this.ask(q);
+  }
+  async _paintHelpPage() {
+    const h = this.shadowRoot.querySelector('.help'), p = this._helpPage; if (!h || !p) return;
+    h.innerHTML = '<div class="sk"><span class="a"></span><span class="l"><i></i><i></i></span></div>'.repeat(3); h.scrollTop = 0;
+    if (p.page === 'collection') {
+      const c = await this._helpGet('/help/collections/' + encodeURIComponent(p.slug)); if (this._helpPage !== p) return;
+      if (!c) { h.innerHTML = '<div class="hempty">This collection is not available.</div>'; return; }
+      this.shadowRoot.querySelector('.vtitle').textContent = 'Help';
+      h.innerHTML = `<div class="cinfo"><b>${esc(c.title)}</b>${c.description ? `<p>${esc(c.description)}</p>` : ''}<small>${c.articles.length} article${c.articles.length === 1 ? '' : 's'}${c.authors && c.authors.length ? ' · By ' + esc(c.authors.join(' and ')) : ''}</small></div>`
+        + c.articles.map((a) => `<button class="crowl" type="button" data-slug="${esc(a.slug)}"><span class="ct"><span class="cdsc">${esc(a.title)}</span></span>${SVG.chev}</button>`).join('');
+      h.querySelectorAll('.crowl').forEach((b) => { b.onclick = () => this.openArticle(b.dataset.slug); });
+      return;
+    }
+    const a = await this._helpGet('/help/articles/' + encodeURIComponent(p.slug)); if (this._helpPage !== p) return;
+    if (!a) { h.innerHTML = '<div class="hempty">This article is not available any more.</div>'; return; }
+    this.shadowRoot.querySelector('.vtitle').textContent = '';
+    const photo = this._hostPhoto(), when = a.updated_at ? new Date(a.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+    h.innerHTML = `<article class="article"><h1>${esc(a.title)}</h1>${a.summary ? `<p class="asum">${esc(a.summary)}</p>` : ''}
+      <div class="aby"><span class="ra">${photo ? `<img src="${esc(photo)}" alt="">` : SVG.mark}</span><span>${a.author ? 'Written by ' + esc(a.author) : ''}${when ? `<br>Updated ${esc(when)}` : ''}</span></div>
+      <div class="abody">${articleMd(a.body)}</div>
+      <div class="ahelp"><span>Still need help?</span><button class="btn primary sm a-ask" type="button">${SVG.chat}<span>Ask a question</span></button></div>
+      ${a.related && a.related.length ? `<div class="arel"><h3>Related articles</h3><div class="alist">${a.related.map((r) => `<button class="arow" type="button" data-slug="${esc(r.slug)}"><span>${esc(r.title)}</span>${SVG.chev}</button>`).join('')}</div></div>` : ''}</article>`;
+    h.querySelector('.a-ask').onclick = () => { this._emit('action', { action: 'help_article_ask', label: a.title, kind: 'question' }); if (this._transcript.length) this.newChat(); else this.showView('chat'); };
+    h.querySelectorAll('.arel .arow').forEach((b) => { b.onclick = () => this.openArticle(b.dataset.slug); });
+    this._emit('help', { article: a.slug });
+  }
   // ---------------------------------------------------------------- history + help
-  _setBadge(n) { this._unread = n; const b = this.shadowRoot.querySelector('.hbadge'); b.hidden = !n; b.textContent = String(n); this.shadowRoot.querySelector('.b-history').setAttribute('aria-label', n ? `Conversation history, ${n} unread` : 'Conversation history'); const lb = this.shadowRoot.querySelector('.lbadge'); lb.hidden = !n; lb.textContent = String(n); }
+  _setBadge(n) { this._unread = n; const b = this.shadowRoot.querySelector('.hbadge'); b.hidden = !n; b.textContent = String(n); this.shadowRoot.querySelector('.b-history').setAttribute('aria-label', n ? `Conversation history, ${n} unread` : 'Conversation history'); const lb = this.shadowRoot.querySelector('.lbadge'); lb.hidden = !n; lb.textContent = String(n); const tb = this.shadowRoot.querySelector('.tbadge'); if (tb) { tb.hidden = !n; tb.textContent = n ? String(n) : ''; } }
   async _conversations() {
     if (!this.api || (!this._vid && !this.getAttribute('token'))) return { items: [], unread_conversations: 0 };
     try { const r = await fetch(this._url('/conversations'), { headers: this._headers(false) }); return r.ok ? await r.json() : { items: [], unread_conversations: 0, error: true }; } catch { return { items: [], unread_conversations: 0, error: true }; }
@@ -908,8 +1149,8 @@ class DeepAssistant extends HTMLElement {
       try { const r = await fetch(this._url('/conversations/' + encodeURIComponent(sid)), { method: 'PATCH', headers: this._headers(), body: JSON.stringify({ title }) }); if (r.ok) { const d = await r.json(); c.title = d.title; c.title_source = 'user'; ok = true; } } catch {}
       this._toast(ok ? 'Renamed' : "Couldn't rename it. Try again."); f.remove(); this._paintConversations(); };
   }
-  _renderHelp() {
-    const h = this.shadowRoot.querySelector('.help'); const sc = this._shortcut(); const listen = this._canListen();
+  _renderContact(h) {
+    const sc = this._shortcut(); const listen = this._canListen();
     const common = ((this._cfg && Array.isArray(this._cfg.suggestions)) ? this._cfg.suggestions : []).filter((s) => s && !BOOK_RE.test(s));
     const qs = (common.length ? common : [ACTIONS.explore.ask, ACTIONS.about.ask, ACTIONS.usecases.ask]).slice(0, 5);
     const item = (cls, icon, label, small, tail) => `<span class="ai">${icon}</span><span class="al">${label}<small>${small}</small></span>${tail || SVG.chev}`;
@@ -941,12 +1182,12 @@ class DeepAssistant extends HTMLElement {
     const col = document.createElement('div'); col.className = 'col';
     const d = document.createElement('div'); d.className = 'msg'; d.textContent = text; col.appendChild(d);
     const meta = document.createElement('div'); meta.className = 'meta'; const when = relShort(ts || Date.now());
-    meta.innerHTML = role === 'bot' ? `<span class="vh">${esc(this.botName)} said, </span>${esc(this.botName)} · ${when}` : `<span class="vh">You said, </span>${when}`; col.appendChild(meta);
+    meta.innerHTML = role === 'bot' ? `<span class="vh">${esc(this.botName)} said, </span>${esc(this.botName)} • AI Agent • ${when}` : `<span class="vh">You said, </span>${when}`; col.appendChild(meta);
     row.appendChild(col); this.$log.appendChild(row); this._stick = stick; this._scroll(); return d;
   }
   _markAgent(el, author, ts) {  // a reply from the team (app/team.py): same bubble, says who wrote it
     const row = el.closest('.row'); row.classList.add('agent'); const meta = row.querySelector('.meta'); const who = esc(author || 'Deep');
-    if (meta) meta.innerHTML = `<span class="vh">${who} from the team said, </span><b>${who}</b> · Team · ${relShort(ts ? new Date(ts).getTime() : Date.now())}`;
+    if (meta) meta.innerHTML = `<span class="vh">${who} from the team said, </span><b>${who}</b> • Team • ${relShort(ts ? new Date(ts).getTime() : Date.now())}`;
   }
   _addAgent(m) {
     const ts = new Date(m.ts).getTime() || Date.now(); const el = this._add('bot', '', ts); this._markAgent(el, m.author, ts); this._setText(el, m.text);

@@ -421,6 +421,39 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_status_at TIMESTAMPTZ;
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_notified_at TIMESTAMPTZ;  -- last "visitor wrote again" email to the host
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS author TEXT;               -- role 'agent': who on the team wrote it
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ;   -- role 'agent': emailed to the visitor
+
+-- Help center (app/help.py, docs/ROADMAP.md step 3): collections of articles shown in the widget's Help tab and Home
+-- search. source: 'site' (made from a deependhq.com page, which retrieval already indexes), 'builtin' (written for the
+-- assistant: booking, privacy...) or 'owner' (written in the console). builtin and owner articles feed the answers.
+CREATE TABLE IF NOT EXISTS help_collections (
+    id          BIGSERIAL PRIMARY KEY,
+    slug        TEXT UNIQUE NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    position    INT NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS help_articles (
+    id            BIGSERIAL PRIMARY KEY,
+    collection_id BIGINT REFERENCES help_collections(id) ON DELETE SET NULL,
+    slug          TEXT UNIQUE NOT NULL,
+    title         TEXT NOT NULL,
+    summary       TEXT NOT NULL DEFAULT '',
+    body          TEXT NOT NULL DEFAULT '',
+    author        TEXT NOT NULL DEFAULT '',
+    source        TEXT NOT NULL DEFAULT 'owner',
+    source_url    TEXT,
+    published     BOOLEAN NOT NULL DEFAULT true,
+    featured      BOOLEAN NOT NULL DEFAULT false,
+    position      INT NOT NULL DEFAULT 0,
+    views         INT NOT NULL DEFAULT 0,
+    embedding     vector({EMBED_DIM}),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS help_articles_collection_idx ON help_articles(collection_id, position);
+ALTER TABLE help_articles ADD COLUMN IF NOT EXISTS embedding vector({EMBED_DIM});  -- re-added after a model change
 """
 
 _pool: ConnectionPool | None = None
@@ -466,6 +499,8 @@ def init_schema() -> None:
             c.execute("DROP TABLE IF EXISTS gap_drafts")
             c.execute("DROP TABLE IF EXISTS gap_asks")
             c.execute("DELETE FROM pages")
+            # help articles are written by people: keep them, only their vectors go (app/help.py re-embeds at start-up)
+            c.execute("ALTER TABLE IF EXISTS help_articles DROP COLUMN IF EXISTS embedding")
             c.execute(SCHEMA)
         c.commit()
 

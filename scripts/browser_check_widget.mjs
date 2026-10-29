@@ -61,8 +61,14 @@ try {
   check(await evaluate("getComputedStyle(document.getElementById('panel').shadowRoot.querySelector('.panel')).fontFamily.includes('Inter')"), "component uses the Indigo Dream type stack (Inter, then system fonts)");
   await waitFor(P("panel", "el._online === true"), 10000, "health check"); check(true, "health check passes inside the component");
   // Indigo Dream interface: navy header, app background, welcome screen, more-menu, composer with Voice/send, privacy footer
-  check(await evaluate(P("panel", "sh.querySelector('.brand .sub').textContent === 'AI assistant' && getComputedStyle(sh.querySelector('.panel')).backgroundColor === 'rgb(246, 247, 252)' && getComputedStyle(sh.querySelector('header')).backgroundColor === 'rgb(21, 27, 50)'")), "restyle: #F6F7FC app background, midnight-navy header, subtitle 'AI assistant'");
-  check(await evaluate(P("panel", "/Hi! I'm Deep/.test(sh.querySelector('.welcome h2').textContent)")), "welcome: 'Hi! I'm Deep' title for anonymous visitors");
+  check(await evaluate(P("panel", "sh.querySelector('.brand .sub').textContent === 'The team can also help' && getComputedStyle(sh.querySelector('.panel')).backgroundColor === 'rgb(255, 255, 255)' && getComputedStyle(sh.querySelector('header')).backgroundColor === 'rgb(255, 255, 255)'")), "restyle (Intercom): white messenger and header, subtitle 'The team can also help'");
+  // Home tab (Intercom): opens first, hero greeting, Ask a question, Book a call, Search for help with top articles, tab bar
+  await waitFor(P("panel", "el._view === 'home' && sh.querySelectorAll('.harts .arow').length >= 1"), 15000, "Home with help articles");
+  check(await evaluate(P("panel", "/Hi .*👋/.test(sh.querySelector('.hi1').textContent) && /How can we help/.test(sh.querySelector('.hi2').textContent) && !!sh.querySelector('.askq') && !!sh.querySelector('.bookc') && sh.querySelectorAll('.harts .arow').length >= 1 && !sh.querySelector('.tabbar').hidden && [...sh.querySelectorAll('.tab:not([hidden]) > span:last-child')].map(t => t.textContent.trim()).join('|') === 'Home|Messages|Help'")), "home: greeting, Ask a question, Book a call, Search for help with top articles, Home|Messages|Help tab bar");
+  check(await evaluate(P("panel", "getComputedStyle(sh.querySelector('header')).display === 'none' && sh.querySelector('.tab.on').dataset.tab === 'home'")), "home: no header, Home tab active");
+  await evaluate(P("panel", "(sh.querySelector('.askq').click(), true)")); await sleep(200);
+  check(await evaluate(P("panel", "el._view === 'chat' && !sh.querySelector('.back').hidden && sh.querySelector('.tabbar').hidden")), "home: Ask a question opens the chat with a back arrow and no tab bar");
+  check(await evaluate(P("panel", "/Hi, I'm Deep/.test(sh.querySelector('.welcome h2').textContent)")), "welcome: 'Hi, I'm Deep' title for anonymous visitors");
   check(await evaluate(P("panel", "/explore LakeB2B's solutions/.test(sh.querySelector('.welcome p').textContent)")), "welcome: intro explains what the assistant can do");
   await evaluate(P("panel", "(sh.querySelector('.more').click(), true)")); await sleep(150);
   check(await evaluate(P("panel", "sh.querySelector('.menu').classList.contains('open') && [...sh.querySelectorAll('.menu button > span:last-child')].map(s => s.textContent).join('|') === 'New conversation|Help & contact|Download transcript|Dark theme'")), "header: ⋯ menu with New conversation, Help & contact, Download transcript, Dark theme (no forget-me)");
@@ -129,7 +135,7 @@ try {
   check(ag.sourcesRow && ag.toolsRow, "agent: sources row and action icons under the answer");
 
   check(b.tools >= 3, "thumbs and copy tools rendered");
-  check(await evaluate(P("panel", "(() => { const m = [...sh.querySelectorAll('.row.bot .msg')].pop(); const cs = getComputedStyle(m); return cs.borderTopLeftRadius === '6px' && cs.backgroundColor === 'rgb(255, 255, 255)' && /Deep · /.test(m.parentElement.querySelector('.meta').textContent); })()")), "restyle: white bot bubble with a 6px tail corner and a 'Deep · time' meta line");
+  check(await evaluate(P("panel", "(() => { const m = [...sh.querySelectorAll('.row.bot .msg')].pop(); const cs = getComputedStyle(m); return cs.borderTopLeftRadius === '20px' && cs.backgroundColor === 'rgb(245, 245, 245)' && /Deep • AI Agent • /.test(m.parentElement.querySelector('.meta').textContent); })()")), "restyle (Intercom): grey rounded bot bubble and a 'Deep • AI Agent • time' meta line");
   check(await evaluate("document.getElementById('events').textContent.includes('panel  answer')"), "host page received the deep-assistant:answer event");
   await shot("widget_panel.png");
 
@@ -180,12 +186,12 @@ try {
   { const del = await fetch(`${BASE}/admin/custom-answers/${cardId}`, { method: "DELETE", headers: CH }); check(del.ok, "cards: test custom answer deleted again"); cardId = null; }
 
   // ---- History screen: list, reopen, read state, new chat, navigation
-  check(await evaluate(P("panel", "!sh.querySelector('.tabs') && !sh.querySelector('.b-history').hidden")), "nav: History button in the header, no bottom tab bar");
+  check(await evaluate(P("panel", "!!sh.querySelector('.tabbar') && sh.querySelector('.b-history').hidden && !sh.querySelector('.back').hidden")), "nav (Intercom): bottom tab bar, a back arrow in the chat, no History button in the header");
   const firstSid = await evaluate(P("panel", "el.sessionId"));
   await evaluate(P("panel", "(sh.querySelector('.b-history').click(), true)"));
   await waitFor(P("panel", "sh.querySelectorAll('.hist .convo').length >= 1"), 10000, "conversation list");
-  check(await evaluate(P("panel", "sh.querySelector('.vtitle').textContent")) === "History" && await evaluate(P("panel", "!sh.querySelector('.view-chat').offsetParent")), "history: header reads 'History', chat view hidden");
-  check(await evaluate(P("panel", "!!sh.querySelector('.newconvo') && !sh.querySelector('.back').hidden")), "history: 'New conversation' button and a back arrow");
+  check(await evaluate(P("panel", "sh.querySelector('.vtitle').textContent")) === "Messages" && await evaluate(P("panel", "!sh.querySelector('.view-chat').offsetParent")), "messages: header reads 'Messages', chat view hidden");
+  check(await evaluate(P("panel", "/Ask a question/.test(sh.querySelector('.newconvo').textContent) && !sh.querySelector('.tabbar').hidden && sh.querySelector('.tab.on').dataset.tab === 'messages'")), "messages: 'Ask a question' button and the tab bar with Messages active");
   let rows = await evaluate(P("panel", "[...sh.querySelectorAll('.hist .convo')].map(b => ({ sid: b.dataset.sid, name: b.querySelector('.n').textContent, preview: b.querySelector('.p').textContent, time: (b.querySelector('.ctime') || b.querySelector('.cur-tag')).textContent, unread: !!b.querySelector('.dot') }))"));
   check(rows.length >= 1 && rows[0].sid === firstSid && /Nordwind|Lake B2B/i.test(rows[0].preview) && /^(now|\d+m|Current)$/.test(rows[0].time) && !rows[0].unread, `messages: row shows bot name, last-message preview and relative time (${rows[0].time}), read`);
   check(await evaluate(P("panel", "sh.querySelector('.hbadge').hidden")), "history: no unread badge after reading");
@@ -204,7 +210,7 @@ try {
   await evaluate(P("panel", "(el.showView('chat'), el.showView('messages'), true)")); await waitFor(P("panel", "sh.querySelectorAll('.hist .convo').length >= 2"), 10000, "list again");
   const row0 = await evaluate(P("panel", `(() => { const b = sh.querySelector('.convo[data-sid=${JSON.stringify(firstSid)}]'); const n = b.querySelector('.n'), p = b.querySelector('.p'); const cs = getComputedStyle(n); return { title: n.textContent, preview: p.textContent, weight: cs.fontWeight, size: cs.fontSize, nowrap: cs.whiteSpace === 'nowrap' && cs.textOverflow === 'ellipsis', group: sh.querySelector('.mrows .mgroup') && sh.querySelector('.mrows .mgroup').textContent, avatar: Math.round(b.querySelector('.avatar').getBoundingClientRect().width), overflow: sh.querySelector('.mrows').scrollWidth > sh.querySelector('.mrows').clientWidth, timeRight: b.querySelector('.ctime').getBoundingClientRect().left > n.getBoundingClientRect().right - 1 }; })()`));
   check(row0.title === (titled && titled.title) && !/deep >_/.test(row0.title) && row0.preview.length > 0, "messages: row shows the generated title, not the bot name, with a preview line");
-  check(row0.weight >= 600 && row0.size === "13.5px" && row0.nowrap && row0.avatar === 34 && row0.group === "Today" && !row0.overflow && row0.timeRight, `history: 13.5px semibold one-line title, 34px avatar, grouped under Today, time in its own column, no horizontal overflow`);
+  check(row0.weight >= 600 && row0.size === "13.5px" && row0.nowrap && row0.avatar === 40 && row0.group === "Today" && !row0.overflow && row0.timeRight, `messages: 13.5px semibold one-line title, 40px round avatar, grouped under Today, time in its own column, no horizontal overflow`);
   await evaluate(P("panel", "(() => { const s = sh.querySelector('.msearch'); s.value = 'zzzz-no-match'; s.dispatchEvent(new Event('input')); return true; })()")); await sleep(150);
   check(await evaluate(P("panel", "sh.querySelectorAll('.hist .convo').length === 0 && /match/.test(sh.querySelector('.hist .empty').textContent)")), "messages: search filters the list");
   await evaluate(P("panel", "(() => { const s = sh.querySelector('.msearch'); s.value = ''; s.dispatchEvent(new Event('input')); return true; })()")); await sleep(150);
@@ -216,16 +222,34 @@ try {
   await evaluate(P("panel", `(sh.querySelector('.convo[data-sid=${JSON.stringify(firstSid)}]').click(), true)`));
   await waitFor(P("panel", "el.view === 'chat' && el.sessionId === " + JSON.stringify(firstSid)), 10000, "reopen first conversation");
   // 4 user rows: the two questions above plus the two the answer-card block adds to this same conversation (CARD_Q and the ask button); drop the card block -> 2
-  check(await evaluate(P("panel", "sh.querySelectorAll('.row.user').length === 4 && [...sh.querySelectorAll('.row.user .msg')].some(m => /Lake B2B/i.test(m.textContent)) && sh.querySelectorAll('.row.bot .tool').length >= 3 && !sh.querySelector('.b-history').hidden")), "history: reopened conversation shows its full history with tools; History stays one tap away");
-  await evaluate(P("panel", "(sh.querySelector('.b-history').click(), true)")); await sleep(300);
-  check(await evaluate(P("panel", "el.view === 'messages'")), "history: header button returns to the list");
+  check(await evaluate(P("panel", "sh.querySelectorAll('.row.user').length === 4 && [...sh.querySelectorAll('.row.user .msg')].some(m => /Lake B2B/i.test(m.textContent)) && sh.querySelectorAll('.row.bot .tool').length >= 3 && !sh.querySelector('.back').hidden")), "messages: reopened conversation shows its full history with tools; the back arrow leads Home");
   await evaluate(P("panel", "(sh.querySelector('.back').click(), true)")); await sleep(300);
-  check(await evaluate(P("panel", "el.view === 'chat' && el.sessionId === " + JSON.stringify(firstSid))), "history: back arrow returns to the open conversation");
+  check(await evaluate(P("panel", "el.view === 'home' && !sh.querySelector('.recent').hidden")), "nav: back arrow goes Home, which shows the recent message");
+  await evaluate(P("panel", "(sh.querySelector('.tab[data-tab=messages]').click(), true)")); await sleep(300);
+  check(await evaluate(P("panel", "el.view === 'messages'")), "nav: the Messages tab returns to the list");
+  await evaluate(P("panel", "(sh.querySelector('.recent') && el.showView('home'), sh.querySelector('.recent').click(), true)")); await sleep(300);
+  check(await evaluate(P("panel", "el.view === 'chat' && el.sessionId === " + JSON.stringify(firstSid))), "nav: the recent message on Home returns to the open conversation");
   const unreadNow = await (await fetch(`${BASE}/conversations`, { headers: { "X-Visitor-Id": await evaluate(P("panel", "el._vid")), Origin: BASE } })).json();
   check(unreadNow.unread_conversations === 0, "messages: API reports no unread conversations after both were read");
   await evaluate(P("panel", "(sh.querySelector('.more').click(), sh.querySelector('.menu [data-act=help]').click(), true)")); await sleep(200);
   check(await evaluate(P("panel", "sh.querySelector('.vtitle').textContent === 'Help' && sh.querySelectorAll('.help .act').length >= 3")), "help: contact, booking and voice actions rendered");
   check(await evaluate(P("panel", "/scheduler\\.zoom\\.us/.test([...sh.querySelectorAll('.help a.act')].map(a => a.href).join(' '))")), "help: external scheduler link kept");
+  // help center (app/help.py): collections -> collection -> article (wide panel, no tab bar) -> back; search; #dh-help links
+  await waitFor(P("panel", "sh.querySelectorAll('.help .crowl').length >= 1"), 10000, "help collections");
+  check(await evaluate(P("panel", "/collection/.test(sh.querySelector('.help .hc-h').textContent) && !sh.querySelector('.hsearchbar').hidden && sh.querySelector('.tab.on').dataset.tab === 'help'")), "help center: collections listed with the search bar, Help tab active");
+  await evaluate(P("panel", "(sh.querySelector('.help .crowl').click(), true)")); await waitFor(P("panel", "!!sh.querySelector('.cinfo')"), 10000, "collection page");
+  check(await evaluate(P("panel", "sh.querySelectorAll('.help .crowl').length >= 1 && !sh.querySelector('.back').hidden")), "help center: a collection lists its articles, with a back arrow");
+  await evaluate(P("panel", "(sh.querySelector('.help .crowl').click(), true)")); await waitFor(P("panel", "!!sh.querySelector('.article h1')"), 10000, "article page");
+  check(await evaluate(P("panel", "sh.querySelector('.article h1').textContent.length > 3 && sh.querySelector('.abody').textContent.length > 20 && sh.querySelector('.tabbar').hidden && sh.querySelector('.hsearchbar').hidden")), "help center: the article opens full width, without the tab bar");
+  await evaluate(P("panel", "(sh.querySelector('.back').click(), true)")); await sleep(300);
+  check(await evaluate(P("panel", "!!sh.querySelector('.cinfo')")), "help center: back from the article returns to its collection");
+  await evaluate(P("panel", "(() => { const q = sh.querySelector('.hq'); q.value = 'cancel my call'; q.dispatchEvent(new Event('input')); return true; })()"));
+  await waitFor(P("panel", "/result/.test((sh.querySelector('.help .hc-h') || {}).textContent || '')"), 10000, "help search results");
+  check(await evaluate(P("panel", "/cancel/i.test(sh.querySelector('.help .crowl').textContent)")), "help center: search finds the reschedule/cancel article");
+  await evaluate(P("panel", "(() => { const q = sh.querySelector('.hq'); q.value = ''; q.dispatchEvent(new Event('input')); return true; })()")); await sleep(500);
+  await evaluate(P("panel", "(() => { const a = document.createElement('a'); a.href = 'https://deependhq.com/#dh-help=who-is-deep'; a.textContent = 'x'; el.showView('chat'); sh.querySelector('.log').appendChild(a); a.click(); a.remove(); return true; })()"));
+  await waitFor(P("panel", "!!sh.querySelector('.article h1')"), 10000, "article from a link");
+  check(await evaluate(P("panel", "el.view === 'help' && /Who is Deep/.test(sh.querySelector('.article h1').textContent)")), "help center: a #dh-help= link in the chat opens that article inside the messenger");
   // welcome actions (starts a new chat, so it runs after the History checks)
   const caps = await evaluate(P("panel", "(() => { el.newChat(); const c = [...sh.querySelectorAll('.welcome .act')].map(x => x.textContent.trim()); return { n: c.length, c, st: sh.querySelector('.st .stt').textContent }; })()"));
   check(caps.n === 4 && caps.c[0] === 'Explore data solutions' && caps.c[3] === 'Book a meeting', `welcome: four actions in the empty chat (${caps.c.join(' | ')})`);
@@ -289,7 +313,7 @@ try {
   // History page lists the visitor's bookings; a row opens a booking card with Reschedule / Cancel
   await evaluate(P("launcher", "(el.showView('history'), true)")); await waitFor(P("launcher", "!!sh.querySelector('.brows .brow')"), 15000, "booking row on the History page"); await sleep(200);
   check(await evaluate(P("launcher", "(() => { const r = sh.querySelector('.brows .brow'); return /LakeB2B|Discovery|Walkthrough|GTM/i.test(r.textContent) && !!r.querySelector('.bstate') && !sh.querySelector('.bookings').hidden; })()")), "history: 'Your bookings' lists the booking with its state chip");
-  await evaluate(P("launcher", "(sh.querySelector('.brows .brow').click(), true)")); await waitFor(P("launcher", "!!sh.querySelector('.bdetail')"), 10000, "booking card"); await sleep(200);
+  await evaluate(P("launcher", "((sh.querySelector('.brows .brow:not(.cancelled):not(.past)') || sh.querySelector('.brows .brow')).click(), true)")); await waitFor(P("launcher", "!!sh.querySelector('.bdetail')"), 10000, "booking card"); await sleep(200);
   check(await evaluate(P("launcher", "el._view === 'chat' && /Status/.test(sh.querySelector('.bdetail').textContent) && !!sh.querySelector('.bdetail .bd-move') && !!sh.querySelector('.bdetail .bd-cancel')")), "history: tapping the booking opens its card in the chat with Reschedule and Cancel");
   // reschedule from the chat (docs/BROWSER_BOOKING.md): the welcome screen offers it for the upcoming booking, two steps, the held time moves
   await evaluate(P("launcher", "(el.newChat(), true)")); await waitFor(P("launcher", "!!sh.querySelector('.welcome .act.resched')"), 15000, "reschedule action on the welcome screen"); await sleep(200);

@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     health_cron: str = Field(default="*/10 * * * *", alias="HEALTH_CRON")
     alert_email: str = Field(default="", alias="ALERT_EMAIL")
     credit_alert_usd: float = Field(default=2.0, alias="CREDIT_ALERT_USD")   # warn when the model key has less left than this
+    # help center (app/help.py): Help tab, Home search card, and owner/builtin articles as answer sources
+    help_enabled: bool = Field(default=True, alias="HELP_ENABLED")
+    help_search_min_score: float = Field(default=0.6, alias="HELP_SEARCH_MIN_SCORE")
+    help_answer_min_score: float = Field(default=0.62, alias="HELP_ANSWER_MIN_SCORE")  # cite an article in a chat answer
     # the team answering inside the chat (app/team.py)
     team_reply_author: str = Field(default="Deep", alias="TEAM_REPLY_AUTHOR")            # name shown on console replies
     team_email_after_minutes: int = Field(default=3, alias="TEAM_EMAIL_AFTER_MINUTES")  # unread team reply -> email
