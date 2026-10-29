@@ -31,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.30.2';
+const VERSION = '2026.10.30.3';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -474,10 +474,13 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
 .ncard.nrow:last-child { border-bottom:0 } .ncard.nrow:hover { box-shadow:none; background:var(--da-subtle) }
 .nth { flex:none; display:flex; align-items:center; justify-content:center; width:72px; height:52px; border-radius:8px; overflow:hidden; background:var(--da-subtle); color:var(--da-muted) } .nth img { width:100%; height:100%; object-fit:cover; display:block }
 .nrb { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px } .nrb b { font-size:13.5px; font-weight:600; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
-/* Opening animation (launcher tap, ~2 s): colour wash 0–350 ms, the dot diamond forms 350–650, hold to 1100, the colour
+/* Opening animation (launcher tap, ~2 s), in the chatbot's colours (indigo, its lighter and deeper shades, the navy
+   header): colour wash 0–350 ms, the dot diamond forms 350–650, hold to 1100, the colour
    is lifted off the top 1100–1600 while white rises, then the chat's greeting and disclaimer arrive 1800–2100.
    Ease-out for what arrives, ease-in for what leaves. Off with intro="off" or prefers-reduced-motion. */
-.intro { position:absolute; inset:0; z-index:60; display:none; overflow:hidden; border-radius:inherit; pointer-events:none }
+.intro { position:absolute; inset:0; z-index:60; display:none; overflow:hidden; border-radius:inherit; pointer-events:none;
+  --ig-light:#7466FF; --ig-light:color-mix(in srgb, var(--da-primary) 72%, #fff); --ig-deep:#3E31D4; --ig-deep:color-mix(in srgb, var(--da-primary) 78%, #000);
+  --ig-base:#F6F5FF; --ig-base:color-mix(in srgb, var(--da-primary) 6%, var(--da-bg)); --ig-end:var(--da-bg) }
 .panel.intro-run .intro { display:block }
 .panel.intro-run { background:transparent; box-shadow:none }
 .panel.intro-run > :not(.intro) { visibility:hidden }
@@ -485,17 +488,20 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
 .panel.intro-out .intro { opacity:0; transition:opacity .2s cubic-bezier(.4,0,1,1) }
 .ig-glass { position:absolute; inset:0; background:rgba(255,255,255,.22); -webkit-backdrop-filter:blur(16px) saturate(1.15); backdrop-filter:blur(16px) saturate(1.15); opacity:0; animation:ig-in .35s cubic-bezier(.2,.7,.2,1) forwards }
 .ig-stage { position:absolute; inset:0; animation:ig-lift .5s cubic-bezier(.55,0,.8,.25) 1.1s forwards }
-.ig-solid { position:absolute; inset:0; background:#FBF7FD; opacity:0; animation:ig-in .3s cubic-bezier(.2,.7,.2,1) .35s forwards }
+.ig-solid { position:absolute; inset:0; background:var(--ig-base); opacity:0; animation:ig-in .3s cubic-bezier(.2,.7,.2,1) .35s forwards }
 .ig-blob { position:absolute; width:78%; aspect-ratio:1; border-radius:50%; filter:blur(56px); opacity:0; animation:ig-blob .35s cubic-bezier(.2,.7,.2,1) forwards, ig-drift 3.4s ease-in-out infinite alternate }
-.ig-coral { left:-26%; top:4%; background:#F0566A }
-.ig-violet { right:-26%; top:-4%; background:#7B6CF0; animation-delay:0s, -1.7s }
-.ig-melt { position:absolute; left:0; right:0; bottom:0; height:58%; background:linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,.92) 72%, #fff) }
+.ig-coral { left:-26%; top:4%; background:var(--ig-light) }
+.ig-navy { left:10%; top:-46%; width:80%; background:var(--da-hero); filter:blur(64px); animation-delay:0s, -.9s }
+.ig-violet { right:-26%; top:-4%; background:var(--ig-deep); animation-delay:0s, -1.7s }
+.ig-melt { position:absolute; left:0; right:0; bottom:0; height:58%; background:linear-gradient(to bottom, transparent, color-mix(in srgb, var(--ig-end) 92%, transparent) 72%, var(--ig-end)) }
 .ig-dots { position:absolute; inset:0; background-image:radial-gradient(rgba(255,255,255,.75) .9px, transparent 1.3px); background-size:15px 15px; opacity:0; animation:ig-dots .35s ease-out forwards }
 .ig-logo { position:absolute; left:50%; top:44%; width:0; height:0; animation:ig-glow 1.1s ease-in-out .65s infinite alternate }
 .ig-logo i { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; border-radius:50%; background:#fff; opacity:0; transform:scale(.35); box-shadow:0 0 8px rgba(255,255,255,.75); animation:ig-dot .22s cubic-bezier(.2,.7,.2,1) forwards }
-.ig-rise { position:absolute; inset:-140px 0 0; background:linear-gradient(to bottom, rgba(255,255,255,0), #fff 140px); transform:translateY(100%); animation:ig-rise .5s cubic-bezier(.6,0,.4,1) 1.1s forwards }
+.ig-rise { position:absolute; inset:-140px 0 0; background:linear-gradient(to bottom, transparent, var(--ig-end) 140px); transform:translateY(100%); animation:ig-rise .5s cubic-bezier(.6,0,.4,1) 1.1s forwards }
 @keyframes ig-in { to { opacity:1 } }
-@keyframes ig-blob { to { opacity:.78 } }
+@keyframes ig-blob { to { opacity:.8 } }
+.intro.to-home .ig-rise { background:linear-gradient(to bottom, transparent 0, var(--da-hero) 140px, var(--da-hero) calc(140px + 24%), var(--ig-end) calc(140px + 46%)),
+  radial-gradient(120% 40% at 85% 140px, color-mix(in srgb, var(--da-primary) 55%, transparent), transparent 60%) }
 @keyframes ig-dots { to { opacity:.5 } }
 @keyframes ig-dot { to { opacity:1; transform:scale(1) } }
 @keyframes ig-drift { from { transform:translate(0, 0) scale(1) } to { transform:translate(7%, 5%) scale(1.08) } }
@@ -1007,7 +1013,8 @@ class DeepAssistant extends HTMLElement {
     // the logo: a diamond of dots in rows of 1, 3, 5, 7, 5, 3, 1, popping in from the centre outward
     const dots = []; [1, 3, 5, 7, 5, 3, 1].forEach((n, r) => { for (let k = 0; k < n; k++) { const c = k - (n - 1) / 2, d = Math.abs(r - 3) + Math.abs(c);
       dots.push(`<i style="left:${c * 15}px;top:${(r - 3) * 15}px;animation-delay:${350 + d * 55}ms"></i>`); } });
-    ov.innerHTML = `<div class="ig-glass"></div><div class="ig-stage"><div class="ig-solid"></div><div class="ig-blob ig-coral"></div><div class="ig-blob ig-violet"></div><div class="ig-melt"></div><div class="ig-dots"></div><div class="ig-logo">${dots.join('')}</div></div><div class="ig-rise"></div>`;
+    ov.innerHTML = `<div class="ig-glass"></div><div class="ig-stage"><div class="ig-solid"></div><div class="ig-blob ig-navy"></div><div class="ig-blob ig-coral"></div><div class="ig-blob ig-violet"></div><div class="ig-melt"></div><div class="ig-dots"></div><div class="ig-logo">${dots.join('')}</div></div><div class="ig-rise"></div>`;
+    if (this._view === 'home') ov.classList.add('to-home');   // it rises into Home's navy header
     p.prepend(ov); p.classList.add('intro-run'); this._introEl = ov;
     this._introT1 = setTimeout(() => {           // 1600 ms: white everywhere; the messenger (Home) shows as the overlay melts away
       p.classList.add('intro-out');
