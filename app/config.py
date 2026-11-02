@@ -160,6 +160,9 @@ class Settings(BaseSettings):
     precall_model_timeout: int = Field(default=25, alias="PRECALL_MODEL_TIMEOUT")     # seconds; the brief falls back to rules after this
     precall_host_reminder: bool = Field(default=True, alias="PRECALL_HOST_REMINDER")  # "Brief for tomorrow" to the host
     hot_lead_alerts: bool = Field(default=True, alias="HOT_LEAD_ALERTS")
+    # "Email Deep" (app/escalate.py): the hand-over form is prefilled with an email the assistant writes from the chat, and
+    # Deep gets a summary (need, open questions, the chat). false = the older plain hand-over email
+    handover_summary: bool = Field(default=True, alias="HANDOVER_SUMMARY")
     hot_lead_score: int = Field(default=60, alias="HOT_LEAD_SCORE")
     # knowledge-gap loop (app/gaps.py): nightly drafts for unanswered questions; an approved draft becomes a custom answer
     # and (GAP_FOLLOWUP) the people who asked get the answer by email

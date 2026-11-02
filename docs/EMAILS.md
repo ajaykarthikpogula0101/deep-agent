@@ -6,9 +6,18 @@ Three emails, all plain text, all rendered from templates you can edit in **Cons
 |---|---|---|---|
 | Host brief | `HOST_EMAIL` | every lead: booking hand-off, API booking, enquiry, human hand-over | `[{brand}] {kind}: {name} · {title} · {date}` |
 | Visitor booking confirmation | the visitor | after a booking step (hand-off, booked, enquiry) | `Thank you for booking with {brand}: {title} on {date_visitor}` |
+| Email Deep (hand-over with summary) | `HOST_EMAIL` | the visitor sends the hand-over form while `HANDOVER_SUMMARY` is on (default); replaces the host brief for hand-overs | `[Website chat] {name} ({company}) needs your help: {need}` |
 | Visitor hand-over acknowledgement | the visitor | after they ask for a human and submit the form | `Thanks for your message to {brand}` |
 
 Replies to a visitor email go to the host; replies to the host brief go to the visitor.
+
+**Email Deep** (`app/escalate.py`). When the assistant could not help (a refused answer, a thumbs-down, or "can I talk to
+a person"), the visitor gets an **Email Deep** button. The form opens with an email the assistant wrote from the chat
+(`POST /handover/draft`, only for the visitor's own conversation): a short note from the visitor to Deep, in their
+language, which they can edit, and a "What Deep will see" box with the summary and the questions still open. Deep's email
+has WHAT THEY NEED, STILL OPEN, THEIR MESSAGE, ABOUT THEM and THE CHAT, and Reply-To is the visitor. One model call
+per chat state (cached until a new message); without a model key or when the model fails, the draft is built from the
+visitor's own questions. `HANDOVER_SUMMARY=false` restores the plain host brief.
 
 ## Variables
 

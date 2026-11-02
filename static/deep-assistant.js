@@ -31,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender --da-dot
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.11.02.1';
+const VERSION = '2026.11.02.2';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -241,6 +241,10 @@ textarea.inp { height:auto; min-height:68px; padding:9px 12px; resize:vertical; 
 .pickd { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; background:var(--da-lavender); font-size:13px } .pickd svg { width:16px; height:16px; color:var(--da-ink); flex:none } .pickd span { flex:1; min-width:0 } .pickd b { font-weight:650 }
 .linkbtn { padding:0; border:0; background:none; color:var(--da-ink); font-size:12.5px; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:2px }
 .bform, .hform { display:flex; flex-direction:column; gap:10px }
+.hsum { display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-radius:12px; background:var(--da-lavender); font-size:13px; line-height:1.45 }
+.hsum > b { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:650 } .hsum > b svg { width:14px; height:14px; flex:none }
+.hsum p { margin:0 } .hsum ul { margin:0; padding-left:18px } .hsum li { margin:2px 0 } .hsum small { color:var(--da-muted); font-size:11.5px }
+.hsum .sk .l { display:flex; flex-direction:column; gap:6px } .hsum .sk i { display:block; height:9px; border-radius:6px; background:linear-gradient(90deg, rgba(0,0,0,.06), rgba(0,0,0,.12), rgba(0,0,0,.06)); background-size:200% 100%; animation:da-shimmer 1.2s linear infinite } .hsum .sk i:last-child { width:60% }
 .row.agent .msg { box-shadow:inset 3px 0 0 var(--da-ink) } .row.agent .meta b { font-weight:650; color:var(--da-text) }
 .row.rate { justify-content:center } .row.rate .col { width:100%; max-width:420px } .rcard { display:flex; flex-direction:column; gap:10px; margin-top:4px } .faces { display:flex; gap:6px; flex-wrap:wrap }
 .face { width:42px; height:42px; border-radius:12px; border:1px solid var(--da-line, rgba(0,0,0,.12)); background:transparent; font-size:22px; line-height:1; cursor:pointer }
@@ -1658,7 +1662,7 @@ class DeepAssistant extends HTMLElement {
     if (mid) {
       const mark = (rating) => { t.querySelectorAll('.thumb').forEach((x) => { const on = x.classList.contains(rating === 1 ? 'up' : 'down'); x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); const tr = this._transcript.find((m) => m.mid === mid); if (tr) { tr.fb = rating; this._persist(); } this._toast('Thanks for the feedback'); };
       const mk = (rating, label, icon) => { const b = tool(label, icon, 'thumb ' + (rating === 1 ? 'up' : 'down') + (fb === rating ? ' on' : '')); b.setAttribute('aria-pressed', String(fb === rating));
-        b.onclick = async () => { if (rating === 1) { if (await this._rate(mid, 1)) mark(1); return; } this._fbPopover(b, async (reason) => { if (await this._rate(mid, -1, reason)) mark(-1); }); };
+        b.onclick = async () => { if (rating === 1) { if (await this._rate(mid, 1)) mark(1); return; } this._fbPopover(b, async (reason) => { if (await this._rate(mid, -1, reason)) { mark(-1); this._offerEmail(el); } }); };
         return b; };
       t.appendChild(mk(1, 'Helpful', SVG.up)); t.appendChild(mk(-1, 'Not helpful', SVG.down));
     }
@@ -1675,6 +1679,11 @@ class DeepAssistant extends HTMLElement {
     this._history = this._history.slice(0, -2); this._transcript = this._transcript.slice(0, -2); this._persist(); this._send(text);
   }
   _clearFollowups() { this.$log.querySelectorAll('.followups').forEach((f) => f.remove()); }
+  _offerEmail(bot) {  // "not helpful": offer to email the host, unless a form or this offer is already there
+    if (!bot || !bot.isConnected || bot.querySelector('.hform') || bot.parentElement.querySelector('.followups.email')) return;
+    this._followups(bot, [{ icon: 'mail', label: `Email ${(this._cfg && (this._cfg.host_short || this._cfg.host_name)) || 'Deep'} instead`, kind: 'handover', fn: () => this._renderHandover(bot, '') }]);
+    const f = bot.parentElement.querySelector('.followups:last-child'); if (f) f.classList.add('email');
+  }
   _followups(bot, items) {  // contextual next steps under one answer; never generic, never more than two
     if (!items.length) return; const f = document.createElement('div'); f.className = 'followups'; f.setAttribute('role', 'group'); f.setAttribute('aria-label', 'Suggested next steps');
     items.slice(0, 2).forEach((x) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'fu'; b.innerHTML = `${SVG[x.icon] || SVG.spark}<span>${esc(x.label)}</span>`;
@@ -2007,13 +2016,16 @@ class DeepAssistant extends HTMLElement {
     if (el.querySelector('.hform')) return; const me = this._me || {}; const known = !!(me.signed_in && me.verified && me.email);
     el.classList.add('hascard'); el.closest('.row').classList.add('wide');
     const f = document.createElement('form'); f.className = 'hform card'; f.noValidate = true; f.style.marginTop = '12px'; const id = 'h' + Math.random().toString(36).slice(2, 7);
-    f.innerHTML = `<div class="bk-t"><b>Message the team</b></div>
+    const host = (this._cfg && (this._cfg.host_short || this._cfg.host_name)) || 'Deep';
+    f.innerHTML = `<div class="bk-t"><b>Email ${esc(host)}</b></div>
+      <div class="hsum" aria-live="polite"><b>${SVG.spark}What ${esc(host)} will see</b><span class="sk"><span class="l"><i></i><i></i></span></span><small>Writing your email from this chat…</small></div>
       ${known ? '' : `<div class="field"><label for="${id}n">Your name</label><input class="inp" id="${id}n" name="name" maxlength="120" required autocomplete="name"></div>
       <div class="field"><label for="${id}e">Email for the reply</label><input class="inp" id="${id}e" name="email" type="email" maxlength="200" required autocomplete="email" inputmode="email"></div>`}
-      <div class="field"><label for="${id}m">Your message</label><textarea class="inp" id="${id}m" name="message" rows="3" maxlength="2000" required></textarea></div>
-      <button class="btn primary block" type="submit">${SVG.mail}Send message</button><p class="note" role="status">${known ? 'Replies go to ' + esc(me.email) + '.' : 'A real person replies by email.'}</p>`;
+      <div class="field"><label for="${id}m">Your email to ${esc(host)}</label><textarea class="inp" id="${id}m" name="message" rows="6" maxlength="2000" required></textarea></div>
+      <button class="btn primary block" type="submit">${SVG.mail}Send to ${esc(host)}</button><p class="note" role="status">${known ? 'Replies go to ' + esc(me.email) + '.' : 'A real person replies by email.'}</p>`;
     const field = (n) => f.elements[n]; field('message').value = prefill || ''; if (!known) { if (me.name) field('name').value = me.name; if (me.email) field('email').value = me.email; }
-    const note = f.querySelector('.note');
+    const note = f.querySelector('.note'); let typed = false; field('message').addEventListener('input', () => { typed = true; });
+    this._handoverDraft(f, () => typed);
     f.onsubmit = async (e) => { e.preventDefault(); const b = f.querySelector('button[type=submit]'); const name = known ? (me.name || '') : field('name').value.trim(); const email = known ? me.email : field('email').value.trim(); const message = field('message').value.trim();
       const bad = !known && name.length < 2 ? field('name') : !known && !EMAIL_RE.test(email) ? field('email') : message.length < 2 ? field('message') : null;
       f.querySelectorAll('.inp').forEach((x) => x.setAttribute('aria-invalid', String(x === bad)));
@@ -2026,6 +2038,17 @@ class DeepAssistant extends HTMLElement {
       catch { b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = 'Connection problem. Please try again.'; } };
     el.appendChild(f); this._emit('action', { action: 'handover_form' });
     requestAnimationFrame(() => { this._stick = true; this._scroll(); if (!this._coarse) (known ? field('message') : field('name')).focus({ preventScroll: true }); });
+  }
+  async _handoverDraft(f, typed) {  // the email the assistant writes from the chat (POST /handover/draft); the visitor edits it
+    const box = f.querySelector('.hsum'), host = (this._cfg && (this._cfg.host_short || this._cfg.host_name)) || 'Deep'; let d = null;
+    try { const r = await fetch(this._url('/handover/draft'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ session_id: this._sid }) }); d = r.ok ? await r.json() : null; } catch {}
+    if (!f.isConnected || !box.isConnected) return;
+    const msg = f.elements.message;
+    if (d && d.message && msg && !typed()) { msg.value = d.message; msg.scrollTop = 0; }
+    if (!d || !d.summary) { box.remove(); return; }
+    const open = (d.unanswered || []).length ? `<ul>${d.unanswered.map((q) => `<li>${esc(q)}</li>`).join('')}</ul>` : '';
+    box.innerHTML = `<b>${SVG.spark}What ${esc(host)} will see</b><p>${esc(d.summary)}</p>${open}<small>${d.by_ai ? 'Summarised by AI from your chat, with the chat attached. Edit your email below before sending.' : 'Your questions from this chat, with the chat attached.'}</small>`;
+    this._scroll();
   }
   // ---------------------------------------------------------------- answer cards (docs/UI_CARDS.md)
   _uiModule() {  // lazy: renderer + parser bundle load on the first card; one failure disables cards for this page load
@@ -2354,7 +2377,7 @@ class DeepAssistant extends HTMLElement {
       act.done(sources.length);
       const raw = bot.dataset.raw || answer; this._addTools(bot, () => raw, failed ? text : null, mid);
       if (failed) this._followups(bot, [{ icon: 'reset', label: 'Try again', fn: () => this._retry(bot, text) }]);
-      else if (offer) this._followups(bot, [{ icon: 'mail', label: 'Ask the team directly', kind: 'handover', fn: () => this._renderHandover(bot, text) }, { icon: 'cal', label: 'Book a meeting', kind: 'booking', fn: () => this.startBooking() }]);
+      else if (offer) this._followups(bot, [{ icon: 'mail', label: `Email ${(this._cfg && (this._cfg.host_short || this._cfg.host_name)) || 'Deep'}`, kind: 'handover', fn: () => this._renderHandover(bot, '') }, { icon: 'cal', label: 'Book a meeting', kind: 'booking', fn: () => this.startBooking() }]);
       else if (!booking) this._followups(bot, this._answerFollowups(bot, text, answer, sources.length));
       this._history.push({ role: 'user', content: shown }, { role: 'assistant', content: answer }); this._history = this._history.slice(-12);
       const entry = { role: 'bot', text: failed ? bot.dataset.raw : answer, sources, ts: Date.now(), mid, err: failed || undefined, ui: (card && card.done && card.program) || undefined }; this._transcript.push(entry); if (card) card.entry = entry; this._persist();

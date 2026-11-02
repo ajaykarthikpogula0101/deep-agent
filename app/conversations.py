@@ -50,6 +50,15 @@ def list_for(visitor_id: str | None, user_id: str | None, limit: int = 50) -> li
              "first_message": (r[12] or "")[:200]} for r in rows]
 
 
+def owns(session_id: str | None, visitor_id: str | None, user_id: str | None) -> bool:
+    """Is this session the visitor's own (same rule as history)?"""
+    if not session_id or (not visitor_id and not user_id):
+        return False
+    with conn() as c:
+        return bool(c.execute(f"SELECT 1 FROM sessions s WHERE s.session_id = %(sid)s AND {_OWNER}",
+                              {**_args(visitor_id, user_id), "sid": session_id}).fetchone())
+
+
 def history(session_id: str, visitor_id: str | None, user_id: str | None) -> dict[str, Any] | None:
     """Full transcript of one of the visitor's sessions, or None if it is not theirs."""
     if not session_id or (not visitor_id and not user_id):

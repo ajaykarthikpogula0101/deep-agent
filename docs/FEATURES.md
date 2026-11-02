@@ -439,6 +439,10 @@ in the wrong alphabet is read again (`STT_HINT_RECHECK`). Answers are spoken bac
   any text (dead key, outage, `CHAT_TIMEOUT` of 30 s), the same answer is written by the backup, ideally on another
   provider (Groq's `openai/gpt-oss-120b` with the speech-to-text key works). The visitor never sees the switch; the
   inbox records which model answered.
+* **Email Deep** (`app/escalate.py`): when an answer is refused or rated down, or the visitor asks for a person, an
+  **Email Deep** button opens the hand-over form already filled with an email the assistant wrote from the chat (editable),
+  plus a "What Deep will see" summary; Deep gets the need, the open questions, the visitor's message and the chat, and
+  replies straight to the visitor. See docs/EMAILS.md.
 * **The team answers inside the chat** (`app/team.py`, like Intercom Fin's "The team can also help"): the hand-over
   form puts the conversation in *waiting*; Deep replies from Console → Conversations ("Reply in the visitor's chat"),
   the reply shows in the visitor's chat with his name (the widget checks for replies every 12 s while the team is

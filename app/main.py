@@ -39,6 +39,7 @@ from app.booking.email import send_host_brief, send_test
 from app import chat as chat_mod
 from app import help as help_center
 from app import news
+from app import escalate
 from app import sites
 from app.chat import respond, sse
 from app.config import settings
@@ -50,7 +51,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.11.02.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.11.02.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -334,6 +335,10 @@ class HandoverIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: str = Field(min_length=3, max_length=200)
     message: str = Field(min_length=1, max_length=2000)
+
+
+class HandoverDraftIn(BaseModel):
+    session_id: str = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class GuidanceIn(BaseModel):
@@ -742,7 +747,7 @@ def widget_config(request: Request):
             "reminders": settings.reminder_enabled, "help": settings.help_enabled,
             "news": {"enabled": settings.news_enabled, "tenant": settings.news_tenant, "popup": settings.news_popup,
                      "reactions": news.REACTIONS}, "host_photo": "/static/email/host.png",
-            "host_name": getattr(settings, "host_full_name", "") or "Deep"}
+            "host_name": getattr(settings, "host_full_name", "") or "Deep", "host_short": settings.host_name_short or "Deep"}
 
 
 # ---- News tab (app/news.py)
@@ -1120,12 +1125,29 @@ def handover(body: HandoverIn, request: Request, x_visitor_id: str | None = Head
     if not _EMAIL.match(email.strip()):
         raise HTTPException(422, "that email address doesn't look right")
     _ensure(request, body.session_id, x_visitor_id)
+    send = send_host_brief
+    if settings.handover_summary:   # Deep gets the assistant's summary of the chat (app/escalate.py)
+        d = escalate.draft(body.session_id)
+        send = lambda lead: escalate.send_host(lead, d)  # noqa: E731
     try:
-        result = inbox.save_handover(body.session_id, name, email, body.message, send_host_brief)
+        result = inbox.save_handover(body.session_id, name, email, body.message, send)
     except Exception as e:
         log.error("handover failed: %s", e)
         raise HTTPException(500, "could not save the request; please email " + settings.host_email)
     return {"ok": True, **result, "host_email": settings.host_email}
+
+
+@app.post("/handover/draft")
+def handover_draft(body: HandoverDraftIn, request: Request, x_visitor_id: str | None = Header(default=None)):
+    """Email Deep: the email the assistant writes from this chat, for the visitor to read and edit before sending."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    vid, uid = _owner(request, x_visitor_id)
+    if not conversations.owns(body.session_id, vid, uid):
+        return escalate.public(escalate.fallback([]))   # a new chat (no row yet) or not theirs: an empty form
+    return escalate.public(escalate.draft(body.session_id))
 
 
 # ---- in-chat booking (docs/BOOKING.md)
