@@ -13,7 +13,13 @@ What a switched-off source changes
   live site search (app/sites.sites)     its website is not searched live;
   the prompt (scope_note)                the model is told what it covers, so a question about something switched off
                                          gets "not covered here" plus the Email Deep / booking offer, not outside knowledge.
-Help-center articles and custom answers written in the console stay on: they are the owner's own words.
+Your own answers (extras): help-center articles (settings kb:help) and custom answers (kb:custom), on unless switched off.
+  Off, help articles leave retrieval (app/rag/retrieve.search) and custom answers stop matching (app/chat.py); both stay
+  editable in their tabs.
+
+The visitor-facing wording follows the switches too (widget_scope, GET /widget-config "knowledge"): the home screen's intro,
+quick actions and the loader's greeting name the first company website that is on (LakeB2B while it is on, exactly as before),
+or speak of Deep's companies when none is; suggested questions that name a switched-off website are dropped.
 """
 from __future__ import annotations
 
@@ -109,10 +115,44 @@ def sources() -> list[dict[str, Any]]:
     return out
 
 
+EXTRAS = {"help": ("Help-center articles", "the articles in the Help center tab, written by you or drafted for you"),
+          "custom": ("Custom answers", "the exact answers in the Custom answers tab, used word for word when a question matches")}
+
+
+def extra_enabled(key: str) -> bool:
+    """Help articles ("help") or custom answers ("custom") are in use. Never raises: a database hiccup keeps them on."""
+    def read() -> bool:
+        try:
+            return (get_setting(f"kb:{key}") or "on") != "off"
+        except Exception as e:
+            log.warning("kb:%s read failed: %s", key, e)
+            return True
+    return _cached("extra:" + key, read)
+
+
+def extras() -> list[dict[str, Any]]:
+    """For the console: the owner's own answers, with their switches and sizes."""
+    counts = {"help": 0, "custom": 0}
+    try:
+        with conn() as c:
+            counts["custom"] = int(c.execute("SELECT count(*) FROM custom_answers WHERE enabled").fetchone()[0])
+            counts["help"] = int(c.execute("SELECT count(*) FROM help_articles WHERE published AND source IN ('builtin', 'owner')").fetchone()[0])
+    except Exception as e:
+        log.warning("extras count failed: %s", e)
+    out = []
+    for key, (name, about) in EXTRAS.items():
+        on = extra_enabled(key)
+        out.append({"key": key, "name": name, "about": about, "enabled": on, "on": on, "count": counts[key],
+                    "unit": "published articles" if key == "help" else "answers switched on"})
+    return out
+
+
 def set_source(key: str, on: bool) -> list[dict[str, Any]]:
     """Switch one source on or off. Raises LookupError for an unknown key."""
     if key == OWN:
         set_setting("kb:own", None if on else "off")
+    elif key in EXTRAS:
+        set_setting(f"kb:{key}", None if on else "off")
     else:
         with conn() as c:
             n = c.execute("UPDATE news_tenants SET kb_enabled = %s, updated_at = now() WHERE slug = %s", (bool(on), key)).rowcount
@@ -140,3 +180,52 @@ def scope_note() -> str:
             + ", ".join(s["name"] for s in off) + (" is" if len(off) == 1 else " are") + " not covered in this chat: if the "
             "visitor asks about it, say in one sentence that you can't help with that here and offer to email Deep or book a "
             "call. Do not answer it from your own knowledge.")
+
+
+# ---------------------------------------------------------------- what the visitor sees
+def brand() -> str | None:
+    """The company the widget's home screen talks about: the first company website that is on (LakeB2B as long as it is
+    on), None when no company website is on."""
+    try:
+        listed = [x for x in sources() if x["key"] != OWN and x["on"]]
+    except Exception as e:
+        log.warning("brand read failed: %s", e)
+        return "LakeB2B"
+    if not listed:
+        return None
+    name = listed[0]["name"]
+    return "LakeB2B" if listed[0]["key"] == "lakeb2b" else name
+
+
+def _off_names() -> list[str]:
+    out = []
+    for x in sources():
+        if x["on"]:
+            continue
+        if x["key"] == OWN:
+            continue   # deependhq.com is the host's own site: questions about Deep are still fine to show
+        out += [x["key"].lower(), (x["name"] or "").lower(), (x["host"] or "").lower().split(".")[0]]
+        if x["key"] == "lakeb2b":
+            out.append("lake b2b")
+        first = (x["name"] or "").split(" ")[0].lower()
+        if len(first) >= 4:
+            out.append(first)
+    return [n for n in dict.fromkeys(out) if n]
+
+
+def keep_question(q: str, off: list[str] | None = None) -> bool:
+    """A suggested question is shown unless it names a switched-off website."""
+    off = _off_names() if off is None else off
+    low = (q or "").lower()
+    return not any(n in low for n in off)
+
+
+def widget_scope(suggestions: list[str] | None = None) -> dict[str, Any]:
+    """GET /widget-config "knowledge": {"brand", "own"} and, given the suggested questions, those still in scope. Never raises."""
+    try:
+        off = _off_names()
+        kept = [q for q in (suggestions or []) if keep_question(q, off)]
+        return {"brand": brand(), "own": own_enabled(), "suggestions": kept}
+    except Exception as e:
+        log.warning("widget scope failed: %s", e)
+        return {"brand": "LakeB2B", "own": True, "suggestions": list(suggestions or [])}

@@ -454,8 +454,26 @@ in the wrong alphabet is read again (`STT_HINT_RECHECK`). Answers are spoken bac
 * **Knowledge switches** (`app/knowledge.py`, Console → Knowledge): one switch per website the chatbot answers from
   (deependhq.com and each company site). A website switched off is not searched, not live-searched and not cited, and
   the model is told it is not covered, so it offers Email Deep or a call instead of guessing. "Try a question" shows
-  which pages the chatbot would read. Help articles and custom answers stay on. The company switch is the News
-  tenant's *the assistant answers from this website* box, which now really stops its pages from being used.
+  which pages the chatbot would read. Help-center articles and custom answers have their own switches ("Your own
+  answers"). The company switch is the News tenant's *the assistant answers from this website* box, which now really
+  stops its pages from being used. What visitors see follows the switches too: the chat's home screen, quick actions,
+  the loader's greeting and the "What Deep can do" list name the first company website that is on (LakeB2B while it is
+  on, exactly as before; Span Global Services when only SPAN is on; "Deep's companies" when none is), suggested
+  questions naming a switched-off website are dropped, and the tab previews the home screen.
+* **Wrong-fit visitors** (`app/intent.py`, rules only): job seekers ("are you hiring?", "send my CV"), students ("my
+  college project") and people selling to us ("we offer SEO", "guest post") are not customers. Job seekers and sellers
+  get a short, kind reply (written in their language, a fixed English one if the model is down) and the route set in
+  Console → Detections as a button (careers page, partners email); no search, no "couldn't find that", no Email Deep or
+  booking offers. Students are answered as usual without a call offer. A message that also talks about buying data is
+  never wrong fit. The chat is tagged in Conversations, counted on Overview, and left out of the hot-lead alert.
+* **Buying moment** (`app/intent.py`, rules only): price, a volume ("20,000 contacts"), a deadline ("by Friday"), a
+  budget ("$5,000") or a decision ("send us a quote"); when the new message shows one and the chat two different ones,
+  the model answers and offers a call, the widget shows "Want exact options and pricing for 20,000 contacts?" with Book
+  a call and Email Deep (once per chat, not after a booking or hand-over; the frustration card wins if both fire), and
+  Deep gets "Hot visitor on the site now" by email at once (at most 6 an hour), with the signs, location, network guess,
+  page and the questions asked. Typed volumes and budgets never change the lead score.
+* **Console → Detections**: switches for frustration, wrong fit, buying moment and the buying email (with how many chats
+  each caught in 30 days), and the wrong-fit routes. `.env` can switch them off install-wide.
 * **The team answers inside the chat** (`app/team.py`, like Intercom Fin's "The team can also help"): the hand-over
   form puts the conversation in *waiting*; Deep replies from Console → Conversations ("Reply in the visitor's chat"),
   the reply shows in the visitor's chat with his name (the widget checks for replies every 12 s while the team is

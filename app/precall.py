@@ -1731,6 +1731,10 @@ def run_alerts(mailer=None, ask=None, threshold: int | None = None) -> dict[str,
                 sc = score(sig)
         if sc["score"] < threshold or sc["verdict"] == "not_a_lead":  # staff or test traffic is never a hot lead, whatever it scores
             continue
+        from app import intent
+
+        if intent.is_wrong_fit(p["session_id"]):  # a job seeker, student or seller (app/intent.py) is not a lead either
+            continue
         hot += 1
         if _alerted_recently(p["email"]):
             continue

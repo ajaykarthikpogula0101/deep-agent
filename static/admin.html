@@ -31,6 +31,11 @@
   .knsw i { position:absolute; inset:0; border-radius:999px; background:var(--line-strong); transition:background .15s } .knsw i::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:var(--text); transition:transform .15s }
   .knsw input:checked + i { background:var(--scan) } .knsw input:checked + i::after { transform:translateX(18px); background:var(--bg) } .knsw input:focus-visible + i { outline:2px solid var(--beam); outline-offset:2px }
   .chip.knon { color:var(--scan); border-color:var(--scan) } .chip.knoff { color:var(--muted) }
+  .knprev { border:1px solid var(--line); border-radius:6px; background:var(--panel-2); padding:14px 16px; display:flex; flex-direction:column; gap:8px; font-size:13.5px }
+  .knprev b { font-size:15px } .knprev .chips { display:flex; flex-wrap:wrap; gap:6px }
+  .dtroute { display:grid; grid-template-columns:120px 1fr 180px auto; gap:8px; align-items:center; margin:0 0 8px }
+  @media (max-width:720px) { .dtroute { grid-template-columns:1fr } }
+  .tag { display:inline-block; font-size:11.5px; padding:0 6px; border-radius:999px; border:1px solid currentColor; margin-right:4px; white-space:nowrap }
   nav { display:flex; gap:2px; padding:0 20px; border-bottom:1px solid var(--line); background:var(--panel); overflow-x:auto }
   nav button { background:transparent; border:0; border-bottom:2px solid transparent; padding:10px 14px; color:var(--muted); cursor:pointer; white-space:nowrap }
   nav button.on { color:var(--text); border-bottom-color:var(--scan) }
@@ -91,7 +96,7 @@
 </header>
 <nav>
   <button data-pane="overview" class="on">Overview</button><button data-pane="convos">Conversations</button><button data-pane="bookings">Bookings</button><button data-pane="gaps">Gaps</button>
-  <button data-pane="sessions">Sessions</button><button data-pane="knowledge">Knowledge</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="help">Help center</button><button data-pane="news">News <span class="chip" id="nw-badge" hidden style="padding:0 7px;font-size:11px"></span></button><button data-pane="emails">Emails</button><button data-pane="outreach">Outreach <span class="chip" id="or-badge" hidden style="padding:0 7px;font-size:11px"></span></button>
+  <button data-pane="sessions">Sessions</button><button data-pane="knowledge">Knowledge</button><button data-pane="detections">Detections</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="help">Help center</button><button data-pane="news">News <span class="chip" id="nw-badge" hidden style="padding:0 7px;font-size:11px"></span></button><button data-pane="emails">Emails</button><button data-pane="outreach">Outreach <span class="chip" id="or-badge" hidden style="padding:0 7px;font-size:11px"></span></button>
 </nav>
 <main>
   <section class="pane on" id="overview">
@@ -137,14 +142,33 @@
       <h2>What the chatbot answers from</h2>
       <p class="muted" style="margin:0 0 12px;font-size:13px">Switch a website off and the chatbot stops reading it straight away: no answers, no sources and no live
         search from it. Asked about it, the chatbot says it can't help with that here and offers to email Deep or book a call.
-        Help-center articles and custom answers always stay on, because they are your own words.</p>
+        The chat's home screen, greeting and suggested questions follow these switches too.</p>
       <div class="kn" id="kn-list"><p class="muted">Loading…</p></div>
       <p class="muted" id="kn-scope" style="font-size:12.5px;margin:12px 0 0"></p>
+    </div>
+    <div class="card">
+      <h2>Your own answers · written in the Help center and Custom answers tabs</h2>
+      <div class="kn" id="kn-extras"><p class="muted">Loading…</p></div>
+    </div>
+    <div class="card">
+      <h2>What visitors see · the chat's home screen with the switches as they are now</h2>
+      <div id="kn-preview" class="knprev"><p class="muted">Loading…</p></div>
     </div>
     <div class="card">
       <h2>Try a question · see which pages the chatbot would read, with the switches as they are now</h2>
       <form class="inline" id="kn-test" style="display:flex;gap:8px;flex-wrap:wrap"><input name="q" placeholder="e.g. What does SPAN Global Services do?" maxlength="300" required style="flex:1;min-width:220px"><button class="btn primary" type="submit">Test</button></form>
       <div id="kn-hits" style="margin-top:10px"></div>
+    </div>
+  </section>
+  <section class="pane" id="detections">
+    <div class="card">
+      <h2>What the chatbot notices · rules on each message, nothing added to the reply time</h2>
+      <div class="kn" id="dt-list"><p class="muted">Loading…</p></div>
+      <p class="muted" style="font-size:12.5px;margin:12px 0 0">Counts are chats in the last 30 days. Volumes, budgets and dates a visitor types never change the lead score.</p>
+    </div>
+    <div class="card">
+      <h2>Where wrong-fit visitors are sent · a button under the chatbot's reply (leave the link empty for words only)</h2>
+      <div id="dt-routes"><p class="muted">Loading…</p></div>
     </div>
   </section>
   <section class="pane" id="guidance">
@@ -422,7 +446,9 @@ async function loadOverview() {
     ['median answer time', m.median_latency_ms != null ? (m.median_latency_ms / 1000).toFixed(1) + ' s' : '—', ''], ['errors', m.errors, ''],
     ...(m.conversation_rating ? [['conversation rating', m.conversation_rating.average != null ? '★' + m.conversation_rating.average : '—', `${m.conversation_rating.count} rated · ${pct(m.conversation_rating.good_share)} 4–5 stars`]] : []),
     ...(m.team ? [['waiting for the team', m.team.waiting, `${m.team.replies} team replies in the chat`]] : []),
-    ...(m.frustrated != null ? [['frustrated visitors', m.frustrated, 'chats where the visitor seemed annoyed']] : [])
+    ...(m.frustrated != null ? [['frustrated visitors', m.frustrated, 'chats where the visitor seemed annoyed']] : []),
+    ...(m.buying != null ? [['buying moments', m.buying, 'chats talking price, volume, deadline or budget']] : []),
+    ...(m.wrong_fit != null ? [['wrong-fit visitors', m.wrong_fit, 'job seekers, students, sellers']] : [])
   ].map(([k, v, s]) => `<div class="tile"><small>${k}</small><div class="n">${v ?? 0}</div><div class="sub">${s}</div></div>`).join('');
   const max = Math.max(1, ...m.daily.map(d => d.conversations));
   $('daily').innerHTML = m.daily.map(d => `<div style="height:${Math.round(100 * d.conversations / max)}%" data-t="${d.day}: ${d.conversations} conversations, ${d.resolved} resolved, ${d.refused} refused"><i style="height:${d.conversations ? Math.round(100 * d.resolved / Math.max(d.resolved + d.refused, 1)) : 0}%"></i></div>`).join('') || '<span class="muted">no conversations yet</span>';
@@ -445,7 +471,7 @@ async function loadConvos() {
   const d = await api(`/admin/conversations?days=${days()}&limit=300`);
   $('convo-view').style.display = 'none'; $('convo-list').style.display = '';
   $('convo-list').innerHTML = `<table><thead><tr><th>last</th><th>first question</th><th>q</th><th>resolved</th><th>refused</th><th>hand-over</th><th>feedback</th><th>team</th><th>rating</th><th>leads</th><th>where</th><th>channel</th></tr></thead><tbody>` +
-    d.items.map(c => `<tr class="click" data-sid="${esc(c.session_id)}"><td>${fmt(c.last)}</td><td class="ell">${c.frustrated ? '<span class="bad" title="The visitor seemed frustrated in this chat">&#9888; frustrated</span> ' : ''}${esc(c.first_question || '')}</td><td>${c.questions}</td><td class="ok">${c.resolved || ''}</td><td class="bad">${c.refused || ''}</td><td class="warn">${c.handovers || ''}</td>
+    d.items.map(c => `<tr class="click" data-sid="${esc(c.session_id)}"><td>${fmt(c.last)}</td><td class="ell">${c.frustrated ? '<span class="bad" title="The visitor seemed frustrated in this chat">&#9888; frustrated</span> ' : ''}${c.buying ? '<span class="tag ok" title="Price, volume, deadline or budget came up: a buying moment">buying</span>' : ''}${c.wrong_fit ? `<span class="tag muted" title="Not a customer">${esc(FIT_TAG[c.wrong_fit] || c.wrong_fit)}</span>` : ''}${esc(c.first_question || '')}</td><td>${c.questions}</td><td class="ok">${c.resolved || ''}</td><td class="bad">${c.refused || ''}</td><td class="warn">${c.handovers || ''}</td>
       <td>${c.up ? `<span class="ok">▲${c.up}</span> ` : ''}${c.down ? `<span class="bad">▼${c.down}</span>` : ''}</td><td class="${c.team_status === 'waiting' ? 'warn' : 'muted'}">${esc(c.team_status || '')}</td><td>${c.rating ? '★' + c.rating : ''}</td><td class="ok">${c.leads || ''}</td><td class="muted">${esc([c.city, c.country_code].filter(Boolean).join(', '))}</td><td class="muted">${esc(c.channel || '')}${c.referrer_host ? ' · ' + esc(c.referrer_host) : ''}</td></tr>`).join('') + '</tbody></table>';
   if (!d.items.length) $('convo-list').innerHTML = '<p class="muted">No conversations in this period.</p>';
   $('convo-list').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => openConvo(tr.dataset.sid));
@@ -673,17 +699,63 @@ function paintKnowledge(d) {
   $('kn-scope').textContent = off ? 'The chatbot is told: ' + (d.scope_note || '').replace(/^KNOWLEDGE SCOPE \(set by the site owner\): /, '') : 'Everything is on: the chatbot answers from all of these websites.';
   $('kn-list').querySelectorAll('input[data-key]').forEach(cb => cb.onchange = async () => {
     cb.disabled = true;
-    try { paintKnowledge(await api('/admin/knowledge', { method: 'POST', body: JSON.stringify({ key: cb.dataset.key, on: cb.checked }) })); }
+    try { paintKnowledgeAll(await api('/admin/knowledge', { method: 'POST', body: JSON.stringify({ key: cb.dataset.key, on: cb.checked }) })); }
     catch (e) { cb.checked = !cb.checked; cb.disabled = false; $('kn-scope').textContent = e.message; }
   });
 }
-async function loadKnowledge() { try { paintKnowledge(await api('/admin/knowledge')); } catch (e) { $('kn-list').innerHTML = `<p class="muted">${esc(e.message)}</p>`; } }
+function paintExtras(d) {
+  $('kn-extras').innerHTML = (d.extras || []).map(x => `<label class="knrow${x.on ? ' on' : ''}">
+      <span class="knsw"><input type="checkbox" data-key="${esc(x.key)}" ${x.enabled ? 'checked' : ''} aria-label="Use ${esc(x.name)}"><i></i></span>
+      <span class="knb"><b>${esc(x.name)}</b><small>${esc(x.about)} · ${x.count} ${esc(x.unit)}</small></span>
+      <span class="chip ${x.on ? 'knon' : 'knoff'}">${x.on ? 'in use' : 'off'}</span></label>`).join('');
+  $('kn-extras').querySelectorAll('input[data-key]').forEach(cb => cb.onchange = async () => {
+    cb.disabled = true;
+    try { paintKnowledgeAll(await api('/admin/knowledge', { method: 'POST', body: JSON.stringify({ key: cb.dataset.key, on: cb.checked }) })); }
+    catch (e) { cb.checked = !cb.checked; cb.disabled = false; }
+  });
+}
+// the chat's home screen as a visitor sees it (static/deep-assistant.js _b(): LakeB2B while it is on)
+function paintPreview(d) {
+  const b = d.brand === undefined ? 'LakeB2B' : d.brand;
+  const intro = b === null ? "I can help you explore Deep's companies, answer questions about their services, or connect you with the right expert."
+    : `I can help you explore ${b}'s solutions, answer questions about our services, or connect you with the right expert.`;
+  const acts = ['Explore data solutions', 'Find the right solution for my business', b === null ? 'Learn about Deep' : `Learn about ${b}`, 'Book a meeting'];
+  const why = b === null ? "No company website is on, so the home screen talks about Deep's companies in general."
+    : b === 'LakeB2B' ? 'LakeB2B is on, so the home screen is as it has always been.' : `LakeB2B is off, so the home screen talks about ${b}.`;
+  $('kn-preview').innerHTML = `<b>Hi, I'm Deep</b><span>${esc(intro)}</span><div class="chips">${acts.map(a => `<span class="chip">${esc(a)}</span>`).join('')}</div>
+    <small class="muted">${esc(why)}${d.own === false ? ' deependhq.com is off: questions about Deep himself are answered only from your own answers.' : ''}</small>`;
+}
+function paintKnowledgeAll(d) { paintKnowledge(d); paintExtras(d); paintPreview(d); }
+async function loadKnowledge() { try { paintKnowledgeAll(await api('/admin/knowledge')); } catch (e) { $('kn-list').innerHTML = `<p class="muted">${esc(e.message)}</p>`; } }
 $('kn-test').onsubmit = async (e) => { e.preventDefault(); const q = e.target.q.value.trim(); $('kn-hits').innerHTML = '<p class="muted">Searching…</p>';
   try { const d = await api('/admin/knowledge/test?q=' + encodeURIComponent(q));
     $('kn-hits').innerHTML = d.hits.length ? `<div class="wrap"><table><thead><tr><th>score</th><th>website</th><th>page</th><th>passage</th></tr></thead><tbody>` + d.hits.map(h =>
       `<tr><td>${h.score.toFixed(2)}</td><td>${esc(h.site)}</td><td><a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(h.title || h.url)}</a></td><td class="muted" style="font-size:12.5px">${esc(h.text)}…</td></tr>`).join('') + '</tbody></table></div>'
       : '<p class="muted">Nothing found: the chatbot would say it can\'t help with that and offer to email Deep.</p>';
   } catch (err) { $('kn-hits').innerHTML = `<p class="muted">${esc(err.message)}</p>`; } };
+// Detections (app/intent.py, app/mood.py): switches, counts and the wrong-fit routes
+const FIT_TAG = { job: 'job seeker', student: 'student', seller: 'selling to us' };
+const FIT_NAME = { job: 'Job seekers', student: 'Students', seller: 'Selling to us' };
+const FIT_HINT = { job: 'careers page, e.g. https://…/careers', seller: 'e.g. partners@… or a form link', student: 'optional link' };
+function paintDetections(d) {
+  $('dt-list').innerHTML = (d.switches || []).map(x => `<label class="knrow${x.on ? ' on' : ''}">
+      <span class="knsw"><input type="checkbox" data-key="${esc(x.key)}" ${x.on ? 'checked' : ''} ${x.env_on ? '' : 'disabled'} aria-label="${esc(x.name)}"><i></i></span>
+      <span class="knb"><b>${esc(x.name)}</b><small>${esc(x.about)}</small>${x.env_on ? '' : `<small class="knnote">off in the server settings (${esc(x.env)}=false)</small>`}</span>
+      <span class="chip" title="chats in the last ${d.days} days">${x.count}</span><span class="chip ${x.on ? 'knon' : 'knoff'}">${x.on ? 'on' : 'off'}</span></label>`).join('');
+  $('dt-list').querySelectorAll('input[data-key]').forEach(cb => cb.onchange = async () => {
+    cb.disabled = true;
+    try { paintDetections(await api('/admin/detections', { method: 'POST', body: JSON.stringify({ key: cb.dataset.key, on: cb.checked }) })); }
+    catch (e) { cb.checked = !cb.checked; cb.disabled = false; }
+  });
+  $('dt-routes').innerHTML = (d.routes || []).map(r => `<form class="dtroute" data-kind="${esc(r.kind)}"><b>${esc(FIT_NAME[r.kind] || r.kind)}</b>
+      <input name="link" value="${esc(r.link.replace(/^mailto:/, ''))}" maxlength="500" placeholder="${esc(FIT_HINT[r.kind] || '')}" aria-label="${esc(FIT_NAME[r.kind] || r.kind)} link">
+      <input name="label" value="${esc(r.label)}" maxlength="40" placeholder="${esc(r.label_default)}" aria-label="Button text"><button class="btn" type="submit">Save</button></form>`).join('')
+    + '<p class="muted" id="dt-status" style="font-size:12.5px;margin:4px 0 0">Job seekers and sellers get a short reply and this button; students are answered as usual, without a call offer.</p>';
+  $('dt-routes').querySelectorAll('form').forEach(f => f.onsubmit = async (e) => { e.preventDefault(); $('dt-status').textContent = 'saving…';
+    try { paintDetections(await api('/admin/detections/route', { method: 'POST', body: JSON.stringify({ kind: f.dataset.kind, link: f.link.value.trim(), label: f.label.value.trim() }) })); $('dt-status').textContent = 'saved · live within 10 s'; }
+    catch (err) { $('dt-status').textContent = err.message; } });
+}
+async function loadDetections() { try { paintDetections(await api('/admin/detections')); } catch (e) { $('dt-list').innerHTML = `<p class="muted">${esc(e.message)}</p>`; } }
 async function loadGuidance() { const g = await api('/admin/guidance'); $('gtext').value = g.text || ''; $('gtext').maxLength = g.max_chars; }
 $('gsave').onclick = async () => { $('gstatus').textContent = 'saving…'; try { await api('/admin/guidance', { method: 'PUT', body: JSON.stringify({ text: $('gtext').value }) }); $('gstatus').textContent = 'saved · live within 30 s'; } catch (e) { $('gstatus').textContent = e.message; } };
 async function loadAnswers() {
@@ -890,7 +962,7 @@ async function load() {
   try { sessionStorage.setItem('dh_admin', token); } catch {}
   $('status').textContent = 'loading…';
   let err = null;
-  try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadKnowledge(), loadAnswers(), loadEmails(), loadOutreach(), loadHelpCenter(), loadNews(), loadSites()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
+  try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadKnowledge(), loadDetections(), loadAnswers(), loadEmails(), loadOutreach(), loadHelpCenter(), loadNews(), loadSites()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
   catch (e) { err = e; $('status').textContent = e.message; }
   if (!err || !/wrong token/.test(err.message)) { openHashBooking(); openHashConvo(); }  // a failing unrelated pane must not block the deep link
 }

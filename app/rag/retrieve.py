@@ -323,7 +323,7 @@ def search(query: str, k: int | None = None, vec: list[float] | None = None, tod
     hits = [Hit(url=r[0], title=r[1], section=r[2], text=r[3], score=float(r[4]),
                 metadata={**(r[5] or {}), **({"site": r[6]} if r[6] else {})}) for r in rows]
     hits = per_page(rank_sites(query, hits, target["slug"] if target else None))[:k]
-    if settings.help_enabled:  # help articles written for the assistant or by the owner (app/help.py) compete on score
+    if settings.help_enabled and knowledge.extra_enabled("help"):  # help articles written for the assistant or by the owner (app/help.py) compete on score
         try:
             from app import help as help_center
 

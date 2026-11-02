@@ -31,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender --da-dot
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.11.02.5';
+const VERSION = '2026.11.02.6';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -65,6 +65,12 @@ const ACTIONS = {
   demo: { icon: 'play', label: 'Book a product walkthrough', book: 'walkthrough' },
   human: { icon: 'user', label: 'Talk to a person', ask: 'Can I talk to a real person?' },
 };
+// wording when the console switched every company website off (app/knowledge.py widget_scope): Deep's companies in general
+const NO_BRAND = { [INTRO]: "I can help you explore Deep's companies, answer questions about their services, or connect you with the right expert.",
+  'What data solutions does LakeB2B offer?': "What do Deep's companies offer?", 'Help me find the right LakeB2B solution for my business.': 'Help me find the right solution for my business.',
+  'Learn about LakeB2B': 'Learn about Deep', 'What is LakeB2B and what does it do?': 'What does Deep do?',
+  'What are some real use cases for LakeB2B data?': 'What are some real customer use cases?',
+  'Answer questions about LakeB2B, with links to the pages it used': "Answer questions about Deep's companies, with links to the pages it used" };
 const CONTEXT_ACTIONS = { general: ['explore', 'fit', 'about', 'book'], product: ['product', 'usecases', 'demo', 'about'], solutions: ['fit', 'explore', 'usecases', 'book'], contact: ['book', 'human', 'fit', 'about'] };
 
 const DARK = `--da-ink:#ADA4FF; --da-bg:#0F1324; --da-dot:rgba(255,255,255,.075); --da-surface:#171C33; --da-subtle:#1E2441; --da-line:#2A3152; --da-line-strong:#3A4268; --da-text:#ECEEF8; --da-muted:#9BA3C0;
@@ -244,6 +250,7 @@ textarea.inp { height:auto; min-height:68px; padding:9px 12px; resize:vertical; 
 .frus { display:flex; flex-direction:column; gap:10px; margin:10px 0 0; padding:12px 14px; border:1px solid var(--da-line); border-radius:14px; background:var(--da-surface); box-shadow:inset 3px 0 0 var(--da-primary); font-size:13.5px; line-height:1.45; animation:da-in .3s var(--da-ease) }
 .frus p { margin:0 } .frus b { font-weight:650 } .frus .frow { display:flex; gap:8px; flex-wrap:wrap } .frus .btn svg { width:15px; height:15px; margin-right:6px; vertical-align:-3px }
 @media (prefers-reduced-motion: reduce) { .frus { animation:none } }
+.frus.buy { box-shadow:inset 3px 0 0 var(--da-ok-text, #15803D) } .followups.fit a.fu { text-decoration:none }
 .hwrite { display:flex; align-items:center; gap:6px; margin:-2px 0 6px; color:var(--da-muted); font-size:12px } .hwrite svg { width:13px; height:13px; flex:none }
 .hwrite.busy span { background:linear-gradient(90deg, var(--da-muted) 30%, var(--da-ink) 50%, var(--da-muted) 70%); background-size:200% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:da-shimmer 1.6s linear infinite }
 .hform .btn.nudge { animation:da-nudge 1.2s var(--da-ease) 2 } @keyframes da-nudge { 0%, 100% { box-shadow:0 0 0 0 rgba(108,92,231,0) } 50% { box-shadow:0 0 0 6px rgba(108,92,231,.22) } }
@@ -1081,7 +1088,7 @@ class DeepAssistant extends HTMLElement {
     if (on && !this._vvH) { this._vvH = () => { this.$panel.style.setProperty('--da-vvh', Math.round(vv.height) + 'px'); this.$panel.style.setProperty('--da-vv-top', Math.round(vv.offsetTop) + 'px'); }; vv.addEventListener('resize', this._vvH); vv.addEventListener('scroll', this._vvH); this._vvH(); }
     else if (!on && this._vvH) { vv.removeEventListener('resize', this._vvH); vv.removeEventListener('scroll', this._vvH); this._vvH = null; }
   }
-  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); this._applyFooter(); this._applyComposerCaps(); this._applyTabs(); this._loadNews().then(() => { this._paintNewsDot(); this._newsLive(); }); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); this._edPop(4000); } } catch {} }
+  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); if (this._brand() !== 'LakeB2B') this._refreshWelcome(); this._applyFooter(); this._applyComposerCaps(); this._applyTabs(); this._loadNews().then(() => { this._paintNewsDot(); this._newsLive(); }); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); this._edPop(4000); } } catch {} }
   _setBusy(on) { this._busy = on; this.shadowRoot.querySelector('.i-send').hidden = on; this.shadowRoot.querySelector('.i-stop').hidden = !on; this.$send.classList.toggle('stop', on); this.$send.setAttribute('aria-label', on ? 'Stop generating' : 'Send'); this.$send.title = on ? 'Stop' : 'Send'; this.$log.setAttribute('aria-busy', String(on)); this._setStatus(on ? 'work' : (this._voice ? 'call' : 'idle')); this._syncSend(); }
   _setStatus(mode) {
     const sh = this.shadowRoot, st = sh.querySelector('.st'); if (!st) return;
@@ -1145,18 +1152,24 @@ class DeepAssistant extends HTMLElement {
     if (/product|platform|feature/.test(p)) return 'product';
     return 'general';
   }
+  _brand() { const k = this._cfg && this._cfg.knowledge; return k && 'brand' in k ? k.brand : 'LakeB2B'; }  // LakeB2B until the server says otherwise
+  _b(text) {  // a LakeB2B line in the brand the Knowledge switches leave on; unchanged while LakeB2B is on
+    const b = this._brand(); if (b === 'LakeB2B' || typeof text !== 'string') return text;
+    if (!b) return NO_BRAND[text] || text.replace(/LakeB2B's /g, "Deep's companies' ").replace(/LakeB2B/g, "Deep's companies");
+    return text.replace(/LakeB2B/g, b);
+  }
   _pageTitle() { const t = (document.title || '').split(/\s[|–—-]\s/)[0].trim(); return t && t.length <= 60 ? t : ''; }
   _actions() {
     const a = this.getAttribute('suggestions');
     if (a) return a.split('|').map((s) => s.trim()).filter(Boolean).slice(0, 4).map((label) => (BOOK_RE.test(label) ? { icon: 'cal', label, book: true } : { icon: 'spark', label, ask: label }));
     const title = this._pageTitle();
-    return CONTEXT_ACTIONS[this._pageContext()].map((k) => { const x = ACTIONS[k]; return x.askPage ? { ...x, ask: x.askPage(title) } : x; });
+    return CONTEXT_ACTIONS[this._pageContext()].map((k) => { const x = ACTIONS[k]; return x.askPage ? { ...x, ask: x.askPage(title) } : { ...x, label: this._b(x.label), ask: this._b(x.ask) }; });
   }
   _renderWelcome() {
     this.$log.querySelectorAll('.welcome').forEach((x) => x.remove());  // idempotent: open + restore + /me may each ask for it
     const w = document.createElement('div'); w.className = 'welcome'; const first = this._firstName(); const ctx = this.getAttribute('suggestions') ? 'custom' : this._pageContext();
     const mem = (this._me && this._me.memory && this._me.memory.returning) ? this._me.memory : null;  // return-visitor memory (docs/MEMORY_VOICE.md)
-    const h2 = mem && mem.headline ? mem.headline : (first ? `Hi ${first}, I'm Deep` : "Hi, I'm Deep"); const p = this.getAttribute('greeting') || (mem && mem.line) || INTRO;
+    const h2 = mem && mem.headline ? mem.headline : (first ? `Hi ${first}, I'm Deep` : "Hi, I'm Deep"); const p = this.getAttribute('greeting') || (mem && mem.line) || this._b(INTRO);
     if (mem) w.classList.add('back');
     w.innerHTML = `<h2>${esc(h2)}</h2><p>${esc(p)}</p>
       <div class="acts-label">${ctx === 'general' || ctx === 'custom' ? 'Popular ways to start' : 'Suggested for this page'}</div><div class="acts" role="group" aria-label="Suggested actions"></div>`;
@@ -1552,7 +1565,7 @@ class DeepAssistant extends HTMLElement {
   _renderContact(h) {
     const sc = this._shortcut(); const listen = this._canListen();
     const common = ((this._cfg && Array.isArray(this._cfg.suggestions)) ? this._cfg.suggestions : []).filter((s) => s && !BOOK_RE.test(s));
-    const qs = (common.length ? common : [ACTIONS.explore.ask, ACTIONS.about.ask, ACTIONS.usecases.ask]).slice(0, 5);
+    const qs = (common.length ? common : [ACTIONS.explore.ask, ACTIONS.about.ask, ACTIONS.usecases.ask].map((q) => this._b(q))).slice(0, 5);
     const item = (cls, icon, label, small, tail) => `<span class="ai">${icon}</span><span class="al">${label}<small>${small}</small></span>${tail || SVG.chev}`;
     h.innerHTML = `<h3>Get in touch</h3><div class="acts">
         <button class="act book h-book" type="button">${item('', SVG.cal, 'Book a meeting', 'Pick a time that suits you, right here')}</button>
@@ -1561,7 +1574,7 @@ class DeepAssistant extends HTMLElement {
         ${sc ? `<a class="act" href="${esc(sc.href)}" target="_blank" rel="noopener">${item('', SVG.video, esc(sc.label), esc(host(sc.href)) + ' · opens in a new tab', SVG.ext)}</a>` : ''}
       </div>
       <h3>What Deep can do</h3><ul class="caplist">
-        <li>${SVG.checkc}<span>Answer questions about LakeB2B, with links to the pages it used</span></li>
+        <li>${SVG.checkc}<span>${esc(this._b('Answer questions about LakeB2B, with links to the pages it used'))}</span></li>
         <li>${SVG.checkc}<span>Book a meeting with live availability, without leaving this chat</span></li>
         <li>${SVG.checkc}<span>Pass your question to the team when it can't answer confidently</span></li>
         <li>${SVG.checkc}<span>Keep your conversations in History so you can pick them up later</span></li>
@@ -1696,6 +1709,24 @@ class DeepAssistant extends HTMLElement {
     c.querySelector('.f-mail').onclick = () => { this._emit('action', { action: 'frustration_email' }); c.remove(); this._renderHandover(bot, ''); };
     c.querySelector('.f-cal').onclick = () => { this._emit('action', { action: 'frustration_call' }); c.remove(); this.startBooking(); };
     bot.parentElement.appendChild(c); this._scroll();
+  }
+  _buyingCard(bot, ev) {  // a buying moment (app/intent.py): a call with Deep while they are still here, once per chat
+    if (!bot || !bot.isConnected || bot.parentElement.querySelector('.frus')) return; const host = this._hostShort(); const d = ev.details || {};
+    const what = d.volume ? `for ${d.volume}` : 'for what you need';
+    const c = document.createElement('div'); c.className = 'frus buy'; c.setAttribute('role', 'group'); c.setAttribute('aria-label', 'Talk to ' + host);
+    c.innerHTML = `<p><b>Want exact options and pricing ${esc(what)}?</b> ${esc(host)} can walk you through it on a short call${d.timeline ? ', in good time for your deadline' : ''}.</p>
+      <div class="frow"><button type="button" class="btn primary sm f-cal">${SVG.cal}Book a call</button><button type="button" class="btn ghost sm f-mail">${SVG.mail}Email ${esc(host)}</button></div>`;
+    c.querySelector('.f-cal').onclick = () => { this._emit('action', { action: 'buying_call' }); c.remove(); this.startBooking(); };
+    c.querySelector('.f-mail').onclick = () => { this._emit('action', { action: 'buying_email' }); c.remove(); this._renderHandover(bot, ''); };
+    bot.parentElement.appendChild(c); this._scroll();
+  }
+  _fitCard(bot, ev) {  // wrong fit (app/intent.py): the route the console set for job seekers or sellers
+    if (!bot || !bot.isConnected || !/^(https?:|mailto:)/i.test(ev.link || '')) return;
+    const f = document.createElement('div'); f.className = 'followups fit'; f.setAttribute('role', 'group'); f.setAttribute('aria-label', 'Where to go instead');
+    const a = document.createElement('a'); a.className = 'fu'; a.href = ev.link; if (!/^mailto:/i.test(ev.link)) { a.target = '_blank'; a.rel = 'noopener'; }
+    a.innerHTML = `${/^mailto:/i.test(ev.link) ? SVG.mail : SVG.ext}<span>${esc(ev.button || 'Open')}</span>`;
+    a.onclick = () => this._emit('action', { action: 'wrong_fit_link', label: ev.kind });
+    f.appendChild(a); bot.parentElement.appendChild(f); this._scroll();
   }
   _offerEmail(bot) {  // "not helpful": offer to email the host, unless a form or this offer is already there
     if (!bot || !bot.isConnected || bot.querySelector('.hform') || bot.parentElement.querySelector('.followups.email')) return;
@@ -2395,7 +2426,7 @@ class DeepAssistant extends HTMLElement {
     const user = this._add('user', '', Date.now()); this._setText(user, shown); this._transcript.push({ role: 'user', text: shown, ts: Date.now() }); this._persist(); this._emit('question', { text, attachments: files.map((a) => a.id) });
     this._attachments = []; this._renderAttachments();
     const bot = this._add('bot', ''); const act = this._activity(bot); this._markLast();
-    let answer = '', sources = [], all = [], failed = false, mid = null, offer = false, frus = null, booking = false, card = null; const sid = this._sid;
+    let answer = '', sources = [], all = [], failed = false, mid = null, offer = false, frus = null, buy = null, fit = null, booking = false, card = null; const sid = this._sid;
     this._controller = new AbortController(); const me = this._me || {};
     const fail = (msg) => { failed = true; this._setText(bot, msg); bot.classList.add('err'); };
     try {
@@ -2429,6 +2460,8 @@ class DeepAssistant extends HTMLElement {
           else if (ev.type === 'lang') { this._lastLang = ev.code || null; }
           else if (ev.type === 'handover') { bot.classList.remove('skel'); this._renderHandover(bot, ev.prefill || ''); this._emit('action', { action: 'handover_requested' }); }
           else if (ev.type === 'handover_offer') { offer = true; this._emit('action', { action: 'unanswered', label: text }); }
+          else if (ev.type === 'buying') { buy = ev; this._emit('action', { action: 'buying', label: (ev.kinds || []).join(',') }); }
+          else if (ev.type === 'wrong_fit') { fit = ev; this._nudged = true; this._emit('action', { action: 'wrong_fit', label: ev.kind }); }
           else if (ev.type === 'frustration') { frus = ev; this._emit('action', { action: 'frustration', label: (ev.reasons || []).join(',') }); }
           else if (ev.type === 'error') { fail('Something went wrong on our side. ' + (answer ? '' : 'Please try again.')); this._uiDrop(card); this._emit('error', { error: ev.error }); }
           this._scroll();
@@ -2446,6 +2479,8 @@ class DeepAssistant extends HTMLElement {
       const raw = bot.dataset.raw || answer; this._addTools(bot, () => raw, failed ? text : null, mid);
       if (failed) this._followups(bot, [{ icon: 'reset', label: 'Try again', fn: () => this._retry(bot, text) }]);
       else if (frus && !booking) this._frustrationCard(bot);
+      else if (buy && !booking) this._buyingCard(bot, buy);
+      else if (fit && fit.kind !== 'student') { if (fit.link) this._fitCard(bot, fit); }
       else if (offer) this._followups(bot, [{ icon: 'mail', label: `Email ${(this._cfg && (this._cfg.host_short || this._cfg.host_name)) || 'Deep'}`, kind: 'handover', fn: () => this._renderHandover(bot, '') }, { icon: 'cal', label: 'Book a meeting', kind: 'booking', fn: () => this.startBooking() }]);
       else if (!booking) this._followups(bot, this._answerFollowups(bot, text, answer, sources.length));
       this._history.push({ role: 'user', content: shown }, { role: 'assistant', content: answer }); this._history = this._history.slice(-12);

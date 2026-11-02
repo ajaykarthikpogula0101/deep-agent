@@ -40,7 +40,7 @@ from app import chat as chat_mod
 from app import help as help_center
 from app import news
 from app import escalate
-from app import knowledge
+from app import intent, knowledge
 from app import sites
 from app.chat import respond, sse
 from app.config import settings
@@ -52,7 +52,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.11.02.5"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.11.02.6"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -744,7 +744,9 @@ def conversations_read(session_id: str, request: Request, x_visitor_id: str | No
 def widget_config(request: Request):
     if not _origin_ok(request):
         raise HTTPException(403, "origin not allowed")
-    return {**media.widget_config(), "version": APP_VERSION, "suggestions": suggestions.current(), "booking_mode": browser_booking.mode(),
+    scope = knowledge.widget_scope(suggestions.current())   # wording and chips follow the console's Knowledge switches
+    return {**media.widget_config(), "version": APP_VERSION, "suggestions": scope.pop("suggestions"), "knowledge": scope,
+            "booking_mode": browser_booking.mode(),
             "reminders": settings.reminder_enabled, "help": settings.help_enabled,
             "news": {"enabled": settings.news_enabled, "tenant": settings.news_tenant, "popup": settings.news_popup,
                      "reactions": news.REACTIONS}, "host_photo": "/static/email/host.png",
@@ -912,16 +914,61 @@ class KnowledgeIn(BaseModel):
 def admin_knowledge(x_admin_token: str | None = Header(default=None)):
     """Knowledge tab: the sources the chatbot answers from, with their switches and sizes (app/knowledge.py)."""
     _require_admin(x_admin_token)
-    return {"sources": knowledge.sources(), "scope_note": knowledge.scope_note().strip()}
+    return _knowledge_state()
+
+
+def _knowledge_state() -> dict:
+    scope = knowledge.widget_scope()
+    return {"sources": knowledge.sources(), "extras": knowledge.extras(), "scope_note": knowledge.scope_note().strip(),
+            "brand": scope["brand"], "own": scope["own"]}
 
 
 @app.post("/admin/knowledge")
 def admin_knowledge_set(body: KnowledgeIn, x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
     try:
-        return {"sources": knowledge.set_source(body.key, body.on), "scope_note": knowledge.scope_note().strip()}
+        knowledge.set_source(body.key, body.on)
     except LookupError:
         raise HTTPException(404, "no such source")
+    return _knowledge_state()
+
+
+# ---- detections (app/intent.py, app/mood.py): switches, wrong-fit routes and how often each fired
+class DetectionIn(BaseModel):
+    key: str = Field(min_length=1, max_length=40)
+    on: bool
+
+
+class RouteIn(BaseModel):
+    kind: str = Field(min_length=1, max_length=20)
+    link: str = Field(default="", max_length=500)
+    label: str = Field(default="", max_length=40)
+
+
+@app.get("/admin/detections")
+def admin_detections(days: int = 30, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    return intent.state(max(1, min(days, 365)))
+
+
+@app.post("/admin/detections")
+def admin_detections_set(body: DetectionIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    try:
+        return intent.set_switch(body.key, body.on)
+    except LookupError:
+        raise HTTPException(404, "no such detection")
+
+
+@app.post("/admin/detections/route")
+def admin_detections_route(body: RouteIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    try:
+        return intent.set_route(body.kind, body.link, body.label)
+    except LookupError:
+        raise HTTPException(404, "no such route")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
 
 
 @app.get("/admin/knowledge/test")

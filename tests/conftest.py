@@ -44,6 +44,18 @@ def _no_frustration_checks(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_visitor_detections(request, monkeypatch):
+    """Wrong-fit and buying-moment checks (app/intent.py) log events for fixed session ids and the buying moment emails the
+    host: only tests/test_intent.py runs them, and no test sends the "Hot visitor" email for real."""
+    from app import intent
+
+    monkeypatch.setattr(intent, "alert_async", lambda *a, **k: None)
+    if "test_intent" not in request.node.nodeid:
+        monkeypatch.setattr(intent, "check_fit", lambda *a, **k: None)
+        monkeypatch.setattr(intent, "check_buying", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
 def _no_live_health_or_backup_model(monkeypatch):
     """The health job calls the model provider and emails alerts; a backup model from .env would change which model a
     chat test sees. Tests that need either set them themselves (tests/test_health.py does)."""

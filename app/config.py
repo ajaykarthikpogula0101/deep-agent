@@ -163,6 +163,12 @@ class Settings(BaseSettings):
     # "Email Deep" (app/escalate.py): the hand-over form is prefilled with an email the assistant writes from the chat, and
     # Deep gets a summary (need, open questions, the chat). false = the older plain hand-over email
     handover_summary: bool = Field(default=True, alias="HANDOVER_SUMMARY")
+    # visitor detections (app/intent.py): job seekers, students and sellers are pointed elsewhere instead of to Deep's calendar;
+    # a visitor showing real buying signs (price, volume, deadline, budget) is offered a call and Deep is told at once.
+    # Each can also be switched off in the console (Detections); these are the install-wide defaults
+    wrong_fit_detection: bool = Field(default=True, alias="WRONG_FIT_DETECTION")
+    buying_detection: bool = Field(default=True, alias="BUYING_DETECTION")
+    buying_alerts: bool = Field(default=True, alias="BUYING_ALERTS")                  # the "hot visitor on the site now" email
     hot_lead_score: int = Field(default=60, alias="HOT_LEAD_SCORE")
     # knowledge-gap loop (app/gaps.py): nightly drafts for unanswered questions; an approved draft becomes a custom answer
     # and (GAP_FOLLOWUP) the people who asked get the answer by email

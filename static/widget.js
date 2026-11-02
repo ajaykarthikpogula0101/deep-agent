@@ -197,8 +197,17 @@
     var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 1500);
     return fetch(ORIGIN + '/widget-config', ctrl ? { signal: ctrl.signal } : undefined)
       .then(function (r) { return r.ok ? r.json() : {}; })
-      .then(function (c) { clearTimeout(timer); return (c && c.suggestions && c.suggestions.length) ? c.suggestions : PROACTIVE.quickReplies; })
+      .then(function (c) { clearTimeout(timer); rebrand(c && c.knowledge); return (c && c.suggestions && c.suggestions.length) ? c.suggestions : PROACTIVE.quickReplies; })
       .catch(function () { clearTimeout(timer); return PROACTIVE.quickReplies; });
+  }
+  // the console's Knowledge switches (app/knowledge.py): with LakeB2B off, the greeting names the company still on, or Deep's
+  // companies; a page's own data-quick-replies are left alone
+  function rebrand(k) {
+    if (!k || !('brand' in k) || k.brand === 'LakeB2B') return;
+    var name = k.brand || "Deep's companies";
+    PROACTIVE.question = k.brand ? 'Exploring ' + k.brand + '? I can answer questions or book you a meeting.'
+      : "Exploring Deep's companies? I can answer questions or book you a meeting.";
+    if (!ds.quickReplies) PROACTIVE.quickReplies = ['Book a meeting', k.brand ? 'What does ' + name + ' offer?' : "What do Deep's companies offer?", k.brand ? 'What is ' + name + '?' : 'What is Deep working on?'];
   }
   // the generic greeting: only when nothing was dismissed yet this session and no bubble is up
   function showGreeting() {

@@ -40,7 +40,7 @@ from app.booking.tools import TOOLS, run_tool, schedules_prompt
 from app.config import settings
 from app.db import log_event
 from app.embeddings import embed_query
-from app import knowledge, mood
+from app import intent, knowledge, mood
 from app.guidance import get_guidance, guidance_block, match_custom_answer
 from app.rag import prompts, understand
 from app.rag.retrieve import Hit, company_names, confident, date_range, pinned_rules, rank_sites, search
@@ -283,9 +283,25 @@ def _respond(
     booking = booking_in_progress(query, history)
     # 2a. frustration (app/mood.py, rules only): the answer opens with a short acknowledgement and, once per chat, the
     #     widget offers Email Deep or a call
-    fr = None if booking else mood.check(session_id, query)
+    # 2c. wrong fit (app/intent.py): a job seeker or someone selling to us gets a short, kind reply and where to go instead;
+    #     a student is answered as usual, without a call offer
+    fit = None if booking else intent.check_fit(session_id, query)
+    if fit:
+        yield sse({"type": "wrong_fit", "kind": fit["kind"], "link": fit["link"], "button": fit["button"]})
+        if fit["kind"] in ("job", "seller"):
+            yield status("writing", "Writing…")
+            yield sse({"type": "token", "text": _fit_text(fit, message, li, client)})
+            yield sse({"type": "done"})
+            return
+    fr = None if booking or not intent.enabled("frustration") else mood.check(session_id, query)
     if fr and fr["offer"]:
         yield sse({"type": "frustration", "reasons": fr["reasons"]})
+    # 2d. buying moment (app/intent.py): price, volume, deadline, budget; once per chat the widget offers a call and Deep is told
+    buy = None if booking or fit else intent.check_buying(session_id, query)
+    if buy and buy["offer"]:
+        if not (fr and fr["offer"]):
+            yield sse({"type": "buying", "kinds": buy["kinds"], "details": buy["details"]})
+        intent.alert_async(session_id, buy)
     kind = None if booking or extra_context else understand.smalltalk_kind(query)
     if kind and not understand.answers_a_question(kind, history):
         log_event("smalltalk", session_id, {"kind": kind, "message": message[:300]})
@@ -308,7 +324,7 @@ def _respond(
         vec = embed_query(search_q)
     except Exception as e:
         log.error("embedding failed: %s", e)
-    if vec is not None and not booking:
+    if vec is not None and not booking and knowledge.extra_enabled("custom"):   # the console can switch custom answers off
         custom = match_custom_answer(vec)
         if custom:
             log_event("custom_answer", session_id, {"id": custom["id"], "score": custom["score"], "message": message[:300]})
@@ -407,6 +423,10 @@ def _respond(
     system += knowledge.scope_note()   # the owner narrowed the sources in the console (app/knowledge.py)
     if fr:
         system += mood.FRUSTRATION_NOTE.format(why=fr["why"])
+    if buy:
+        system += intent.BUYING_NOTE.format(why=buy["why"])
+    if fit:   # a student: answered, no call offer
+        system += intent.STUDENT_NOTE
     system += _period_notes(search_q, hits, today)
     # only the site's loose matches stand behind this answer: an uncited answer is then a "couldn't find it" (logged below)
     weak_only = weak and not booking and not extra_context and not about_booking
@@ -619,6 +639,21 @@ def _period_notes(query: str, hits: list[Hit], today: date) -> str:
         out += ("\nThe Pillars source groups the Champions Group companies by pillar." + listed + " When the visitor asks which "
                 "companies there are or how many, list every one, grouped by pillar, and give the total.")
     return out
+
+
+def _fit_text(fit: dict, message: str, li, client: OpenAI) -> str:
+    """The wrong-fit reply (app/intent.py), in the visitor's language. Model down or slow: the fixed English reply."""
+    try:
+        r = client.chat.completions.create(model=settings.chat_model, temperature=0.4, max_tokens=120, timeout=8,
+                                           messages=intent.fit_messages(fit["kind"], message, fit["link"], li.note))
+        if getattr(r, "usage", None):
+            record_spend(settings.chat_model, r.usage.prompt_tokens, r.usage.completion_tokens)
+        out = (r.choices[0].message.content or "").strip()
+        if out:
+            return out
+    except Exception as e:
+        log.warning("wrong-fit reply failed: %s", e)
+    return intent.fit_reply_fixed(fit["kind"], fit["link"])
 
 
 def _smalltalk_text(kind: str, message: str, history: list[dict], li, client: OpenAI) -> str:
