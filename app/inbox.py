@@ -175,6 +175,8 @@ def metrics(days: int = 7) -> dict[str, Any]:
             """SELECT count(*) FILTER (WHERE team_status = 'waiting'), count(*) FILTER (WHERE team_status = 'replied'),
                       (SELECT count(*) FROM messages WHERE role = 'agent' AND ts > now() - make_interval(days => %s))
                FROM sessions WHERE team_status IS NOT NULL""", (days,)).fetchone()
+        frustrated = c.execute("""SELECT count(DISTINCT session_id) FROM events WHERE kind = 'frustration'
+                                    AND ts > now() - make_interval(days => %s)""", (days,)).fetchone()[0]
         top = c.execute(
             """SELECT lower(regexp_replace(trim(question), '\\s+', ' ', 'g')) AS q, count(*)
                FROM messages WHERE role = 'assistant' AND question IS NOT NULL AND ts > now() - make_interval(days => %s)
@@ -193,6 +195,7 @@ def metrics(days: int = 7) -> dict[str, Any]:
         "conversation_rating": {"count": int(rated[0]), "average": round(float(rated[1]), 2) if rated[1] is not None else None,
                                 "good_share": round(rated[2] / rated[0], 3) if rated[0] else None},
         "team": {"waiting": int(team[0]), "replied": int(team[1]), "replies": int(team[2])},
+        "frustrated": int(frustrated),   # chats where the visitor seemed frustrated (app/mood.py)
         "daily": [{"day": str(d), "conversations": int(s), "resolved": int(r), "refused": int(f)} for d, s, r, f in daily],
         "top_questions": [{"question": q, "count": int(n)} for q, n in top],
     }
@@ -207,14 +210,15 @@ def conversations(days: int = 7, limit: int = 100) -> list[dict[str, Any]]:
                       count(*) FILTER (WHERE m.outcome = ANY(%s)), count(*) FILTER (WHERE m.outcome = 'refused'),
                       count(*) FILTER (WHERE m.outcome = 'handover'), count(*) FILTER (WHERE m.feedback = 1),
                       count(*) FILTER (WHERE m.feedback = -1),
-                      s.city, s.country_code, s.channel, s.referrer_host, s.leads, s.team_status, s.rating
+                      s.city, s.country_code, s.channel, s.referrer_host, s.leads, s.team_status, s.rating,
+                      EXISTS (SELECT 1 FROM events e WHERE e.session_id = m.session_id AND e.kind = 'frustration')
                FROM messages m LEFT JOIN sessions s ON s.session_id = m.session_id
                WHERE m.ts > now() - make_interval(days => %s)
                GROUP BY m.session_id, s.city, s.country_code, s.channel, s.referrer_host, s.leads, s.team_status, s.rating
                ORDER BY max(m.ts) DESC LIMIT %s""",
             (list(_RESOLVED), days, limit)).fetchall()
     cols = ["session_id", "started", "last", "questions", "first_question", "resolved", "refused", "handovers", "up", "down",
-            "city", "country_code", "channel", "referrer_host", "leads", "team_status", "rating"]
+            "city", "country_code", "channel", "referrer_host", "leads", "team_status", "rating", "frustrated"]
     return [dict(zip(cols, r)) for r in rows]
 
 

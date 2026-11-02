@@ -421,7 +421,8 @@ async function loadOverview() {
     ['hand-overs', m.handover_leads, `${m.handovers} requests`], ['custom answers used', m.custom, ''],
     ['median answer time', m.median_latency_ms != null ? (m.median_latency_ms / 1000).toFixed(1) + ' s' : '—', ''], ['errors', m.errors, ''],
     ...(m.conversation_rating ? [['conversation rating', m.conversation_rating.average != null ? '★' + m.conversation_rating.average : '—', `${m.conversation_rating.count} rated · ${pct(m.conversation_rating.good_share)} 4–5 stars`]] : []),
-    ...(m.team ? [['waiting for the team', m.team.waiting, `${m.team.replies} team replies in the chat`]] : [])
+    ...(m.team ? [['waiting for the team', m.team.waiting, `${m.team.replies} team replies in the chat`]] : []),
+    ...(m.frustrated != null ? [['frustrated visitors', m.frustrated, 'chats where the visitor seemed annoyed']] : [])
   ].map(([k, v, s]) => `<div class="tile"><small>${k}</small><div class="n">${v ?? 0}</div><div class="sub">${s}</div></div>`).join('');
   const max = Math.max(1, ...m.daily.map(d => d.conversations));
   $('daily').innerHTML = m.daily.map(d => `<div style="height:${Math.round(100 * d.conversations / max)}%" data-t="${d.day}: ${d.conversations} conversations, ${d.resolved} resolved, ${d.refused} refused"><i style="height:${d.conversations ? Math.round(100 * d.resolved / Math.max(d.resolved + d.refused, 1)) : 0}%"></i></div>`).join('') || '<span class="muted">no conversations yet</span>';
@@ -444,7 +445,7 @@ async function loadConvos() {
   const d = await api(`/admin/conversations?days=${days()}&limit=300`);
   $('convo-view').style.display = 'none'; $('convo-list').style.display = '';
   $('convo-list').innerHTML = `<table><thead><tr><th>last</th><th>first question</th><th>q</th><th>resolved</th><th>refused</th><th>hand-over</th><th>feedback</th><th>team</th><th>rating</th><th>leads</th><th>where</th><th>channel</th></tr></thead><tbody>` +
-    d.items.map(c => `<tr class="click" data-sid="${esc(c.session_id)}"><td>${fmt(c.last)}</td><td class="ell">${esc(c.first_question || '')}</td><td>${c.questions}</td><td class="ok">${c.resolved || ''}</td><td class="bad">${c.refused || ''}</td><td class="warn">${c.handovers || ''}</td>
+    d.items.map(c => `<tr class="click" data-sid="${esc(c.session_id)}"><td>${fmt(c.last)}</td><td class="ell">${c.frustrated ? '<span class="bad" title="The visitor seemed frustrated in this chat">&#9888; frustrated</span> ' : ''}${esc(c.first_question || '')}</td><td>${c.questions}</td><td class="ok">${c.resolved || ''}</td><td class="bad">${c.refused || ''}</td><td class="warn">${c.handovers || ''}</td>
       <td>${c.up ? `<span class="ok">▲${c.up}</span> ` : ''}${c.down ? `<span class="bad">▼${c.down}</span>` : ''}</td><td class="${c.team_status === 'waiting' ? 'warn' : 'muted'}">${esc(c.team_status || '')}</td><td>${c.rating ? '★' + c.rating : ''}</td><td class="ok">${c.leads || ''}</td><td class="muted">${esc([c.city, c.country_code].filter(Boolean).join(', '))}</td><td class="muted">${esc(c.channel || '')}${c.referrer_host ? ' · ' + esc(c.referrer_host) : ''}</td></tr>`).join('') + '</tbody></table>';
   if (!d.items.length) $('convo-list').innerHTML = '<p class="muted">No conversations in this period.</p>';
   $('convo-list').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => openConvo(tr.dataset.sid));

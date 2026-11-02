@@ -40,7 +40,7 @@ from app.booking.tools import TOOLS, run_tool, schedules_prompt
 from app.config import settings
 from app.db import log_event
 from app.embeddings import embed_query
-from app import knowledge
+from app import knowledge, mood
 from app.guidance import get_guidance, guidance_block, match_custom_answer
 from app.rag import prompts, understand
 from app.rag.retrieve import Hit, company_names, confident, date_range, pinned_rules, rank_sites, search
@@ -281,6 +281,11 @@ def _respond(
 
     # 2b. small talk ("hello", "thanks", "what can you do?"): a friendly reply, no retrieval and no "couldn't find that"
     booking = booking_in_progress(query, history)
+    # 2a. frustration (app/mood.py, rules only): the answer opens with a short acknowledgement and, once per chat, the
+    #     widget offers Email Deep or a call
+    fr = None if booking else mood.check(session_id, query)
+    if fr and fr["offer"]:
+        yield sse({"type": "frustration", "reasons": fr["reasons"]})
     kind = None if booking or extra_context else understand.smalltalk_kind(query)
     if kind and not understand.answers_a_question(kind, history):
         log_event("smalltalk", session_id, {"kind": kind, "message": message[:300]})
@@ -400,6 +405,8 @@ def _respond(
               + li.note + (memory or "")
               + prompts.contact_note(settings.zoom_booking_base, settings.host_email))
     system += knowledge.scope_note()   # the owner narrowed the sources in the console (app/knowledge.py)
+    if fr:
+        system += mood.FRUSTRATION_NOTE.format(why=fr["why"])
     system += _period_notes(search_q, hits, today)
     # only the site's loose matches stand behind this answer: an uncited answer is then a "couldn't find it" (logged below)
     weak_only = weak and not booking and not extra_context and not about_booking

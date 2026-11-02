@@ -444,6 +444,13 @@ in the wrong alphabet is read again (`STT_HINT_RECHECK`). Answers are spoken bac
   (the summary goes to Deep only); Deep gets the need, the open questions, the visitor's message and the chat, and
   replies straight to the visitor. An email written but not sent is kept and the visitor is reminded (a strip above the
   composer, a note above the closed launcher, again on their next visit). See docs/EMAILS.md.
+* **Frustration detection** (`app/mood.py`, rules only, nothing added to the reply time): a visitor who says the chat
+  isn't helping, asks the same question again (in other words too), gets two answers that fall short, rated one down,
+  writes in capitals or with "!!", or answers with a curt "no" is scored; 3 points or more is frustrated. The answer
+  then opens with one short, sincere acknowledgement and gets to the point, and once per chat (never after a hand-over)
+  the widget shows "Sorry this has been frustrating. Deep can take it from here" with Email Deep and Book a call. Deep's
+  email says how they felt and why (subject marked "(frustrated)"), and the console flags the chat and counts
+  frustrated visitors on Overview. Words like "annoyed" alone count less: they are often about the visitor's own problem.
 * **Knowledge switches** (`app/knowledge.py`, Console → Knowledge): one switch per website the chatbot answers from
   (deependhq.com and each company site). A website switched off is not searched, not live-searched and not cited, and
   the model is told it is not covered, so it offers Email Deep or a call instead of guessing. "Try a question" shows

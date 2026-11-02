@@ -158,7 +158,7 @@ def parse(raw: str) -> dict[str, Any] | None:
     return out if out["message"] and out["summary"] else None
 
 
-def _ask_model(turns: list[dict[str, Any]], client: Any = None) -> dict[str, Any] | None:
+def _ask_model(turns: list[dict[str, Any]], client: Any = None, felt: str = "") -> dict[str, Any] | None:
     if not settings.chat_api_key and client is None:
         return None
     if client is None:
@@ -170,7 +170,8 @@ def _ask_model(turns: list[dict[str, Any]], client: Any = None) -> dict[str, Any
     r = client.chat.completions.create(
         model=settings.chat_model, temperature=0.2, max_tokens=700,
         messages=[{"role": "system", "content": PROMPT.format(host=host, brand=_brand())},
-                  {"role": "user", "content": "The chat, oldest first:\n<chat>\n" + transcript_text(turns) + "\n</chat>"}])
+                  {"role": "user", "content": "The chat, oldest first:\n<chat>\n" + transcript_text(turns) + "\n</chat>"
+                   + (f"\nThe visitor seemed frustrated ({felt}); mention it in the summary." if felt else "")}])
     return parse(r.choices[0].message.content or "")
 
 
@@ -178,6 +179,7 @@ def draft(session_id: str | None, client: Any = None) -> dict[str, Any]:
     """The email the visitor can send to Deep, written from this chat. Never raises."""
     turns = conversation(session_id)
     last = turns[-1]["id"] if turns else 0
+    felt = _mood(session_id)
     now = time.monotonic()
     with _lock:
         hit = _cache.get(session_id or "")
@@ -186,7 +188,7 @@ def draft(session_id: str | None, client: Any = None) -> dict[str, Any]:
     d = fallback(turns)
     if asked(turns) and settings.handover_summary:
         try:
-            d = _ask_model(turns, client) or d
+            d = _ask_model(turns, client, felt) or d
         except Exception as e:
             log.info("handover draft %s: %s", session_id, e)
     if session_id and d.get("by_ai"):               # a rules draft is cheap; only a model draft is worth keeping
@@ -226,7 +228,8 @@ def render_host(lead: dict[str, Any], d: dict[str, Any], turns: list[dict[str, A
     company = lead.get("company") or ""
     turns = conversation(lead.get("session_id")) if turns is None else turns
     need = d.get("subject") or "a question from the website chat"
-    subject = f"[Website chat] {name}{' (' + company + ')' if company else ''} needs your help: {need}"[:180]
+    subject = (f"[Website chat] {name}{' (' + company + ')' if company else ''} needs your help"
+               f"{' (frustrated)' if _mood(lead.get('session_id')) else ''}: {need}")[:180]
     parts = [f"Hi {host},", "",
              f"{name} <{email}>{', ' + company if company else ''} wrote to you from the website chat"
              + (" after the assistant couldn't fully answer." if fell_short(turns) else "."), ""]
@@ -235,6 +238,9 @@ def render_host(lead: dict[str, Any], d: dict[str, Any], turns: list[dict[str, A
     if d.get("unanswered"):
         parts += ["STILL OPEN"] + [f"  {i}. {q}" for i, q in enumerate(d["unanswered"], 1)] + [""]
     parts += ["THEIR MESSAGE", _block(lead.get("reason") or "(no message)"), ""]
+    felt = _mood(lead.get("session_id"))
+    if felt:
+        parts += ["HOW THEY FELT", _block("Frustrated: " + felt + ". Worth a quick, personal reply."), ""]
     about = [("Email", email), ("Company", company), ("Where", lead.get("origin") or "")]
     parts += ["ABOUT THEM"] + [f"  {k + ':':<9}{v}" for k, v in about if v] + [""]
     if turns:
@@ -243,6 +249,14 @@ def render_host(lead: dict[str, Any], d: dict[str, Any], turns: list[dict[str, A
               "", ("The summary above was written by the website assistant from the chat. Check the chat before quoting it."
                    if d.get("by_ai") else "Sent by the website assistant.")]
     return subject, "\n".join(parts).rstrip() + "\n"
+
+
+def _mood(session_id: str | None) -> str:
+    """Why the visitor seemed frustrated in this chat (app/mood.py), or ''."""
+    from app import mood
+
+    m = mood.last(session_id)
+    return (m or {}).get("why") or ""
 
 
 def send_host(lead: dict[str, Any], d: dict[str, Any], send: Any = None) -> bool:

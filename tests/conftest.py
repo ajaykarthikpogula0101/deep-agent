@@ -34,6 +34,16 @@ def _no_browser_booking(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_frustration_checks(request, monkeypatch):
+    """Chat tests reuse fixed session ids ("s1") whose earlier runs' turns stay in the database, which would read as a
+    visitor asking the same thing again and log frustration events. Only tests/test_mood.py runs the real check."""
+    if "test_mood" not in request.node.nodeid:
+        from app import mood
+
+        monkeypatch.setattr(mood, "check", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
 def _no_live_health_or_backup_model(monkeypatch):
     """The health job calls the model provider and emails alerts; a backup model from .env would change which model a
     chat test sees. Tests that need either set them themselves (tests/test_health.py does)."""

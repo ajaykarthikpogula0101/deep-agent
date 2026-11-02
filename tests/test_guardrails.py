@@ -29,9 +29,10 @@ def _collect(gen):
     return [json.loads(line[len("data: "):]) for line in gen if line.startswith("data: ")]
 
 
+@patch("app.chat.mood.check", return_value=None)   # session "s1" holds earlier runs' turns: not a frustrated visitor
 @patch("app.chat.log_event")
 @patch("app.chat.search", return_value=[_hit(0.12)])
-def test_off_topic_question_is_refused_without_model_call(search, log_event):
+def test_off_topic_question_is_refused_without_model_call(search, log_event, _mood):
     events = _collect(respond("What's the weather in Paris today?", [], "Europe/Paris", "s1"))
     events = [e for e in events if e.get("type") not in ("status", "lang")]  # activity and language events precede the outcome
     assert events[0] == {"type": "refusal", "reason": "low_confidence"}
