@@ -141,7 +141,7 @@ def test_host_day_before_brief_agrees_with_its_subject_and_carries_the_brief(mon
         h = kw["html"]
         assert ledger(h) and f">{word}</span>" in h and ("today" in subject) == (word == "Today")
         assert f"is {word.lower()}</h1>" in h and "PRE-CALL BRIEF" in h and "WHY THIS SCORE" in h and "<ul" in h and "#257A4D" in h
-        assert ">Visitor time<" in h and "EDT" in h and "IST" in h                                  # both time zones
+        assert ">Visitor time<" in h and ("EDT" in h or "EST" in h) and "IST" in h                 # both time zones (New York: EDT or EST by season)
         assert "Open booking page" in h and "Join Zoom" in h and 'href="mailto:ada@lovelace.org"' in h
         assert h.index("Open booking page") < h.index("PRE-CALL BRIEF")                            # the buttons above the brief
     m = M()

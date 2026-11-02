@@ -50,7 +50,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.10.30.5"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.11.02.1"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -782,6 +782,27 @@ def news_item(item_id: int, request: Request, tenant: str | None = None, visitor
     if not it:
         raise HTTPException(404, "no such item")
     return jsonable_encoder(it)
+
+
+@app.get("/news/search")
+def news_search(request: Request, q: str = "", tenant: str | None = None):
+    """Search across every feed: each word must appear in the title, text, labels or article."""
+    t = _news_tenant(request, tenant)
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "slow down")
+    return jsonable_encoder({"q": q[:80], "items": news.search_items(t["slug"], q)})
+
+
+@app.get("/news/items/{item_id}/takeaways")
+def news_takeaways(item_id: int, request: Request, tenant: str | None = None):
+    """Three key takeaways of an article, written by the model once and kept (app/news.py takeaways)."""
+    t = _news_tenant(request, tenant)
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "slow down")
+    points = news.takeaways(t["slug"], item_id)
+    if points is None:
+        raise HTTPException(404, "no such item")
+    return {"points": points}
 
 
 class NewsReactIn(BaseModel):

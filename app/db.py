@@ -516,6 +516,8 @@ ALTER TABLE news_items ADD COLUMN IF NOT EXISTS body TEXT;                      
 ALTER TABLE news_items ADD COLUMN IF NOT EXISTS labels TEXT[] NOT NULL DEFAULT '{{}}';
 ALTER TABLE news_items ADD COLUMN IF NOT EXISTS author TEXT;
 ALTER TABLE news_items ADD COLUMN IF NOT EXISTS views INT NOT NULL DEFAULT 0;
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS meta_at TIMESTAMPTZ;   -- when the page's title, date and picture were last read
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS summary TEXT;          -- the AI's key takeaways (a JSON list), written once
 CREATE TABLE IF NOT EXISTS news_reactions (                                      -- "How would you rate this?" one per visitor
     item_id    BIGINT NOT NULL REFERENCES news_items(id) ON DELETE CASCADE,
     visitor    TEXT NOT NULL,

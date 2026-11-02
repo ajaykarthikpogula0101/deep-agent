@@ -55,7 +55,8 @@ def test_youtube_sitemaps_page_meta_and_mentions():
     assert [N.sitemap_type(u) for u, _ in kids] == ["page", "case_studies", "webinar"]
     assert N.parse_sitemap(urlset(("https://site.test/a", "2026-10-20T07:00:00+00:00")))[0][1].day == 20
     m = N.page_meta(PAGE)
-    assert m == {"title": "How LakeB2B helped a pharma brand", "blurb": "A high-engagement HCP email program & more.", "image": "https://site.test/cs.png"}
+    assert m == {"title": "How LakeB2B helped a pharma brand", "blurb": "A high-engagement HCP email program & more.", "image": "https://site.test/cs.png",
+                 "published": None}
     assert N.bing_target("https://www.bing.com/news/apiclick.aspx?ref=FexRss&aid=&tid=x&url=https%3a%2f%2fpress.test%2fstory&c=1") == "https://press.test/story"
     assert N.mentions_term({"title": "LakeB2B wins award"}, '"LakeB2B"') and N.mentions_term({"title": "x", "blurb": "says lakeb2b."}, "LakeB2B")
     assert not N.mentions_term({"title": "Chris Lake b2b set"}, "LakeB2B")                  # the DJ sets Google returns
@@ -117,11 +118,12 @@ def test_blog_and_youtube_publish_and_the_feed_is_ordered(tenant):
     get = fake_get({"https://site.test/blog/feed/": BLOG, "https://www.youtube.com/feeds/videos.xml?channel_id=UCtest": YT})
     now = datetime.now(timezone.utc)
     blog = N.parse_rss(BLOG)[0]
-    N.upsert(tenant["slug"], "blog", "post", {**blog, "published_at": now - timedelta(days=2)})
+    N.upsert(tenant["slug"], "blog", "post", {**blog, "published_at": datetime(2026, 10, 27, tzinfo=timezone.utc)})   # before the video
     assert N.poll_youtube(tenant, get=get) == 1 and N.poll_youtube(tenant, get=get) == 0        # deduplicated on url
-    N.upsert(tenant["slug"], "blog", "post", {"title": "Old post", "url": "https://site.test/old", "published_at": now - timedelta(days=45)})
-    items = N.published(tenant["slug"])
-    assert [i["kind"] for i in items] == ["video", "post"] and items[0]["label"] == "Video"            # newest first, the 45-day-old one dropped
+    N.upsert(tenant["slug"], "blog", "post", {"title": "Old post", "url": "https://site.test/old", "published_at": datetime(2026, 9, 1, tzinfo=timezone.utc)})
+    window = (now - datetime(2026, 10, 1, tzinfo=timezone.utc)).days            # the sample feeds' October dates, not September's
+    items = N.published(tenant["slug"], days=window)
+    assert [i["kind"] for i in items] == ["video", "post"] and items[0]["label"] == "Video"            # newest first, the older one dropped
     old = [i for i in N.admin_items(tenant["slug"]) if i["title"] == "Old post"][0]
     assert N.moderate(old["id"], pinned=True)
     assert N.published(tenant["slug"])[0]["title"] == "Old post"                                      # pinned: on top, despite its age
@@ -201,6 +203,12 @@ def test_api(monkeypatch):
         assert r.headers["etag"] and r.headers["cache-control"] == "no-cache" and r.json()["feed"] == "latest"
         assert c.get("/news", headers={"If-None-Match": r.headers["etag"]}).status_code == 304   # the widget's 2-minute re-ask
         assert c.post("/admin/news/discover", json={"url": "span.test"}).status_code in (401, 403)
+    with patch("app.main.news.tenant", return_value={"slug": "lakeb2b", "name": "LakeB2B", "enabled": True}), \
+            patch("app.main.news.search_items", return_value=[{"id": 2, "title": "Found"}]), patch("app.main.news.takeaways", side_effect=[["One."], None]):
+        c = TestClient(app)
+        assert c.get("/news/search", params={"q": "found"}).json()["items"][0]["title"] == "Found"
+        assert c.get("/news/items/2/takeaways").json() == {"points": ["One."]}
+        assert c.get("/news/items/9/takeaways").status_code == 404
         monkeypatch.setattr(settings, "news_enabled", False)
         assert c.get("/news").status_code == 404
 
@@ -391,3 +399,136 @@ def test_feeds_are_backfilled_once_and_old_items_get_their_article(tenant):
     bodies = {i["title"]: i["has_body"] for i in N.published(slug)}
     assert bodies == {"Old post": True, "Dead post": False}
     assert N.fill_bodies(tenant, get=fake_get({})) == 0                                                # '' marks one with nothing: not read again
+
+
+# ---------------------------------------------------------------- the audit's fixes (2026-11-02)
+def test_titles_dates_and_listing_pages():
+    assert N.clean_title("North America E-Signature Users Case Study | Span Global Services") == "North America E-Signature Users Case Study"
+    assert N.clean_title("smb game plan decoded for technology marketers - Span Global Services") == "SMB game plan decoded for technology marketers"
+    assert N.clean_title("roi-calculator - Span Global Services") == "ROI calculator" and N.clean_title("b2b attendees list") == "B2B attendees list"
+    assert N.clean_title("Roi-calculator") == "ROI calculator" and N.clean_title("Why it matters to us") == "Why it matters to us"
+    assert N.clean_title("AI Leadership Contact Database PDF | Free Download") == "AI Leadership Contact Database PDF"
+    assert N.clean_title("Acme report — Acme Co", "Acme Co") == "Acme report"
+    assert N.is_hub("Case Studies - Span Global Services", "https://x.test/resources/case-studies/") and N.is_hub("Press Release", "https://x.test/news/press")
+    assert N.is_hub("Anything", "https://x.test/white-paper/") and not N.is_hub("How we helped a pharma brand", "https://x.test/case-studies/pharma")
+    page = ('<html><head><title>Q3 report | LakeB2B</title><script type="application/ld+json">{"@type":"WebPage","datePublished":"2026-04-05T10:19:00+00:00"}</script>'
+            '</head></html>')
+    m = N.page_meta(page)
+    assert m["title"] == "Q3 report" and m["published"] == datetime(2026, 4, 5, 10, 19, tzinfo=timezone.utc)
+
+
+@db
+def test_a_sitemap_item_takes_the_real_date_and_skips_listing_pages(tenant):
+    old = datetime(2024, 1, 23, tzinfo=timezone.utc)
+    page = ('<html><head><title>Case Study: Pharma | Test Co</title><meta property="article:published_time" content="2025-03-01T00:00:00+00:00">'
+            '</head><body><div class="entry-content"><p>' + "word " * 80 + '<img src="https://site.test/inside.png"></p></div></body></html>')
+    get = fake_get({"https://site.test/cs/p": page, "https://site.test/case-studies/": PAGE})
+    assert N._sitemap_item({**tenant, "name": "Test Co"}, "case_studies", "https://site.test/cs/p", old, get)
+    it = [i for i in N.admin_items(tenant["slug"]) if i["url"].endswith("/cs/p")][0]
+    assert it["title"] == "Case Study: Pharma" and it["published_at"] == datetime(2025, 3, 1, tzinfo=timezone.utc)   # not the lastmod
+    assert it["image"] == "https://site.test/inside.png"                                                             # from the article
+    assert not N._sitemap_item(tenant, "case_studies", "https://site.test/case-studies/", old, get)                # a listing page
+
+
+@db
+def test_mentions_keep_the_last_year_one_per_story_and_their_first_picture(tenant):
+    from app.db import conn
+
+    def rss(img):
+        return ("""<rss><channel>
+          <item><title>LakeB2B launches a data API</title><link>https://www.bing.com/news/apiclick.aspx?url=https%3a%2f%2fa.test%2fx</link>
+            <pubDate>""" + datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT") + """</pubDate><description>LakeB2B news</description>
+            <News:Image xmlns:News="https://www.bing.com/news/search?q=">https://img.test/""" + img + """</News:Image></item>
+          <item><title>LakeB2B Launches a Data API!</title><link>https://www.bing.com/news/apiclick.aspx?url=https%3a%2f%2fb.test%2fy</link>
+            <pubDate>""" + datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT") + """</pubDate><description>LakeB2B</description></item>
+          <item><title>LakeB2B at DMA 2013</title><link>https://www.bing.com/news/apiclick.aspx?url=https%3a%2f%2fc.test%2fz</link>
+            <pubDate>Tue, 11 Jun 2013 10:00:00 GMT</pubDate><description>LakeB2B</description></item></channel></rss>""").encode()
+    url = 'https://www.bing.com/news/search?q=%22LakeB2B%22&format=rss'
+    assert N.poll_mentions(tenant, get=fake_get({url: rss("1.jpg")})) == 1           # one story (two outlets), not the 2013 one
+    assert N.poll_mentions(tenant, get=fake_get({url: rss("2.jpg")})) == 0
+    with conn() as c:
+        rows = c.execute("SELECT url, image FROM news_items WHERE tenant = %s AND kind = 'mention'", (tenant["slug"],)).fetchall()
+    assert rows == [("https://a.test/x", "https://img.test/1.jpg")]                     # the thumbnail did not churn
+
+
+@db
+def test_refresh_cleans_saved_items_and_hides_old_or_duplicate_mentions(tenant):
+    from app.db import conn
+
+    slug, now = tenant["slug"], datetime.now(timezone.utc)
+    N.upsert(slug, "sitemap", "case_studies", {"title": "Case one - Span Global Services", "url": "https://site.test/cs/1", "published_at": now})
+    N.upsert(slug, "sitemap", "resource", {"title": "Testimonials - Span Global Services", "url": "https://site.test/resources/t", "published_at": now})
+    N.upsert(slug, "bing", "mention", {"title": "Old coverage", "url": "https://old.test/a", "published_at": now - timedelta(days=900)}, status="pending")
+    N.upsert(slug, "bing", "mention", {"title": "Same story", "url": "https://one.test/a", "published_at": now}, status="pending")
+    N.upsert(slug, "bing", "mention", {"title": "Same Story.", "url": "https://two.test/a", "published_at": now - timedelta(hours=1)}, status="pending")
+    page = '<html><head><title>Case one - Span Global Services</title><meta property="og:image" content="https://site.test/c1.png">' \
+           '<script type="application/ld+json">{"datePublished":"2026-02-01T00:00:00Z"}</script></head></html>'
+    get = fake_get({"https://site.test/cs/1": page, "https://site.test/resources/t": "<html><head><title>Testimonials - Span Global Services</title></head></html>"})
+    assert N.refresh_items({**tenant, "name": "Span Global Services"}, get=get) >= 4
+    with conn() as c:
+        rows = dict(c.execute("SELECT url, status || ' ' || title || ' ' || coalesce(image, '-') || ' ' || published_at::date FROM news_items WHERE tenant = %s",
+                              (slug,)).fetchall())
+    assert rows["https://site.test/cs/1"] == "published Case one https://site.test/c1.png 2026-02-01"
+    assert rows["https://site.test/resources/t"].startswith("hidden")
+    assert rows["https://old.test/a"].startswith("hidden") and rows["https://two.test/a"].startswith("hidden")
+    assert rows["https://one.test/a"].startswith("pending")
+    assert N.refresh_items(tenant, get=fake_get({})) == 0                                 # each page is read once
+
+
+@db
+def test_an_empty_video_description_is_not_read_forever(tenant):
+    from app.db import conn
+
+    N.upsert(tenant["slug"], "youtube", "video", {"title": "Live stream", "url": "https://www.youtube.com/watch?v=x", "body": ""})
+    with conn() as c:
+        assert c.execute("SELECT body FROM news_items WHERE tenant = %s", (tenant["slug"],)).fetchone()[0] == ""
+    assert not N._missing_bodies(tenant["slug"], "youtube")
+
+
+# ---------------------------------------------------------------- the advanced News
+@db
+def test_search_related_reading_time_and_the_button(tenant):
+    slug, now = tenant["slug"], datetime.now(timezone.utc)
+    long_body = "<p>" + "pipeline " * 660 + "</p>"                                      # about three minutes
+    N.upsert(slug, "sitemap", "white_paper", {"title": "Healthcare data playbook", "url": "https://site.test/wp/1", "published_at": now,
+                                               "body": long_body, "labels": ["Healthcare"]})
+    N.upsert(slug, "sitemap", "white_paper", {"title": "Intent data guide", "url": "https://site.test/wp/2", "published_at": now - timedelta(days=1),
+                                               "body": "<p>intent signals</p>"})
+    N.upsert(slug, "blog", "post", {"title": "Hiring update", "url": "https://site.test/b/1", "published_at": now, "blurb": "We are hiring"})
+    hits = N.search_items(slug, "healthcare playbook")
+    assert [h["title"] for h in hits] == ["Healthcare data playbook"] and hits[0]["read_min"] == 3
+    assert [h["title"] for h in N.search_items(slug, "intent")] == ["Intent data guide"]          # the article text is searched too
+    assert N.search_items(slug, "x") == [] and N.search_items(slug, "nothing like this") == []
+    wp = [i for i in N.published(slug, days=365) if i["title"] == "Healthcare data playbook"][0]
+    full = N.item(slug, wp["id"])
+    assert full["cta"] == "Download the white paper" and full["read_min"] == 3 and full["has_body"] and full["host"] == "site.test"
+    assert [r["title"] for r in full["related"]][0] == "Intent data guide"                           # the same kind first
+    hire = N.item(slug, [i for i in N.published(slug) if i["title"] == "Hiring update"][0]["id"])
+    assert hire["cta"] == "Read on site.test" and hire["read_min"] is None and not hire["has_body"]
+
+
+@db
+def test_key_takeaways_are_written_once_and_kept(tenant):
+    from types import SimpleNamespace as NS
+
+    slug = tenant["slug"]
+    N.upsert(slug, "blog", "post", {"title": "Clean data", "url": "https://site.test/b/2", "body": "<p>" + "Clean data lifts reply rates. " * 40 + "</p>"})
+    N.upsert(slug, "blog", "post", {"title": "Short", "url": "https://site.test/b/3", "body": "<p>Too short to sum up.</p>"})
+    calls = []
+
+    class Fake:
+        def __init__(self, answer):
+            self.chat = NS(completions=NS(create=lambda **kw: (calls.append(kw), NS(choices=[NS(message=NS(content=answer))]))[1]))
+    ids = {i["title"]: i["id"] for i in N.published(slug)}
+    pts = N.takeaways(slug, ids["Clean data"], client=Fake('```json\n["Clean data lifts replies.", "It costs less.", "Start now."]\n```'))
+    assert pts == ["Clean data lifts replies.", "It costs less.", "Start now."] and len(calls) == 1
+    assert N.takeaways(slug, ids["Clean data"], client=Fake("[]")) == pts and len(calls) == 1       # kept: no second call
+    assert N.takeaways(slug, ids["Short"], client=Fake("[]")) == [] and len(calls) == 1             # too short: no call
+    assert N.takeaways(slug, 0) is None
+
+    class Down:
+        chat = NS(completions=NS(create=lambda **kw: (_ for _ in ()).throw(RuntimeError("no network"))))
+    N.upsert(slug, "blog", "post", {"title": "Later", "url": "https://site.test/b/4", "body": "<p>" + "Retry me later please. " * 40 + "</p>"})
+    later = {i["title"]: i["id"] for i in N.published(slug)}["Later"]
+    assert N.takeaways(slug, later, client=Down()) == []
+    assert N.takeaways(slug, later, client=Fake('["Retried."]')) == ["Retried."]                  # a failure is not kept

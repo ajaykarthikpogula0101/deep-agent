@@ -48,6 +48,12 @@
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     setTimeout(function () { mount(true).then(function (el) { if (el.openArticle) el.openArticle(HELPA[1]); }).catch(function () {}); }, 0);
   }
+  // a news story link (Copy link in the News tab): #dh-news=<id> opens the messenger on that story
+  var NEWSA = /^#dh-news=([0-9]{1,12})$/.exec(location.hash || '');
+  if (NEWSA && !ASK && !CHAT && !HELPA) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    setTimeout(function () { mount(true).then(function (el) { if (el.openNewsItem) el.openNewsItem(NEWSA[1]); }).catch(function () {}); }, 0);
+  }
   function parseAskHash(hash) {
     var m = /^#ask-deep=([A-Za-z0-9_.-]{10,160})(?:&q=([a-z_]{1,24}))?$/.exec(hash || '');
     return m ? { t: m[1], q: m[2] || null } : null;

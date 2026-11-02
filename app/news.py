@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import hashlib
 import html as htmlmod
+import json
 import logging
 import re
 import xml.etree.ElementTree as ET
@@ -58,7 +59,17 @@ NS = {"content": "http://purl.org/rss/1.0/modules/content/", "media": "http://se
 KIND_LABEL = {"post": "Blog", "video": "Video", "mention": "In the news", "news": "News", "case_studies": "Case study",
               "webinar": "Webinar", "guide": "Guide", "white_paper": "White paper", "research_paper": "Research",
               "infographic": "Infographic", "tip_sheet": "Tip sheet", "newsletter": "Newsletter", "insights": "Insights",
-              "announcement": "Announcement", "event": "Event", "linkedin": "LinkedIn", "x": "X"}
+              "announcement": "Announcement", "event": "Event", "linkedin": "LinkedIn", "x": "X", "resource": "Resource",
+              "marketing_tool": "Tool", "article": "Article", "corporate_brochure": "Brochure"}
+# what the button under an item says (a white paper is downloaded, a video watched...)
+CTA = {"video": "Watch on YouTube", "mention": "Read the article", "white_paper": "Download the white paper",
+       "research_paper": "Download the report", "guide": "Get the guide", "infographic": "View the infographic",
+       "newsletter": "Read the newsletter", "case_studies": "Read the case study", "webinar": "Watch the webinar",
+       "marketing_tool": "Open the tool", "tip_sheet": "Get the tip sheet", "corporate_brochure": "View the brochure"}
+# listing pages ("Case Studies", "Press Release") that sit in a type's sitemap but are not a story
+HUB_TITLES = {"case study", "case studies", "white paper", "white papers", "articles", "article", "testimonials", "process documents",
+              "research papers", "research paper", "press release", "press releases", "news", "resources", "newsletters",
+              "guides", "infographics", "webinars", "blog", "insights", "tip sheets", "marketing tools", "brochures"}
 LAKEB2B = {"slug": "lakeb2b", "name": "LakeB2B", "blog_feed_url": "https://www.lakeb2b.com/blog/feed/",
            "youtube_channel_id": "UCAzbDvKA8n6bwwSZ6OC9C5g", "mention_query": "LakeB2B",
            "sitemap_index_url": "https://www.lakeb2b.com/sitemap_index.xml",
@@ -68,7 +79,7 @@ LAKEB2B = {"slug": "lakeb2b", "name": "LakeB2B", "blog_feed_url": "https://www.l
 FEEDS = [("latest", "Latest", None), ("blog", "Blog", ("post",)), ("videos", "Videos", ("video",)),
          ("newsletters", "Newsletters", ("newsletter",)), ("case-studies", "Case studies", ("case_studies",)),
          ("resources", "Guides & papers", ("guide", "white_paper", "research_paper", "infographic", "tip_sheet", "insights",
-                                           "article", "corporate_brochure", "marketing_tool")),
+                                           "article", "corporate_brochure", "marketing_tool", "resource")),
          ("announcements", "Announcements", ("news", "announcement", "event", "linkedin", "x")), ("press", "In the news", ("mention",))]
 REACTIONS = ["💜", "😴", "👎", "🎉"]   # Intercom's "How would you rate this?"
 BACKFILL_PER_TYPE = 6                  # a feed starts with the newest few pages of its type, not empty
@@ -213,7 +224,7 @@ def parse_rss(xml: bytes | str) -> list[dict[str, Any]]:
         cats = [htmlmod.unescape((c.text or "").strip()) for c in it.findall("category") if (c.text or "").strip()]
         if title and link:
             out.append({"title": htmlmod.unescape(title), "url": link, "published_at": _date(it.findtext("pubDate")),
-                        "blurb": text_of(desc or full), "image": img or news_img, "body": safe_html(full or desc),
+                        "blurb": text_of(desc or full), "image": img or news_img, "body": safe_html(full or desc) or None,
                         "labels": [c for c in dict.fromkeys(cats) if c.lower() != "uncategorized"][:5],
                         "author": (it.findtext("dc:creator", namespaces=NS) or "").strip() or None})
     return out
@@ -252,8 +263,37 @@ def sitemap_type(child_url: str) -> str | None:
     return m.group(1) if m else None
 
 
-def page_meta(html_text: str) -> dict[str, str | None]:
-    """og:title / <title>, og:description / description, og:image of a page."""
+def clean_title(title: str | None, site_name: str | None = None) -> str | None:
+    """A page title without the site's name ("… | Span Global Services") or "| Free Download" on the end; an
+    all-lowercase title (a slug turned title) starts with a capital."""
+    t = re.sub(r"\s+", " ", htmlmod.unescape(title or "")).strip()
+    for n in ["LakeB2B", "Lake B2B", "SPAN Global Services", "Champions Group", site_name or ""]:
+        if n:
+            t = re.sub(rf"\s*[|–—-]\s*{re.escape(n)}\s*$", "", t, flags=re.I).strip()
+    t = re.sub(r"\s*[|–—-]\s*(free download|download now|download)\s*$", "", t, flags=re.I).strip()
+    if t and t[1:] == t[1:].lower():   # a slug turned title ("roi-calculator", "b2b attendees list"), even once capitalised
+        if " " not in t:
+            t = t.replace("-", " ")
+        t = " ".join(ACRONYMS.get(w.lower(), w) for w in t.split(" "))
+        t = t[0].upper() + t[1:]
+    return t or None
+
+
+ACRONYMS = {w.lower(): w for w in ("B2B", "B2C", "SMB", "ROI", "AI", "ABM", "CRM", "SAP", "HR", "SEO", "PPC", "SaaS", "GTM",
+                                    "ICP", "EOR", "CPL", "CPA", "API", "HCP", "CMO", "CEO")}
+
+
+def is_hub(title: str | None, url: str) -> bool:
+    """A listing page ("Case Studies", "/white-paper/") rather than a story."""
+    if (clean_title(title) or "").lower().strip(" .") in HUB_TITLES:
+        return True
+    path = [p for p in urlparse(url).path.split("/") if p]
+    return len(path) <= 1 and (not path or path[0].lower().replace("-", " ").rstrip("s") in {h.rstrip("s") for h in HUB_TITLES})
+
+
+def page_meta(html_text: str, site_name: str | None = None) -> dict[str, Any]:
+    """og:title / <title>, og:description / description, og:image of a page, and when it was first published
+    (JSON-LD datePublished or article:published_time; a sitemap's lastmod is only when it was last saved)."""
     def meta(*names):
         for n in names:
             m = re.search(rf"<meta[^>]+(?:property|name)=[\"']{re.escape(n)}[\"'][^>]*content=[\"']([^\"']*)[\"']", html_text, re.I) \
@@ -265,10 +305,11 @@ def page_meta(html_text: str) -> dict[str, str | None]:
     if not title:
         m = re.search(r"<title[^>]*>(.*?)</title>", html_text, re.I | re.S)
         title = htmlmod.unescape(m.group(1).strip()) if m else None
-    if title:
-        title = re.sub(r"\s*[|–-]\s*(LakeB2B|Lake B2B|SPAN Global Services)\s*$", "", title).strip()
+    title = clean_title(title, site_name)
+    m = re.search(r'"datePublished"\s*:\s*"([^"]+)"', html_text)
+    published = _date(m.group(1) if m else meta("article:published_time", "og:published_time", "datePublished"))
     return {"title": title, "blurb": text_of(meta("og:description", "description", "twitter:description")),
-            "image": meta("og:image", "twitter:image")}
+            "image": meta("og:image", "twitter:image"), "published": published}
 
 
 def bing_target(link: str) -> str:
@@ -357,7 +398,8 @@ def upsert(tenant_slug: str, source: str, kind: str, item: dict[str, Any], statu
                VALUES (%s, %s, %s, %s, %s, COALESCE(%s::timestamptz, now()), %s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT (tenant, url) DO UPDATE SET title = EXCLUDED.title, blurb = COALESCE(NULLIF(EXCLUDED.blurb, ''), news_items.blurb),
                  image = COALESCE(EXCLUDED.image, news_items.image),
-                 body = COALESCE(EXCLUDED.body, news_items.body), labels = EXCLUDED.labels,
+                 body = CASE WHEN EXCLUDED.body IS NULL THEN news_items.body WHEN EXCLUDED.body = '' THEN COALESCE(news_items.body, '')
+                             ELSE EXCLUDED.body END, labels = EXCLUDED.labels,
                  author = COALESCE(EXCLUDED.author, news_items.author),
                  published_at = COALESCE(%s::timestamptz, news_items.published_at),
                  lastmod = COALESCE(EXCLUDED.lastmod, news_items.lastmod),
@@ -367,13 +409,14 @@ def upsert(tenant_slug: str, source: str, kind: str, item: dict[str, Any], statu
                   OR (EXCLUDED.image IS NOT NULL AND news_items.image IS DISTINCT FROM EXCLUDED.image)
                   OR (%s::timestamptz IS NOT NULL AND news_items.published_at IS DISTINCT FROM %s::timestamptz)
                   OR (EXCLUDED.lastmod IS NOT NULL AND news_items.lastmod IS DISTINCT FROM EXCLUDED.lastmod)
-                  OR (EXCLUDED.body IS NOT NULL AND news_items.body IS DISTINCT FROM EXCLUDED.body)
+                  OR (EXCLUDED.body <> '' AND news_items.body IS DISTINCT FROM EXCLUDED.body)
+                  OR (EXCLUDED.body = '' AND news_items.body IS NULL)
                   OR news_items.labels IS DISTINCT FROM EXCLUDED.labels
                   OR (EXCLUDED.author IS NOT NULL AND news_items.author IS DISTINCT FROM EXCLUDED.author)
                RETURNING (xmax = 0)""",
             (tenant_slug, source, kind, item["title"][:300], item["url"][:1000], when,
              (item.get("blurb") or "")[:600], (item.get("image") or None), status, lastmod,
-             item.get("body") or None, labels, (item.get("author") or None),
+             item.get("body"), labels, (item.get("author") or None),
              when, when, when)).fetchone()
         c.commit()
     return bool(row and row[0])
@@ -471,13 +514,27 @@ def poll_mentions(t: dict[str, Any], get: Callable | None = None, cache: bool = 
     r = _fetch(get, url, key)
     if r is None:
         return 0
-    new = 0
+    new, since = 0, datetime.now(timezone.utc) - timedelta(days=settings.news_feed_days)
+    with conn() as c:
+        known = {r[1]: r[0] for r in c.execute("SELECT url, title FROM news_items WHERE tenant = %s AND kind = 'mention'", (t["slug"],)).fetchall()}
+    stories = {title_key(k): u for k, u in known.items()}
     for it in parse_rss(r.content):
         it["url"] = bing_target(it["url"])
-        if mentions_term(it, q):
-            new += upsert(t["slug"], "bing", "mention", it, status="pending")
+        if not mentions_term(it, q) or (it.get("published_at") and it["published_at"] < since):
+            continue                                       # not about the company, or older than a year
+        if stories.get(title_key(it["title"]), it["url"]) != it["url"]:
+            continue                                       # the same story from another outlet
+        if it["url"] in known.values():
+            it["image"] = None                             # Bing's thumbnail links change each time: keep the first
+        stories[title_key(it["title"])] = it["url"]
+        new += upsert(t["slug"], "bing", "mention", it, status="pending")
     _remember(key, url, r)
     return new
+
+
+def title_key(title: str | None) -> str:
+    """The same story's title from two outlets compares equal: letters and digits only, the first 60."""
+    return re.sub(r"[^a-z0-9]", "", (title or "").lower())[:60]
 
 
 def poll_sitemaps(t: dict[str, Any], get: Callable | None = None, now: datetime | None = None, cache: bool = False) -> int:
@@ -537,13 +594,75 @@ def _sitemap_item(t: dict[str, Any], kind: str, loc: str, lastmod: datetime | No
     except Exception as e:
         log.warning("news page %s failed: %s", loc, e)
         return False
-    meta = page_meta(page)
-    if not meta["title"]:
+    meta = page_meta(page, t.get("name"))
+    if not meta["title"] or is_hub(meta["title"], loc):
         return False
     from app import sites
 
     body = article_html(page, loc, sites.boilerplate(sites.site_root(t) or loc, get))
-    return upsert(t["slug"], "sitemap", kind, {"url": loc, "published_at": lastmod, **meta, "body": body}, lastmod=lastmod)
+    item = {"url": loc, "title": meta["title"], "blurb": meta["blurb"] or text_of(body), "image": meta["image"] or _first_img(body),
+            "published_at": meta["published"] or lastmod, "body": body}
+    new = upsert(t["slug"], "sitemap", kind, item, lastmod=lastmod)
+    with conn() as c:
+        c.execute("UPDATE news_items SET meta_at = now() WHERE tenant = %s AND url = %s", (t["slug"], loc))
+        c.commit()
+    return new
+
+
+def refresh_items(t: dict[str, Any], get: Callable | None = None, limit: int = 8) -> int:
+    """Items saved before titles were cleaned and real dates read: read each page once more for its clean title, its
+    publication date (sitemap pages) and a picture when it had none; listing pages are taken off. Pending press
+    mentions older than a year, or the same story twice, are put aside. Returns how many items changed."""
+    changed = 0
+    since = datetime.now(timezone.utc) - timedelta(days=settings.news_feed_days)
+    with conn() as c:
+        for item_id, title in c.execute("SELECT id, title FROM news_items WHERE tenant = %s AND source IN ('sitemap', 'blog')",
+                                        (t["slug"],)).fetchall():
+            better = clean_title(title, t.get("name"))
+            if better and better != title:          # titles saved before they were cleaned
+                changed += c.execute("UPDATE news_items SET title = %s, updated_at = now() WHERE id = %s", (better, item_id)).rowcount
+        changed += c.execute("""UPDATE news_items SET status = 'hidden', updated_at = now()
+                                WHERE tenant = %s AND kind = 'mention' AND status = 'pending' AND published_at < %s""", (t["slug"], since)).rowcount
+        rows = c.execute("""SELECT id, title FROM news_items WHERE tenant = %s AND kind = 'mention' AND status IN ('pending', 'published')
+                            ORDER BY (status = 'published') DESC, published_at DESC""", (t["slug"],)).fetchall()
+        seen: set[str] = set()
+        for item_id, title in rows:
+            if title_key(title) in seen:
+                changed += c.execute("UPDATE news_items SET status = 'hidden', updated_at = now() WHERE id = %s AND status = 'pending'",
+                                     (item_id,)).rowcount
+            seen.add(title_key(title))
+        todo = c.execute("""SELECT id, url, source, title, image, blurb FROM news_items
+                            WHERE tenant = %s AND meta_at IS NULL AND source IN ('sitemap', 'blog') AND status = 'published'
+                            ORDER BY published_at DESC LIMIT %s""", (t["slug"], limit)).fetchall()
+        c.commit()
+    get = get or _client().get
+    for item_id, url, source, title, image, blurb in todo:
+        try:
+            r = get(url)
+            meta = page_meta(r.text, t.get("name")) if r.status_code < 400 else None
+        except Exception as e:
+            log.info("news refresh %s: %s", url, e)
+            continue
+        with conn() as c:
+            if meta and source == "sitemap" and is_hub(meta["title"] or title, url):
+                c.execute("UPDATE news_items SET status = 'hidden', meta_at = now(), updated_at = now() WHERE id = %s", (item_id,))
+                changed += 1
+            elif meta:
+                n = c.execute("""UPDATE news_items SET title = COALESCE(%s, title), image = COALESCE(image, %s),
+                                   blurb = CASE WHEN blurb = '' THEN %s ELSE blurb END,
+                                   published_at = COALESCE(%s, published_at), meta_at = now(), updated_at = now()
+                                 WHERE id = %s AND (title IS DISTINCT FROM COALESCE(%s, title) OR (image IS NULL AND %s::text IS NOT NULL)
+                                   OR (blurb = '' AND %s::text <> '') OR (%s::timestamptz IS NOT NULL AND published_at IS DISTINCT FROM %s::timestamptz))""",
+                              (clean_title(meta["title"] or title, t.get("name")), meta["image"], meta["blurb"] or "",
+                               meta["published"] if source == "sitemap" else None, item_id,
+                               clean_title(meta["title"] or title, t.get("name")), meta["image"], meta["blurb"] or "",
+                               meta["published"] if source == "sitemap" else None, meta["published"] if source == "sitemap" else None)).rowcount
+                changed += n
+                c.execute("UPDATE news_items SET meta_at = now() WHERE id = %s", (item_id,))
+            else:
+                c.execute("UPDATE news_items SET meta_at = now() WHERE id = %s", (item_id,))
+            c.commit()
+    return changed
 
 
 def backfill(t: dict[str, Any], get: Callable | None = None, per_type: int = BACKFILL_PER_TYPE) -> int:
@@ -735,6 +854,7 @@ def tick(get: Callable | None = None, now: datetime | None = None, tenant_slug: 
             if configured(t, "sitemap") and "sitemap" in states:   # after the first sitemap pass recorded what exists
                 backfill(t, get=get)
             fill_bodies(t, get=get)
+            refresh_items(t, get=get)
         except Exception as e:
             log.warning("news %s articles: %s", t["slug"], e)
     if any(v.get("new") or v.get("error") for v in out.values()):
@@ -863,27 +983,63 @@ def discover(site: str, get: Callable | None = None) -> dict[str, Any]:
 _COLS = ["id", "tenant", "source", "kind", "title", "url", "published_at", "blurb", "image", "status", "pinned", "created_at"]
 
 
+# the columns a card needs; read_min: minutes to read the article (none for a video or an item without one)
+_CARD = (", ".join(_COLS) + """, (lastmod IS NOT NULL AND lastmod > created_at + interval '1 hour'), labels, author,
+         (body IS NOT NULL AND body <> ''),
+         CASE WHEN kind = 'video' OR body IS NULL OR body = '' THEN NULL
+              ELSE greatest(1, round(coalesce(array_length(regexp_split_to_array(btrim(regexp_replace(body, '<[^>]+>', ' ', 'g')), '[[:space:]]+'), 1), 0) / 220.0))::int END""")
+_CARD_KEYS = _COLS + ["updated", "labels", "author", "has_body", "read_min"]
+
+
+def _card(r) -> dict[str, Any]:
+    d = dict(zip(_CARD_KEYS, r))
+    d["label"] = KIND_LABEL.get(d["kind"], d["kind"].replace("_", " ").title())
+    d["labels"] = list(d["labels"] or []) or [d["label"]]
+    return d
+
+
 def published(tenant_slug: str, limit: int | None = None, days: int | None = None, kinds: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
     """The News tab: pinned first, then newest; last `days` days (pinned excepted), at most `limit` items; `kinds`
     narrows it to one feed. `updated`: the page was re-saved on the site after it was first listed; `has_body`: it
-    opens as an article inside the messenger."""
+    opens as an article inside the messenger; `read_min`: minutes to read it."""
     limit, days = limit or settings.news_limit, days or settings.news_days
     with conn() as c:
         rows = c.execute(
-            f"""SELECT {', '.join(_COLS)}, (lastmod IS NOT NULL AND lastmod > created_at + interval '1 hour'), labels, author,
-                       (body IS NOT NULL AND body <> '')
-                FROM news_items
+            f"""SELECT {_CARD} FROM news_items
                 WHERE tenant = %s AND status = 'published' AND (pinned OR published_at > now() - make_interval(days => %s))
                   AND (%s::text[] IS NULL OR kind = ANY(%s::text[]))
                 ORDER BY pinned DESC, published_at DESC LIMIT %s""",
             (tenant_slug, days, list(kinds) if kinds else None, list(kinds) if kinds else None, limit)).fetchall()
-    out = []
-    for r in rows:
-        d = dict(zip(_COLS + ["updated", "labels", "author", "has_body"], r))
-        d["label"] = KIND_LABEL.get(d["kind"], d["kind"].replace("_", " ").title())
-        d["labels"] = list(d["labels"] or []) or [d["label"]]
-        out.append(d)
-    return out
+    return [_card(r) for r in rows]
+
+
+def search_items(tenant_slug: str, q: str, limit: int = 20) -> list[dict[str, Any]]:
+    """News search: every word must appear in the title, text, labels or article (any case); title matches first."""
+    words = [w for w in re.findall(r"[\w&+.-]+", (q or "").lower()) if len(w) > 1][:6]
+    if not words:
+        return []
+    pats = [f"%{w}%" for w in words]
+    with conn() as c:
+        rows = c.execute(
+            f"""SELECT {_CARD} FROM news_items
+                WHERE tenant = %s AND status = 'published' AND (pinned OR published_at > now() - make_interval(days => %s))
+                  AND concat_ws(' ', title, blurb, array_to_string(labels, ' '), regexp_replace(coalesce(body, ''), '<[^>]+>', ' ', 'g'))
+                      ILIKE ALL (%s::text[])
+                ORDER BY (title ILIKE ALL (%s::text[])) DESC, published_at DESC LIMIT %s""",
+            (tenant_slug, settings.news_feed_days, pats, pats, limit)).fetchall()
+    return [_card(r) for r in rows]
+
+
+def related(tenant_slug: str, item_id: int, kind: str, labels: list[str], n: int = 3) -> list[dict[str, Any]]:
+    """More like this, under an article: the same kind first, then the most labels in common, then the newest."""
+    with conn() as c:
+        rows = c.execute(
+            f"""SELECT {_CARD} FROM news_items
+                WHERE tenant = %s AND status = 'published' AND id <> %s AND published_at > now() - make_interval(days => %s)
+                ORDER BY (kind = %s) DESC, cardinality(ARRAY(SELECT unnest(labels) INTERSECT SELECT unnest(%s::text[]))) DESC,
+                         published_at DESC LIMIT %s""",
+            (tenant_slug, item_id, settings.news_feed_days, kind, list(labels or []), n)).fetchall()
+    return [_card(r) for r in rows]
 
 
 def feed(key: str | None) -> tuple[str, str, tuple[str, ...] | None]:
@@ -936,8 +1092,59 @@ def item(tenant_slug: str, item_id: int, visitor: str | None = None, count_view:
     d = dict(zip(_COLS + ["labels", "author", "body", "views"], r))
     d["label"] = KIND_LABEL.get(d["kind"], d["kind"].replace("_", " ").title())
     d["labels"] = list(d["labels"] or []) or [d["label"]]
+    words = len(re.sub(r"<[^>]+>", " ", d["body"] or "").split())
+    d["read_min"] = None if d["kind"] == "video" or not words else max(1, round(words / 220))
+    d["has_body"] = bool(words)
     d["body"] = d["body"] or (text_html(d["blurb"]) if d["blurb"] else "")
-    return {**d, "reactions": reactions(item_id, visitor)}
+    host = urlparse(d["url"]).netloc.removeprefix("www.")
+    d["cta"] = CTA.get(d["kind"]) or (f"Read on {host}" if host else "Open")
+    d["host"] = host
+    return {**d, "reactions": reactions(item_id, visitor), "related": related(tenant_slug, item_id, d["kind"], d["labels"])}
+
+
+TAKEAWAYS_PROMPT = (
+    "You write the key takeaways of an article for a busy reader. Use only the article text below; add nothing it does "
+    "not say. Return only a JSON array of exactly three short strings: plain sentences under 18 words each, no "
+    "numbering, no emoji, no quotes around the whole answer.")
+
+
+def takeaways(tenant_slug: str, item_id: int, client: Any = None) -> list[str] | None:
+    """Three key takeaways of an article, written by the chat model the first time someone opens it and kept
+    (news_items.summary). None for an unknown item; [] when the article is too short to summarise or the model is
+    unreachable (that one is not kept, so it is tried again later)."""
+    with conn() as c:
+        row = c.execute("SELECT title, body, summary FROM news_items WHERE id = %s AND tenant = %s AND status = 'published'",
+                        (item_id, tenant_slug)).fetchone()
+    if not row:
+        return None
+    title, body, summary = row
+    if summary is not None:
+        try:
+            return [str(x) for x in json.loads(summary)][:3]
+        except (TypeError, ValueError):
+            pass
+    text = re.sub(r"\s+", " ", htmlmod.unescape(re.sub(r"<[^>]+>", " ", body or ""))).strip()[:7000]
+    points: list[str] = []
+    if len(text.split()) >= 120 and settings.chat_api_key:
+        try:
+            if client is None:
+                from openai import OpenAI
+
+                client = OpenAI(api_key=settings.chat_api_key, base_url=settings.llm_base_url or None, timeout=settings.precall_model_timeout,
+                                max_retries=0, default_headers={"HTTP-Referer": settings.site_base_url, "X-Title": "deependhq assistant"})
+            r = client.chat.completions.create(model=settings.chat_model, temperature=0.2, max_tokens=300,
+                                               messages=[{"role": "system", "content": TAKEAWAYS_PROMPT},
+                                                         {"role": "user", "content": f"Title: {title}\n\nArticle:\n{text}"}])
+            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", (r.choices[0].message.content or "").strip())
+            got = json.loads(raw)
+            points = [re.sub(r"\s+", " ", str(x)).strip()[:220] for x in got if str(x).strip()][:3] if isinstance(got, list) else []
+        except Exception as e:
+            log.info("news takeaways %s: %s", item_id, e)
+            return []                                       # not kept: tried again on the next open
+    with conn() as c:
+        c.execute("UPDATE news_items SET summary = %s WHERE id = %s", (json.dumps(points), item_id))
+        c.commit()
+    return points
 
 
 def react(tenant_slug: str, item_id: int, visitor: str, emoji: str | None) -> dict[str, Any]:

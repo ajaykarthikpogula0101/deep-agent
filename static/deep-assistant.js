@@ -31,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender --da-dot
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.10.30.5';
+const VERSION = '2026.11.02.1';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -547,6 +547,21 @@ textarea.q { width:100%; padding:0; min-height:24px; font-size:15px; line-height
   .convo { transition:background .15s } .convo:hover { background:var(--da-subtle) }
 }
 @media (prefers-reduced-motion: reduce) { .tab .ti::before, .hcard:not(.searchc) { transition:none } .hcard:not(.searchc):hover { transform:none } }
+/* News, advanced: search, key takeaways, the actions under an article, more like this */
+.nsearch { display:flex; align-items:center; gap:8px; margin:0 0 12px; padding:0 10px 0 12px; height:40px; border:1px solid var(--da-line); border-radius:10px; background:var(--da-surface); transition:border-color .15s, box-shadow .15s }
+.nsearch:focus-within { border-color:color-mix(in srgb, var(--da-primary) 45%, var(--da-line)); box-shadow:0 0 0 4px color-mix(in srgb, var(--da-primary) 12%, transparent) }
+.nsearch > svg { width:16px; height:16px; flex:none; color:var(--da-muted) } .nsearch input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--da-text); font:inherit; font-size:14px }
+.nsearch input::-webkit-search-cancel-button { display:none } .nsx { display:grid; place-items:center; width:24px; height:24px; padding:0; border:0; border-radius:50%; background:var(--da-subtle); color:var(--da-muted); cursor:pointer } .nsx svg { width:12px; height:12px }
+.nsres { margin:0 2px 10px; font-size:13px; color:var(--da-muted) } .nsres b { color:var(--da-text) }
+.ntake { padding:14px 16px; border-radius:12px; background:linear-gradient(135deg, color-mix(in srgb, var(--da-primary) 9%, var(--da-surface)), var(--da-surface)); border:1px solid color-mix(in srgb, var(--da-primary) 22%, var(--da-line)) }
+.ntake > b { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:700; letter-spacing:.02em; color:var(--da-primary) } .ntake > b svg { width:15px; height:15px }
+.ntake ul { margin:10px 0 6px; padding-left:18px; font-size:14px; line-height:1.55; color:var(--da-text) } .ntake li { margin:5px 0 } .ntake li::marker { color:var(--da-primary) }
+.ntake small { font-size:11.5px; color:var(--da-muted) } .ntake .sk { display:block; margin-top:10px } .ntake .sk i { height:9px; margin:7px 0 }
+.nnote { color:var(--da-muted) }
+.nacts { display:flex; flex-wrap:wrap; align-items:center; gap:8px } .nacts .ncta { align-self:auto }
+.nask, .nshare { display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border:1px solid var(--da-line); border-radius:8px; background:var(--da-surface); color:var(--da-text); font:inherit; font-size:13.5px; font-weight:600; cursor:pointer; transition:background .15s, border-color .15s }
+.nask:hover, .nshare:hover { background:var(--da-subtle) } .nask svg, .nshare svg { width:15px; height:15px; color:var(--da-primary) }
+.nrel { margin:18px 20px 6px } .nrel > b { display:block; margin:0 2px 8px; font-size:14px; font-weight:700; color:var(--da-text) }
 /* Help center */
 .hsearchbar { flex:none; padding:0 12px 12px; background:var(--da-head); border-bottom:1px solid #EDEDED } :host([theme="dark"]) .hsearchbar { border-bottom-color:var(--da-line) }
 .hsearchbar[hidden] { display:none } .hsearchbar .searchbox svg { left:auto; right:12px; color:var(--da-primary) }
@@ -1215,7 +1230,7 @@ class DeepAssistant extends HTMLElement {
   _newsRow(it, isNew) {
     const first = (it.labels && it.labels[0]) || it.label || it.kind;
     return `<a class="ncard nrow" href="${esc(it.url)}" target="_blank" rel="noopener" data-id="${esc(String(it.id))}">${this._newsThumb(it, 'nth')}
-      <span class="nrb"><span class="nmeta">${isNew ? '<i class="nnew" aria-label="New"></i>' : ''}<span class="nchip">${esc(first)}</span>${it.pinned ? '<span class="nchip">Pinned</span>' : ''}${it.published_at ? `<span class="nwhen">${esc(relAge(it.published_at))}</span>` : ''}</span>
+      <span class="nrb"><span class="nmeta">${isNew ? '<i class="nnew" aria-label="New"></i>' : ''}<span class="nchip">${esc(first)}</span>${it.pinned ? '<span class="nchip">Pinned</span>' : ''}${it.published_at ? `<span class="nwhen">${esc(relAge(it.published_at))}${it.read_min ? ` · ${it.read_min} min` : ''}</span>` : ''}</span>
       <b>${esc(it.title)}</b></span></a>`;
   }
   _newsMini(it, isNew) {
@@ -1245,10 +1260,16 @@ class DeepAssistant extends HTMLElement {
     } else {
       body = `<div class="nlist">${items.map((it) => this._newsRow(it, this._isNewsUnread(it))).join('')}</div><div class="ncaught">${SVG.check || ''}<span>You're all caught up!</span></div>`;
     }
+    const q = this._newsQuery || '';
     box.innerHTML = `<div class="nhead"><span><b>${esc(cur.label)}</b><small>From Team ${esc((d && d.name) || this.botName)}</small></span>${photo ? `<span class="havs"><img src="${esc(photo)}" alt=""></span>` : ''}</div>`
+      + `<label class="nsearch">${SVG.search}<input type="search" placeholder="Search news" aria-label="Search news" value="${esc(q)}" maxlength="80"><button type="button" class="nsx" aria-label="Clear search"${q ? '' : ' hidden'}>${SVG.close}</button></label>`
       + (feeds.length > 1 ? `<div class="nfeeds" role="tablist" aria-label="News feeds">${feeds.map((f) => `<button class="nfeed${f.key === feed ? ' on' : ''}" type="button" role="tab" aria-selected="${f.key === feed}" data-feed="${esc(f.key)}">${esc(f.label)}</button>`).join('')}</div>` : '')
-      + body;
-    const go = (k, label) => { this._newsFeed = k; this._emit('action', { action: 'news_feed', label, kind: 'news' }); this._renderNews(); box.scrollTop = 0; };
+      + `<div class="nbodyw">${body}</div>`;
+    const inp = box.querySelector('.nsearch input'), clr = box.querySelector('.nsx');
+    inp.addEventListener('input', () => { const v = inp.value; clr.hidden = !v; clearTimeout(this._newsQT); this._newsQT = setTimeout(() => this._newsSearch(v, body), 260); });
+    clr.onclick = () => { inp.value = ''; clr.hidden = true; this._newsSearch('', body); inp.focus(); };
+    if (q) this._newsSearch(q, body);
+    const go = (k, label) => { this._newsFeed = k; this._newsQuery = ''; this._emit('action', { action: 'news_feed', label, kind: 'news' }); this._renderNews(); box.scrollTop = 0; };
     box.querySelectorAll('.nfeed').forEach((b) => { b.onclick = () => go(b.dataset.feed, b.textContent); });
     box.querySelectorAll('.nsee').forEach((b) => { b.onclick = () => go(b.dataset.feed, b.dataset.feed); });
     const on = box.querySelector('.nfeed.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -1256,6 +1277,20 @@ class DeepAssistant extends HTMLElement {
     this._markNewsRead(items);   // shown: no longer new (the marks above keep saying "New" until the next visit)
     this._paintNewsDot();
   }
+  async _newsSearch(q, feedBody) {
+    const box = this.shadowRoot.querySelector('.newsv'), out = box && box.querySelector('.nbodyw'); if (!out) return;
+    this._newsQuery = q = (q || '').trim();
+    if (q.length < 2) { out.innerHTML = feedBody; this._bindNewsCards(out); this._bindNewsRails(out); return; }
+    let d = null;
+    try { const t = this._newsTenant(); const r = await fetch(this._url(`/news/search?q=${encodeURIComponent(q)}${t ? '&tenant=' + encodeURIComponent(t) : ''}`)); if (r.ok) d = await r.json(); } catch {}
+    if ((this._newsQuery || '') !== q || !out.isConnected) return;
+    const items = (d && d.items) || [];
+    out.innerHTML = `<div class="nsres">${items.length ? `${items.length} result${items.length === 1 ? '' : 's'} for <b>${esc(q)}</b>` : `Nothing in the news for <b>${esc(q)}</b> yet`}</div>`
+      + (items.length ? `<div class="nlist">${items.map((it) => this._newsRow(it, this._isNewsUnread(it))).join('')}</div>` : '');
+    this._bindNewsCards(out);
+    this._emit('action', { action: 'news_search', label: q, kind: 'news' });
+  }
+  _bindNewsRails(root) { root.querySelectorAll('.nsee').forEach((b) => { b.onclick = () => { this._newsFeed = b.dataset.feed; this._newsQuery = ''; this._renderNews(); }; }); }
   openNews(feed) { this._newsPage = null; if (feed) this._newsFeed = feed; this.showView('news'); }
   openNewsItem(id) { if (!id) return; this._newsPage = { id: String(id) }; this.showView('news'); this._paintNewsItem(); }
   async _paintNewsItem() {
@@ -1269,7 +1304,7 @@ class DeepAssistant extends HTMLElement {
     this._markNewsRead([it]); this._paintNewsDot();
     const vid = it.kind === 'video' && (/[?&]v=([\w-]{6,20})/.exec(it.url) || [])[1];
     const host = (() => { try { return new URL(it.url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
-    const cta = it.kind === 'video' ? 'Watch on YouTube' : it.kind === 'mention' ? 'Read the article' : it.source === 'manual' && /linkedin\./.test(host) ? 'See the post on LinkedIn' : host ? `Read on ${host}` : 'Open';
+    const cta = it.source === 'manual' && /linkedin\./.test(host) ? 'See the post on LinkedIn' : it.cta || (host ? `Read on ${host}` : 'Open');
     const team = 'Team ' + (((this._news || {}).name) || this.botName), who = it.author || team, photo = this._hostPhoto();
     const av = (!it.author || it.author === team || (this._cfg && it.author === this._cfg.host_name)) && photo ? `<img src="${esc(photo)}" alt="">` : `<span>${esc((who.replace(/^Team /, '')[0] || '?').toUpperCase())}</span>`;
     const opts = (it.reactions && it.reactions.options) || (this._cfg && this._cfg.news && this._cfg.news.reactions) || ['💜', '😴', '👎', '🎉'];
@@ -1277,11 +1312,31 @@ class DeepAssistant extends HTMLElement {
       ${vid ? `<div class="nvideo"><iframe src="https://www.youtube-nocookie.com/embed/${esc(vid)}" title="${esc(it.title)}" loading="lazy" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>`
         : it.image ? `<div class="nimg"><img src="${esc(it.image)}" alt="" onerror="this.parentNode.remove()"></div>` : ''}
       <div class="ninner">${this._newsLabels(it, false, true)}<h2 class="ntitle">${esc(it.title)}</h2>
-      <div class="nby"><span class="nav">${av}</span><span>Shared by <b>${esc(who)}</b>${it.published_at ? ` • <time datetime="${esc(it.published_at)}">${esc(relAge(it.published_at))}</time>` : ''}</span></div>
-      <div class="nhtml">${it.body || ''}</div>
-      <a class="ncta" href="${esc(it.url)}" target="_blank" rel="noopener">${esc(cta)}${SVG.ext || ''}</a></div>
+      <div class="nby"><span class="nav">${av}</span><span>Shared by <b>${esc(who)}</b>${it.published_at ? ` • <time datetime="${esc(it.published_at)}">${esc(relAge(it.published_at))}</time>` : ''}${it.read_min ? ` • ${it.read_min} min read` : ''}</span></div>
+      ${it.has_body && it.read_min >= 2 ? `<div class="ntake" aria-live="polite"><b>${SVG.spark}Key takeaways</b><span class="sk"><span class="l"><i></i><i></i><i></i></span></span></div>` : ''}
+      <div class="nhtml">${it.body || (host ? `<p class="nnote">This ${esc((it.label || 'item').toLowerCase())} is on ${esc(host)}.</p>` : '')}</div>
+      <div class="nacts"><a class="ncta" href="${esc(it.url)}" target="_blank" rel="noopener">${esc(cta)}${SVG.ext || ''}</a>
+        <button type="button" class="nask">${SVG.chat}<span>Ask Deep about this</span></button>
+        <button type="button" class="nshare" aria-label="Copy a link to this story">${SVG.copy}<span>Copy link</span></button></div></div>
       <div class="nreact"><p>How would you rate this?</p><div class="nemo" role="group" aria-label="Rate this">${opts.map((e) => `<button type="button" class="nemoji${it.reactions && it.reactions.mine === e ? ' on' : ''}" data-e="${esc(e)}" aria-pressed="${!!(it.reactions && it.reactions.mine === e)}">${esc(e)}</button>`).join('')}</div></div>
+      ${it.related && it.related.length ? `<section class="nrel" aria-label="More like this"><b>More like this</b><div class="nlist">${it.related.map((x) => this._newsRow(x, false)).join('')}</div></section>` : ''}
     </article>`;
+    this._bindNewsCards(box);
+    box.querySelector('.nask').onclick = () => { this._emit('action', { action: 'news_ask', label: it.title, kind: 'news' }); this.ask(`Tell me about "${it.title}"`); };
+    box.querySelector('.nshare').onclick = async (e) => {
+      const b = e.currentTarget, link = location.href.split('#')[0] + '#dh-news=' + it.id;
+      try { await navigator.clipboard.writeText(link); b.querySelector('span').textContent = 'Link copied'; } catch { b.querySelector('span').textContent = link; }
+      this._emit('action', { action: 'news_share', label: it.title, kind: 'news' });
+      setTimeout(() => { if (b.isConnected) b.querySelector('span').textContent = 'Copy link'; }, 2200);
+    };
+    const take = box.querySelector('.ntake');
+    if (take) { (async () => {
+      let pts = [];
+      try { const t = this._newsTenant(); const r = await fetch(this._url(`/news/items/${encodeURIComponent(it.id)}/takeaways${t ? '?tenant=' + encodeURIComponent(t) : ''}`)); if (r.ok) pts = (await r.json()).points || []; } catch {}
+      if (!take.isConnected || this._newsPage !== p) return;
+      if (!pts.length) { take.remove(); return; }
+      take.innerHTML = `<b>${SVG.spark}Key takeaways</b><ul>${pts.map((x) => `<li>${esc(x)}</li>`).join('')}</ul><small>Summarised by AI from the article</small>`;
+    })(); }
     box.scrollTop = 0;
     box.querySelector('.ncta').addEventListener('click', () => this._emit('action', { action: 'news_link', label: it.title, kind: 'news' }));
     box.querySelectorAll('.nemoji').forEach((b) => { b.onclick = async () => {
