@@ -472,6 +472,18 @@ in the wrong alphabet is read again (`STT_HINT_RECHECK`). Answers are spoken bac
   a call and Email Deep (once per chat, not after a booking or hand-over; the frustration card wins if both fire), and
   Deep gets "Hot visitor on the site now" by email at once (at most 6 an hour), with the signs, location, network guess,
   page and the questions asked. Typed volumes and budgets never change the lead score.
+* **Compare side by side** (`app/compare.py`): "LakeB2B vs SPAN", "compare Ampliz and Lake B2B", "difference between X and
+  Y", "which is better, X or Y?" (up to three things). Each side is searched on its own so the table is never one company
+  against nothing, and the answer comes as a short summary plus a table card (one column per company, a dash where the
+  sources say nothing, no "better" verdict unless a source says so, never prices). Visitors can also pick from a list:
+  Home → *Compare side by side*, or the ⋯ menu; the list is the companies the Knowledge switches leave on, with an
+  optional "compare on" (services, data & coverage, industries, who it's for, getting started) or two things typed
+  freely. After a comparison: *Compare something else*. `COMPARE_ENABLED` switches it off.
+* **Email me this chat** (`app/chat_email.py`, ⋯ menu): the whole conversation from the server's own record (questions,
+  answers with the pages they used, a comparison's table as "At a glance", Deep's own replies) to the visitor's inbox,
+  with Reply-To Deep and a "Book a call" button. The address is kept as a lead (status `transcript`, so the lead score
+  and hot-lead alert see it), and the form says so. Only the browser's own chats, only after an answer, at most 3 an
+  hour per chat and 5 a day per address. `CHAT_EMAIL_ENABLED` switches it off.
 * **Console → Detections**: switches for frustration, wrong fit, buying moment and the buying email (with how many chats
   each caught in 30 days), and the wrong-fit routes. `.env` can switch them off install-wide.
 * **The team answers inside the chat** (`app/team.py`, like Intercom Fin's "The team can also help"): the hand-over

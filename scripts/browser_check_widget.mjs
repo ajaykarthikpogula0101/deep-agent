@@ -87,7 +87,7 @@ try {
   check(await evaluate(P("panel", "/Hi, I'm Deep/.test(sh.querySelector('.welcome h2').textContent)")), "welcome: 'Hi, I'm Deep' title for anonymous visitors");
   check(await evaluate(P("panel", "/explore LakeB2B's solutions/.test(sh.querySelector('.welcome p').textContent)")), "welcome: intro explains what the assistant can do");
   await evaluate(P("panel", "(sh.querySelector('.more').click(), true)")); await sleep(150);
-  check(await evaluate(P("panel", "sh.querySelector('.menu').classList.contains('open') && [...sh.querySelectorAll('.menu button > span:last-child')].map(s => s.textContent).join('|') === 'New conversation|Help & contact|Download transcript|Dark theme'")), "header: ⋯ menu with New conversation, Help & contact, Download transcript, Dark theme (no forget-me)");
+  check(await evaluate(P("panel", "sh.querySelector('.menu').classList.contains('open') && [...sh.querySelectorAll('.menu button > span:last-child')].map(s => s.textContent).join('|') === 'New conversation|Help & contact|Compare side by side|Email me this chat|Download transcript|Dark theme'")), "header: ⋯ menu with New conversation, Help & contact, Compare side by side, Email me this chat, Download transcript, Dark theme (no forget-me)");
   await evaluate(P("panel", "(sh.querySelector('.menu button[data-act=theme]').click(), true)")); await sleep(150);
   check(await evaluate(P("panel", "el.getAttribute('theme') === 'dark' && getComputedStyle(sh.querySelector('.panel')).backgroundColor === 'rgb(15, 19, 36)'")), "menu: theme item flips to dark");
   await evaluate(P("panel", "(el.setAttribute('theme', 'light'), true)"));

@@ -40,7 +40,7 @@ from app import chat as chat_mod
 from app import help as help_center
 from app import news
 from app import escalate
-from app import intent, knowledge
+from app import chat_email, compare, intent, knowledge
 from app import sites
 from app.chat import respond, sse
 from app.config import settings
@@ -52,7 +52,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.11.02.6"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.11.02.9"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -340,6 +340,12 @@ class HandoverIn(BaseModel):
 
 class HandoverDraftIn(BaseModel):
     session_id: str = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class ChatEmailIn(BaseModel):
+    session_id: str = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    email: str = Field(min_length=3, max_length=200)
+    name: str = Field(default="", max_length=120)
 
 
 class GuidanceIn(BaseModel):
@@ -750,7 +756,8 @@ def widget_config(request: Request):
             "reminders": settings.reminder_enabled, "help": settings.help_enabled,
             "news": {"enabled": settings.news_enabled, "tenant": settings.news_tenant, "popup": settings.news_popup,
                      "reactions": news.REACTIONS}, "host_photo": "/static/email/host.png",
-            "host_name": getattr(settings, "host_full_name", "") or "Deep", "host_short": settings.host_name_short or "Deep"}
+            "host_name": getattr(settings, "host_full_name", "") or "Deep", "host_short": settings.host_name_short or "Deep",
+            "compare": settings.compare_enabled, "chat_email": settings.chat_email_enabled}
 
 
 # ---- News tab (app/news.py)
@@ -1219,6 +1226,40 @@ def handover(body: HandoverIn, request: Request, x_visitor_id: str | None = Head
         log.error("handover failed: %s", e)
         raise HTTPException(500, "could not save the request; please email " + settings.host_email)
     return {"ok": True, **result, "host_email": settings.host_email, **({"chat_line": line} if line else {})}
+
+
+@app.post("/chat/email")
+def chat_email_send(body: ChatEmailIn, request: Request, x_visitor_id: str | None = Header(default=None)):
+    """Email me this chat (app/chat_email.py): the stored conversation to the visitor's inbox; the address is kept as a lead."""
+    if not settings.chat_email_enabled:
+        raise HTTPException(404, "emailing a chat is off")
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    v = _visitor(request)
+    email, name = body.email.strip(), body.name.strip()
+    if v.get("signed_in") and v.get("verified"):   # a verified identity beats whatever the form says
+        email, name = v.get("email") or email, v.get("name") or name
+    if not _EMAIL.match(email):
+        raise HTTPException(422, "that email address doesn't look right")
+    vid, uid = _owner(request, x_visitor_id)
+    if not conversations.owns(body.session_id, vid, uid):
+        raise HTTPException(404, "no such conversation")
+    try:
+        return chat_email.send(body.session_id, email, name)
+    except chat_email.Limited:
+        raise HTTPException(429, "this chat was emailed a few times already; try again later")
+    except chat_email.Empty:
+        raise HTTPException(422, "there is nothing to send yet: ask a question first")
+
+
+@app.get("/compare/options")
+def compare_options(request: Request):
+    """The widget's Compare picker (app/compare.py): what can be compared now (the Knowledge switches apply) and on what."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    return compare.options()
 
 
 @app.post("/handover/draft")

@@ -31,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender --da-dot
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.11.02.6';
+const VERSION = '2026.11.02.9';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -47,6 +47,7 @@ const VOICE_LABELS = { en: { listen: 'Listening…', think: 'Thinking…', speak
 // microphone settings for server speech-to-text (docs/MEMORY_VOICE.md "Accuracy")
 const STT_AUDIO = { echoCancellation: true, noiseSuppression: false, autoGainControl: true, channelCount: 1 };
 const BOOK_RE = /\b(book|schedule|meeting|appointment|demo call|call with)\b/i;
+const CMP_RE = /\b(compare|comparison|vs\.?|versus|difference(s)? between)\b/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const EMOJI = [['😀', 'grin smile happy'], ['😂', 'laugh joy tears'], ['🙂', 'smile'], ['😉', 'wink'], ['😍', 'love heart eyes'], ['🤔', 'thinking hmm'], ['😅', 'sweat smile'], ['😎', 'cool sunglasses'], ['🥳', 'party celebrate'], ['😢', 'sad cry'], ['😡', 'angry'], ['🙏', 'thanks please pray'],
   ['👋', 'wave hello hi'], ['👍', 'thumbs up yes'], ['👎', 'thumbs down no'], ['👏', 'clap'], ['🙌', 'hands raised'], ['🤝', 'handshake deal'], ['💪', 'strong muscle'], ['✌️', 'peace'], ['🤞', 'fingers crossed'], ['👀', 'eyes look'],
@@ -250,6 +251,11 @@ textarea.inp { height:auto; min-height:68px; padding:9px 12px; resize:vertical; 
 .frus { display:flex; flex-direction:column; gap:10px; margin:10px 0 0; padding:12px 14px; border:1px solid var(--da-line); border-radius:14px; background:var(--da-surface); box-shadow:inset 3px 0 0 var(--da-primary); font-size:13.5px; line-height:1.45; animation:da-in .3s var(--da-ease) }
 .frus p { margin:0 } .frus b { font-weight:650 } .frus .frow { display:flex; gap:8px; flex-wrap:wrap } .frus .btn svg { width:15px; height:15px; margin-right:6px; vertical-align:-3px }
 @media (prefers-reduced-motion: reduce) { .frus { animation:none } }
+.cmp, .cmail { margin-top:4px } .cmp .bk-t, .cmail .bk-t { display:block } .cmp .bk-t small, .cmail .bk-t small { display:block; color:var(--da-muted); font-weight:400; font-size:12.5px; margin-top:2px }
+.cmp-l { font-size:12px; font-weight:600; color:var(--da-muted); margin:12px 0 6px } .cmp-chips { display:flex; flex-wrap:wrap; gap:6px }
+.cmp-chips .chip { border:1px solid var(--da-line); background:var(--da-surface); color:var(--da-text); border-radius:999px; padding:6px 11px; font:inherit; font-size:13px; cursor:pointer }
+.cmp-chips .chip:hover { border-color:var(--da-line-strong) } .cmp-chips .chip[aria-pressed="true"] { background:var(--da-primary-soft); border-color:var(--da-primary); color:var(--da-text); font-weight:600 }
+.cmp .inp { width:100%; box-sizing:border-box } .cmp .btn.block, .cmail .btn.block { margin-top:14px } .cmail .note a { color:inherit }
 .frus.buy { box-shadow:inset 3px 0 0 var(--da-ok-text, #15803D) } .followups.fit a.fu { text-decoration:none }
 .hwrite { display:flex; align-items:center; gap:6px; margin:-2px 0 6px; color:var(--da-muted); font-size:12px } .hwrite svg { width:13px; height:13px; flex:none }
 .hwrite.busy span { background:linear-gradient(90deg, var(--da-muted) 30%, var(--da-ink) 50%, var(--da-muted) 70%); background-size:200% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:da-shimmer 1.6s linear infinite }
@@ -899,6 +905,8 @@ class DeepAssistant extends HTMLElement {
       <button type="button" role="menuitem" data-act="new">${SVG.plus}<span>New conversation</span></button>
       <button type="button" role="menuitem" data-act="help">${SVG.help}<span>Help &amp; contact</span></button>
       <hr>
+      <button type="button" role="menuitem" data-act="compare">${SVG.layers}<span>Compare side by side</span></button>
+      <button type="button" role="menuitem" data-act="email">${SVG.mail}<span>Email me this chat</span></button>
       <button type="button" role="menuitem" data-act="download">${SVG.dl}<span>Download transcript</span></button>
       <button type="button" role="menuitem" data-act="theme"><span class="ti"></span><span class="tl"></span></button>
     </div>
@@ -911,6 +919,7 @@ class DeepAssistant extends HTMLElement {
         <div class="hcards">
           <button class="hcard recent" type="button" hidden></button>
           <button class="hcard askq" type="button"><span class="ht"><b>Ask a question</b><small>AI Agent and team can help</small></span>${SVG.askarrow}</button>
+          <button class="hcard cmpc" type="button"><span class="hci">${SVG.layers}</span><span class="ht"><b>Compare side by side</b><small>Two or three of Deep's companies in one table</small></span>${SVG.chev}</button>
           <button class="hcard bookc" type="button"><span class="hci">${SVG.cal}</span><span class="ht"><b>Book a call with Deep</b><small>Pick a time that suits you, right here</small></span>${SVG.chev}</button>
           <div class="hcard searchc"><button class="hsearch" type="button"><span>Search for help</span>${SVG.search}</button><div class="alist harts"></div></div>
           <button class="hcard newsc" type="button" hidden></button>
@@ -996,8 +1005,9 @@ class DeepAssistant extends HTMLElement {
     sh.addEventListener('click', (e) => { const a = e.composedPath().find((n) => n.tagName === 'A' && n.getAttribute && /#dh-help=/.test(n.getAttribute('href') || '')); if (!a) return; e.preventDefault(); this.openArticle(decodeURIComponent(a.getAttribute('href').split('#dh-help=')[1] || '')); });
     this.$home = sh.querySelector('.home'); this.$home.onclick = () => this.newChat();
     sh.querySelector('.b-history').onclick = () => this.showView('messages');
+    sh.querySelector('.cmpc').onclick = () => { this._emit('action', { action: 'home', label: 'Compare side by side', kind: 'compare' }); this.openCompare(); };
     const more = sh.querySelector('.more'); more.onclick = (e) => { e.stopPropagation(); const o = !this.$menu.classList.contains('open'); this._closePops(); this.$menu.classList.toggle('open', o); more.setAttribute('aria-expanded', String(o)); if (o) this.$menu.querySelector('button').focus(); };
-    this.$menu.querySelectorAll('button').forEach((b) => b.onclick = () => { this._closePops(); const a = b.dataset.act; if (a === 'theme') this.switchTheme(); else if (a === 'download') this.download(); else if (a === 'help') this.showView('help'); else this.newChat(); });
+    this.$menu.querySelectorAll('button').forEach((b) => b.onclick = () => { this._closePops(); const a = b.dataset.act; if (a === 'theme') this.switchTheme(); else if (a === 'download') this.download(); else if (a === 'email') this.emailChat(); else if (a === 'compare') this.openCompare(); else if (a === 'help') this.showView('help'); else this.newChat(); });
     this.$menu.addEventListener('keydown', (e) => { const items = [...this.$menu.querySelectorAll('button')]; const i = items.indexOf(sh.activeElement);
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
       else if (e.key === 'Escape' || e.key === 'Tab') { this._closePops(); if (e.key === 'Escape') { e.stopPropagation(); more.focus(); } } });
@@ -1088,7 +1098,7 @@ class DeepAssistant extends HTMLElement {
     if (on && !this._vvH) { this._vvH = () => { this.$panel.style.setProperty('--da-vvh', Math.round(vv.height) + 'px'); this.$panel.style.setProperty('--da-vv-top', Math.round(vv.offsetTop) + 'px'); }; vv.addEventListener('resize', this._vvH); vv.addEventListener('scroll', this._vvH); this._vvH(); }
     else if (!on && this._vvH) { vv.removeEventListener('resize', this._vvH); vv.removeEventListener('scroll', this._vvH); this._vvH = null; }
   }
-  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); if (this._brand() !== 'LakeB2B') this._refreshWelcome(); this._applyFooter(); this._applyComposerCaps(); this._applyTabs(); this._loadNews().then(() => { this._paintNewsDot(); this._newsLive(); }); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); this._edPop(4000); } } catch {} }
+  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); if (this._brand() !== 'LakeB2B') this._refreshWelcome(); this._applyExtras(); this._applyFooter(); this._applyComposerCaps(); this._applyTabs(); this._loadNews().then(() => { this._paintNewsDot(); this._newsLive(); }); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); this._edPop(4000); } } catch {} }
   _setBusy(on) { this._busy = on; this.shadowRoot.querySelector('.i-send').hidden = on; this.shadowRoot.querySelector('.i-stop').hidden = !on; this.$send.classList.toggle('stop', on); this.$send.setAttribute('aria-label', on ? 'Stop generating' : 'Send'); this.$send.title = on ? 'Stop' : 'Send'; this.$log.setAttribute('aria-busy', String(on)); this._setStatus(on ? 'work' : (this._voice ? 'call' : 'idle')); this._syncSend(); }
   _setStatus(mode) {
     const sh = this.shadowRoot, st = sh.querySelector('.st'); if (!st) return;
@@ -1728,6 +1738,71 @@ class DeepAssistant extends HTMLElement {
     a.onclick = () => this._emit('action', { action: 'wrong_fit_link', label: ev.kind });
     f.appendChild(a); bot.parentElement.appendChild(f); this._scroll();
   }
+  _applyExtras() {  // menu items and the Home card for features the server switched off (GET /widget-config)
+    const c = this._cfg || {}, sh = this.shadowRoot;
+    sh.querySelectorAll('[data-act="compare"], .cmpc').forEach((x) => { x.hidden = c.compare === false; });
+    const m = sh.querySelector('[data-act="email"]'); if (m) m.hidden = c.chat_email === false;
+  }
+  // ---------------------------------------------------------------- compare side by side (app/compare.py)
+  async openCompare() {
+    this.showView('chat'); if (this._busy) return;
+    this.$log.querySelectorAll('.cmp').forEach((x) => x.closest('.row') && x.closest('.row').remove());
+    let d = null; try { const r = await fetch(this._url('/compare/options')); d = r.ok ? await r.json() : null; } catch {}
+    const names = (d && d.companies) || [], aspects = (d && d.aspects) || [];
+    const bot = this._add('bot', ''); bot.classList.add('hascard'); bot.closest('.row').classList.add('wide');
+    const f = document.createElement('form'); f.className = 'cmp card'; f.noValidate = true; const picked = []; let aspect = '';
+    f.innerHTML = `<div class="bk-t"><b>Compare side by side</b><small>Pick two or three, and what to compare them on</small></div>
+      ${names.length ? `<div class="cmp-l">Companies</div><div class="cmp-chips co" role="group" aria-label="Companies">${names.map((n) => `<button type="button" class="chip" aria-pressed="false" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
+      <div class="cmp-l">Or type your own</div><input class="inp" name="own" maxlength="120" placeholder="e.g. intent data vs technographics" aria-label="Things to compare">
+      ${aspects.length ? `<div class="cmp-l">Compare on</div><div class="cmp-chips as" role="group" aria-label="Compare on">${aspects.map((n) => `<button type="button" class="chip" aria-pressed="false" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
+      <button class="btn primary block" type="submit" disabled>${SVG.layers}Compare</button><p class="note" role="status">Answers come from each company's own pages.</p>`;
+    const go = f.querySelector('button[type=submit]'), own = f.elements.own, note = f.querySelector('.note');
+    const sync = () => { const typed = /\S+\s+(vs\.?|versus|and|or)\s+\S+/i.test(own.value.trim()); go.disabled = !(picked.length >= 2 || typed);
+      note.textContent = picked.length === 1 && !typed ? 'Pick one more.' : picked.length >= 3 ? 'Three is the most that fits a table.' : "Answers come from each company's own pages."; };
+    f.querySelectorAll('.co .chip').forEach((b) => b.onclick = () => { const v = b.dataset.v, i = picked.indexOf(v);
+      if (i >= 0) picked.splice(i, 1); else if (picked.length < 3) picked.push(v); else return;
+      b.setAttribute('aria-pressed', String(i < 0)); sync(); });
+    f.querySelectorAll('.as .chip').forEach((b) => b.onclick = () => { const on = b.getAttribute('aria-pressed') !== 'true';
+      f.querySelectorAll('.as .chip').forEach((x) => x.setAttribute('aria-pressed', 'false')); b.setAttribute('aria-pressed', String(on)); aspect = on ? b.dataset.v : ''; });
+    own.addEventListener('input', sync);
+    f.onsubmit = (e) => { e.preventDefault(); if (go.disabled) return;
+      const typed = own.value.trim(); const what = picked.length >= 2 ? (picked.length === 2 ? picked.join(' and ') : picked.slice(0, -1).join(', ') + ' and ' + picked[picked.length - 1]) : typed;
+      const q = `Compare ${what} side by side` + (aspect ? `: ${aspect.toLowerCase()}` : '');
+      this._emit('action', { action: 'compare', label: q }); bot.closest('.row').remove(); this._send(q); };
+    bot.appendChild(f); this._emit('action', { action: 'compare_open' });
+    requestAnimationFrame(() => { this._stick = true; this._scroll(); });
+  }
+  // ---------------------------------------------------------------- email me this chat (POST /chat/email, app/chat_email.py)
+  emailChat() {
+    this.showView('chat');
+    if (!this._transcript.some((m) => m.role === 'bot' && m.text && !m.err)) { this._toast('Ask a question first, then you can email the chat to yourself.'); return; }
+    this.$log.querySelectorAll('.cmail').forEach((x) => x.closest('.row') && x.closest('.row').remove());
+    const me = this._me || {}; const known = !!(me.signed_in && me.verified && me.email); const host = this._hostShort();
+    const bot = this._add('bot', ''); bot.classList.add('hascard'); bot.closest('.row').classList.add('wide');
+    const f = document.createElement('form'); f.className = 'cmail card'; f.noValidate = true; const id = 'm' + Math.random().toString(36).slice(2, 7);
+    f.innerHTML = `<div class="bk-t"><b>Email me this chat</b><small>The whole conversation, with the pages each answer used</small></div>
+      ${known ? '' : `<div class="field"><label for="${id}e">Your email</label><input class="inp" id="${id}e" name="email" type="email" maxlength="200" required autocomplete="email" inputmode="email"></div>`}
+      <button class="btn primary block" type="submit">${SVG.mail}Send it to ${known ? esc(me.email) : 'me'}</button>
+      <p class="note" role="status">${esc(host)} may follow up on your questions by email. <a href="${esc((this.shadowRoot.querySelector('.privacy') || {}).href || '#')}" target="_blank" rel="noopener">Privacy</a></p>`;
+    const em = f.elements.email; if (em) em.value = me.email || store.get(this._key('cmail')) || '';
+    const note = f.querySelector('.note'), b = f.querySelector('button[type=submit]');
+    f.onsubmit = async (e) => { e.preventDefault(); const email = known ? me.email : em.value.trim();
+      if (!known && !EMAIL_RE.test(email)) { em.setAttribute('aria-invalid', 'true'); note.className = 'note warn'; note.textContent = 'Please enter a valid email address.'; em.focus(); return; }
+      b.disabled = true; b.classList.add('loading'); note.className = 'note'; note.textContent = 'Sending…';
+      try { const r = await fetch(this._url('/chat/email'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ session_id: this._sid, email, name: me.name || undefined }) });
+        const d = r.ok ? await r.json() : null;
+        if (d && d.ok) { if (!known) store.set(this._key('cmail'), email); f.classList.add('sent');
+          f.innerHTML = `<div class="booked"><div class="bk-ok" tabindex="-1"><svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>Chat sent to ${esc(d.to)}</span></div><p class="note">It should arrive in a minute; check your spam folder if it doesn't. Reply to it to reach ${esc(host)}.</p></div>`;
+          this._emit('action', { action: 'chat_emailed' }); this._scroll(); return; }
+        let msg = "Couldn't send right now. Please try again.";
+        if (r.status === 422) { try { msg = (await r.json()).detail || 'Please check the email address.'; } catch { msg = 'Please check the email address.'; } }
+        else if (r.status === 429) msg = 'This chat was emailed a few times already. Please try again later.';
+        else if (r.status === 404) msg = 'Ask a question first, then you can email the chat to yourself.';
+        b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = msg.charAt(0).toUpperCase() + msg.slice(1) + (/[.!?]$/.test(msg) ? '' : '.'); }
+      catch { b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = 'Connection problem. Please try again.'; } };
+    bot.appendChild(f); this._emit('action', { action: 'chat_email_form' });
+    requestAnimationFrame(() => { this._stick = true; this._scroll(); if (em && !this._coarse) em.focus({ preventScroll: true }); });
+  }
   _offerEmail(bot) {  // "not helpful": offer to email the host, unless a form or this offer is already there
     if (!bot || !bot.isConnected || bot.querySelector('.hform') || bot.parentElement.querySelector('.followups.email')) return;
     this._followups(bot, [{ icon: 'mail', label: `Email ${(this._cfg && (this._cfg.host_short || this._cfg.host_name)) || 'Deep'} instead`, kind: 'handover', fn: () => this._renderHandover(bot, '') }]);
@@ -1741,6 +1816,7 @@ class DeepAssistant extends HTMLElement {
   }
   _answerFollowups(bot, question, answer, nSources) {
     if (this._nudged || !answer || !nSources) return [];
+    if (CMP_RE.test(question) && !(this._cfg && this._cfg.compare === false)) return [{ icon: 'layers', label: 'Compare something else', kind: 'compare', fn: () => this.openCompare() }];
     const t = (question + ' ' + answer).toLowerCase(); let item = null;
     if (/\b(pric(e|ing)|cost|quote|demo|trial|walkthrough|how (does|do) (it|this|that) work)\b/.test(t)) item = { icon: 'play', label: 'See it in a walkthrough', kind: 'booking', fn: () => this.startBooking('walkthrough', 'Book a product walkthrough') };
     else if (/\b(data|solution|platform|product|intent|leads?|campaigns?|gtm|go-to-market|abm|prospect)/.test(t) && this._transcript.filter((m) => m.role === 'user').length >= 2) item = { icon: 'user', label: 'Talk to an expert', kind: 'booking', fn: () => this.startBooking(null, 'Talk to an expert') };

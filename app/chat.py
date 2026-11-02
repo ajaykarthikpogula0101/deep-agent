@@ -40,7 +40,7 @@ from app.booking.tools import TOOLS, run_tool, schedules_prompt
 from app.config import settings
 from app.db import log_event
 from app.embeddings import embed_query
-from app import intent, knowledge, mood
+from app import compare, intent, knowledge, mood
 from app.guidance import get_guidance, guidance_block, match_custom_answer
 from app.rag import prompts, understand
 from app.rag.retrieve import Hit, company_names, confident, date_range, pinned_rules, rank_sites, search
@@ -366,6 +366,18 @@ def _respond(
                                                       "best": round(max((h.score for h in live), default=0.0), 3), "message": message[:200]})
         except Exception as e:
             log.warning("live site search failed: %s", e)
+    # 4c. compare side by side (app/compare.py): each side's own pages, so the table is never one company against nothing
+    cmp = None if booking or extra_context else compare.detect(search_q)
+    if cmp and vec is not None:
+        yield status("searching", "Comparing " + " and ".join(cmp["subjects"]) + "…")
+        try:
+            side = compare.balanced_hits(cmp, search, embed_query, today)
+            seen_text = {h.text for h in side}
+            hits = (side + [h for h in hits if h.text not in seen_text])[: settings.retrieval_top_k + 3]
+            log_event("compare", session_id, {"subjects": cmp["subjects"], "aspect": cmp.get("aspect"), "found": len(side),
+                                              "message": message[:200]})
+        except Exception as e:
+            log.warning("compare search failed: %s", e)
     about_booking = bool(booking_context) and ABOUT_BOOKING_RE.search(query) is not None  # answered from the booking email's context
     strong = confident(hits)
     # loosely related sources: the model reads them and either answers with citations or says it couldn't find it
@@ -428,6 +440,8 @@ def _respond(
     if fit:   # a student: answered, no call offer
         system += intent.STUDENT_NOTE
     system += _period_notes(search_q, hits, today)
+    if cmp:
+        system += compare.note(cmp)
     # only the site's loose matches stand behind this answer: an uncited answer is then a "couldn't find it" (logged below)
     weak_only = weak and not booking and not extra_context and not about_booking
     if weak_only:
@@ -452,7 +466,7 @@ def _respond(
         choices = call_type_choices(service, query, history)
         if choices:
             system += "\n" + prompts.PICKER_NOTE
-    ui_on = ui_cards.wanted(cited=strong, booking=booking)
+    ui_on = ui_cards.wanted(cited=strong or bool(cmp and usable), booking=booking)   # a comparison is drawn as a table
     if ui_on:
         system += ui_cards.prompt_section()   # appended LAST: rules 1-11, owner guidance, language, memory, signed-in notes all precede it and win
     messages = [{"role": "system", "content": system},

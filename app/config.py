@@ -169,6 +169,10 @@ class Settings(BaseSettings):
     wrong_fit_detection: bool = Field(default=True, alias="WRONG_FIT_DETECTION")
     buying_detection: bool = Field(default=True, alias="BUYING_DETECTION")
     buying_alerts: bool = Field(default=True, alias="BUYING_ALERTS")                  # the "hot visitor on the site now" email
+    # compare side by side (app/compare.py): "X vs Y" questions get each side's own pages and a table card
+    compare_enabled: bool = Field(default=True, alias="COMPARE_ENABLED")
+    # "Email me this chat" (app/chat_email.py): the visitor gets the conversation by email; their address is kept as a lead
+    chat_email_enabled: bool = Field(default=True, alias="CHAT_EMAIL_ENABLED")
     hot_lead_score: int = Field(default=60, alias="HOT_LEAD_SCORE")
     # knowledge-gap loop (app/gaps.py): nightly drafts for unanswered questions; an approved draft becomes a custom answer
     # and (GAP_FOLLOWUP) the people who asked get the answer by email
