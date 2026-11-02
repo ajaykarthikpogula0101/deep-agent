@@ -37,6 +37,9 @@ MAX_TURNS = 30
 _cache: dict[str, tuple[float, int, dict[str, Any]]] = {}
 _lock = threading.Lock()
 
+# the chat's own notes about an earlier hand-over: never part of what Deep is told the visitor asked
+_SENT_LINES = ("Email sent to ", "Hand-over request sent")
+
 # turns where the assistant did not give the visitor what they came for
 _FELL_SHORT = ("refused", "error", "handover", "handover_offered", "stopped")
 
@@ -72,7 +75,7 @@ def conversation(session_id: str | None, limit: int = MAX_TURNS) -> list[dict[st
         return []
     role = {"user": "visitor", "assistant": "assistant", "agent": "team"}
     return [{"id": r[0], "role": role.get(r[1], r[1]), "text": r[2] or "", "outcome": r[3], "feedback": r[4], "question": r[5]}
-            for r in reversed(rows)]
+            for r in reversed(rows) if not (r[1] == "assistant" and (r[2] or "").startswith(_SENT_LINES))]   # not our own notes
 
 
 def _is_ask_for_human(text: str) -> bool:
@@ -195,8 +198,16 @@ def draft(session_id: str | None, client: Any = None) -> dict[str, Any]:
 
 
 def public(d: dict[str, Any]) -> dict[str, Any]:
-    """What the widget shows the visitor before they send."""
-    return {k: d.get(k) for k in ("subject", "summary", "unanswered", "message", "by_ai")}
+    """What the widget gets: the email to put in the form. The summary is for Deep's email only, never shown in the chat."""
+    return {k: d.get(k) for k in ("subject", "message", "by_ai")}
+
+
+def chat_line(d: dict[str, Any], email: str) -> str:
+    """What the chat history says once the email went out (the visitor sees it when they reopen the conversation)."""
+    host = _host()
+    need = (d or {}).get("subject") or ""
+    return (f"Email sent to {host}" + (f": \u201c{need}\u201d" if need else "") + f". {host} will reply to {email}, "
+            "and the reply will also show here in this chat.")
 
 
 # ---------------------------------------------------------------- the email to Deep

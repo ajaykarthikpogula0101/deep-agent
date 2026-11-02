@@ -271,10 +271,14 @@ def search(query: str, k: int | None = None, vec: list[float] | None = None, tod
     k = k or settings.retrieval_top_k
     vec = vec if vec is not None else embed_query(query)
     target = None
+    from app import knowledge   # the sources switched on in the console (Knowledge tab)
+
+    own, slugs = knowledge.own_enabled(), knowledge.active_slugs()
     with conn() as c:
-        exact = _day_hits(c, query)
+        exact = _day_hits(c, query) if own else []
         try:
-            exact += [h for h in _pinned_hits(c, query, today) if h.text not in {e.text for e in exact}]
+            if own:
+                exact += [h for h in _pinned_hits(c, query, today) if h.text not in {e.text for e in exact}]
         except Exception as e:  # a pinned page missing from the index must never break the search
             log.warning("pinned pages failed: %s", e)
         try:  # "span global", "what does LakeB2B do?": the company's page here and its own home / about pages first
@@ -284,6 +288,8 @@ def search(query: str, k: int | None = None, vec: list[float] | None = None, tod
             if target and sites.general_question(query, target):
                 seen_text = {e.text for e in exact}
                 for r in sites.profile_rows(c, target):
+                    if not own and not r[5]:   # deependhq.com's own company page, switched off
+                        continue
                     if r[3] not in seen_text:   # /about/ and /about-us/ are often the same page
                         seen_text.add(r[3])
                         exact.append(Hit(url=r[0], title=r[1], section=r[2], text=r[3], score=1.0,
@@ -302,17 +308,17 @@ def search(query: str, k: int | None = None, vec: list[float] | None = None, tod
             LIMIT %s
             """,
             (vec, vec, k * 2),
-        ).fetchall()
-        if c.execute("SELECT EXISTS (SELECT 1 FROM pages WHERE site IS NOT NULL)").fetchone()[0]:
+        ).fetchall() if own else []
+        if slugs and c.execute("SELECT EXISTS (SELECT 1 FROM pages WHERE site = ANY(%s))", (slugs,)).fetchone()[0]:
             rows += c.execute(
                 """
                 SELECT ch.url, p.title, ch.section, ch.text, 1 - (ch.embedding <=> %s::vector) AS score, ch.metadata, p.site
                 FROM chunks ch JOIN pages p ON p.url = ch.url
-                WHERE p.site IS NOT NULL
+                WHERE p.site = ANY(%s)
                 ORDER BY ch.embedding <=> %s::vector
                 LIMIT %s
                 """,
-                (vec, vec, k * 3),
+                (vec, slugs, vec, k * 3),
             ).fetchall()
     hits = [Hit(url=r[0], title=r[1], section=r[2], text=r[3], score=float(r[4]),
                 metadata={**(r[5] or {}), **({"site": r[6]} if r[6] else {})}) for r in rows]

@@ -129,9 +129,10 @@ def test_the_draft_endpoint_only_reads_your_own_chat_and_the_handover_sends_the_
     c = TestClient(app)
     with patch("app.main.escalate.draft", return_value=d):
         own = c.post("/handover/draft", json={"session_id": sid}, headers={"X-Visitor-Id": vid}).json()
-        assert own["message"].startswith("Hi Deep,") and own["summary"] and own["by_ai"]
+        assert own["message"].startswith("Hi Deep,") and own["by_ai"]
+        assert "summary" not in own and "unanswered" not in own                       # Deep's summary never reaches the chat
         other = c.post("/handover/draft", json={"session_id": sid}, headers={"X-Visitor-Id": "someone-else"}).json()
-        assert other["message"] == "" and other["summary"] == ""
+        assert other["message"] == ""
         assert c.post("/handover/draft", json={"session_id": sid}).status_code == 400   # no visitor id at all
     mails = []
     with patch("app.main.settings.handover_summary", True), patch("app.main.escalate.draft", return_value=d), \
@@ -142,3 +143,9 @@ def test_the_draft_endpoint_only_reads_your_own_chat_and_the_handover_sends_the_
     assert r["ok"] and r["brief_sent"]
     lead, dd = mails[0]
     assert dd is d and lead["reason"] == "Hi Deep, I need Texas nurses." and lead["email"] == "ajaykarthik.ldn+escalate@gmail.com"
+    line = "Email sent to Deep: “Nurse email lists for Texas”. Deep will reply to ajaykarthik.ldn+escalate@gmail.com, " \
+           "and the reply will also show here in this chat."
+    assert r["chat_line"] == line
+    hist = c.get(f"/conversations/{sid}", headers={"X-Visitor-Id": vid}).json()["messages"]
+    assert hist[-1]["text"] == line                                                     # what the chat history shows
+    assert all(t["text"] != line for t in E.conversation(sid))                          # and never part of a later draft

@@ -40,6 +40,7 @@ from app.booking.tools import TOOLS, run_tool, schedules_prompt
 from app.config import settings
 from app.db import log_event
 from app.embeddings import embed_query
+from app import knowledge
 from app.guidance import get_guidance, guidance_block, match_custom_answer
 from app.rag import prompts, understand
 from app.rag.retrieve import Hit, company_names, confident, date_range, pinned_rules, rank_sites, search
@@ -398,6 +399,7 @@ def _respond(
     system = (prompts.SYSTEM_PROMPT + guidance_block(get_guidance()) + f"\nVisitor timezone: {visitor_tz}" + _today(visitor_tz)
               + li.note + (memory or "")
               + prompts.contact_note(settings.zoom_booking_base, settings.host_email))
+    system += knowledge.scope_note()   # the owner narrowed the sources in the console (app/knowledge.py)
     system += _period_notes(search_q, hits, today)
     # only the site's loose matches stand behind this answer: an uncited answer is then a "couldn't find it" (logged below)
     weak_only = weak and not booking and not extra_context and not about_booking
@@ -603,7 +605,7 @@ def _period_notes(query: str, hits: list[Hit], today: date) -> str:
     elif newest and "latest" in rules:   # "what did he ship yesterday?" when yesterday has no entry yet
         out += (f"\nThe newest log entry is day {newest['day']} ({newest.get('date', '')}). If there is no entry for the "
                 "day the visitor asks about, say so and describe the newest entry with its date instead.")
-    if "companies" in rules:
+    if "companies" in rules and knowledge.own_enabled():
         names = company_names()
         listed = (f" The site has exactly {len(names)} company pages: {', '.join(names)}. That is the complete list and the "
                   f"total is {len(names)}; do not add up the per-pillar counts." if names else "")

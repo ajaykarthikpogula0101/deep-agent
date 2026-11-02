@@ -40,6 +40,7 @@ from app import chat as chat_mod
 from app import help as help_center
 from app import news
 from app import escalate
+from app import knowledge
 from app import sites
 from app.chat import respond, sse
 from app.config import settings
@@ -51,7 +52,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.11.02.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.11.02.4"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -902,6 +903,41 @@ def admin_sites(x_admin_token: str | None = Header(default=None)):
     return sites.report()
 
 
+class KnowledgeIn(BaseModel):
+    key: str = Field(min_length=1, max_length=60)
+    on: bool
+
+
+@app.get("/admin/knowledge")
+def admin_knowledge(x_admin_token: str | None = Header(default=None)):
+    """Knowledge tab: the sources the chatbot answers from, with their switches and sizes (app/knowledge.py)."""
+    _require_admin(x_admin_token)
+    return {"sources": knowledge.sources(), "scope_note": knowledge.scope_note().strip()}
+
+
+@app.post("/admin/knowledge")
+def admin_knowledge_set(body: KnowledgeIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    try:
+        return {"sources": knowledge.set_source(body.key, body.on), "scope_note": knowledge.scope_note().strip()}
+    except LookupError:
+        raise HTTPException(404, "no such source")
+
+
+@app.get("/admin/knowledge/test")
+def admin_knowledge_test(q: str, x_admin_token: str | None = Header(default=None)):
+    """Which passages the chatbot would read for a question, with the switches as they are now."""
+    _require_admin(x_admin_token)
+    from app.rag.retrieve import search as kb_search
+
+    q = (q or "").strip()[:300]
+    if len(q) < 2:
+        raise HTTPException(422, "type a question")
+    hits = kb_search(q)
+    return {"q": q, "hits": [{"title": h.title, "url": h.url, "site": (h.metadata or {}).get("site") or knowledge.OWN,
+                              "score": round(h.score, 3), "text": h.text[:220]} for h in hits]}
+
+
 @app.post("/admin/sites/run")
 def admin_sites_run(x_admin_token: str | None = Header(default=None)):
     _require_admin(x_admin_token)
@@ -1125,16 +1161,17 @@ def handover(body: HandoverIn, request: Request, x_visitor_id: str | None = Head
     if not _EMAIL.match(email.strip()):
         raise HTTPException(422, "that email address doesn't look right")
     _ensure(request, body.session_id, x_visitor_id)
-    send = send_host_brief
+    send, line = send_host_brief, None
     if settings.handover_summary:   # Deep gets the assistant's summary of the chat (app/escalate.py)
         d = escalate.draft(body.session_id)
         send = lambda lead: escalate.send_host(lead, d)  # noqa: E731
+        line = escalate.chat_line(d, email.strip())
     try:
-        result = inbox.save_handover(body.session_id, name, email, body.message, send)
+        result = inbox.save_handover(body.session_id, name, email, body.message, send, chat_line=line)
     except Exception as e:
         log.error("handover failed: %s", e)
         raise HTTPException(500, "could not save the request; please email " + settings.host_email)
-    return {"ok": True, **result, "host_email": settings.host_email}
+    return {"ok": True, **result, "host_email": settings.host_email, **({"chat_line": line} if line else {})}
 
 
 @app.post("/handover/draft")

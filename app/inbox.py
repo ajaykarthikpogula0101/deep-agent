@@ -72,8 +72,10 @@ def set_feedback(message_id: int, rating: int, note: str | None, session_id: str
 
 
 # ---------------------------------------------------------------- human hand-over
-def save_handover(session_id: str | None, name: str, email: str, message: str, send_brief, send_visitor=None) -> dict[str, Any]:
+def save_handover(session_id: str | None, name: str, email: str, message: str, send_brief, send_visitor=None,
+                  chat_line: str | None = None) -> dict[str, Any]:
     """Store the request as a lead (status 'handover'), email the host, acknowledge the visitor.
+    `chat_line` is what the chat history says about it (Email Deep, app/escalate.chat_line); the older line otherwise.
     Returns {"lead_id", "brief_sent", "visitor_mailed"}."""
     from app.tracking import attach_lead, describe_session
 
@@ -120,7 +122,7 @@ def save_handover(session_id: str | None, name: str, email: str, message: str, s
             team.set_status(session_id, "waiting")
         except Exception as e:
             log.warning("team status failed: %s", e)
-    log_message(session_id, "assistant", f"Hand-over request sent to {settings.host_email}.", outcome="handover",
+    log_message(session_id, "assistant", chat_line or f"Hand-over request sent to {settings.host_email}.", outcome="handover",
                 question=message)
     return {"lead_id": lead_id, "brief_sent": sent, "visitor_mailed": mailed}
 

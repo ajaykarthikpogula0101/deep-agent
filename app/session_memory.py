@@ -73,7 +73,7 @@ TIMELINE_RE = re.compile(rf"\b[Qq][1-4](?: 20\d\d)?\b|\b(?i:(?:this|next) (?:wee
 AMOUNT_RE = re.compile(r"[$€£₹]\s?\d[\d,]*\s?[kKmM]?\b")
 BUDGET_WORD_RE = re.compile(r"\b(budget|spend|invest)", re.I)
 DECLINE_RE = re.compile(r"^\s*(no|nope|no thanks|not now|maybe later|not yet)[\s!.,]*$", re.I)
-SYNTHETIC_TEXT = ("Booking confirmed:", "Time held:", "Booking moved:", "New time held:", "Booking cancelled:", "Hand-over request sent")
+SYNTHETIC_TEXT = ("Booking confirmed:", "Time held:", "Booking moved:", "New time held:", "Booking cancelled:", "Hand-over request sent", "Email sent to ")
 
 
 def _clip(s: Any, n: int) -> str:

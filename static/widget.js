@@ -316,7 +316,16 @@
   }
   function markOpened(g, el) { if (g && g.eventId && !g.opened) { g.opened = true; sendEvent(g.eventId, 'opened', el && el.sessionId); } }
 
-  if (PROACTIVE.enabled && dismissLevel() < 2) setTimeout(function () { outreachCheck('load'); }, PROACTIVE.delayMs);
+  // an email to Deep the visitor wrote but never sent (Email Deep in static/deep-assistant.js, kept 3 days): the chat is
+  // mounted closed so it can remind them above its launcher; it never opens on its own, and the greeting waits
+  var EMAIL_PENDING = (function () {
+    try { var d = JSON.parse(lget('da:' + ORIGIN + ':edraft') || 'null');
+      return !!(d && !d.dismissed && d.sid && String(d.message || '').trim().length > 1 && Date.now() - (d.ts || 0) < 3 * 86400000 && (d.pops || 0) < 3);
+    } catch (e) { return false; }
+  })();
+  if (EMAIL_PENDING && !ASK && !CHAT && !HELPA && !NEWSA) setTimeout(function () { mount(false).catch(function () {}); }, 1500);
+
+  if (PROACTIVE.enabled && dismissLevel() < 2 && !EMAIL_PENDING) setTimeout(function () { outreachCheck('load'); }, PROACTIVE.delayMs);
 
   // warm the cache after the page is idle, so the first tap opens instantly
   var warm = function () { load().catch(function () {}); };

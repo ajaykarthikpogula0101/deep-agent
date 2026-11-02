@@ -31,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender --da-dot
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.11.02.2';
+const VERSION = '2026.11.02.4';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -241,10 +241,15 @@ textarea.inp { height:auto; min-height:68px; padding:9px 12px; resize:vertical; 
 .pickd { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; background:var(--da-lavender); font-size:13px } .pickd svg { width:16px; height:16px; color:var(--da-ink); flex:none } .pickd span { flex:1; min-width:0 } .pickd b { font-weight:650 }
 .linkbtn { padding:0; border:0; background:none; color:var(--da-ink); font-size:12.5px; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:2px }
 .bform, .hform { display:flex; flex-direction:column; gap:10px }
-.hsum { display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-radius:12px; background:var(--da-lavender); font-size:13px; line-height:1.45 }
-.hsum > b { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:650 } .hsum > b svg { width:14px; height:14px; flex:none }
-.hsum p { margin:0 } .hsum ul { margin:0; padding-left:18px } .hsum li { margin:2px 0 } .hsum small { color:var(--da-muted); font-size:11.5px }
-.hsum .sk .l { display:flex; flex-direction:column; gap:6px } .hsum .sk i { display:block; height:9px; border-radius:6px; background:linear-gradient(90deg, rgba(0,0,0,.06), rgba(0,0,0,.12), rgba(0,0,0,.06)); background-size:200% 100%; animation:da-shimmer 1.2s linear infinite } .hsum .sk i:last-child { width:60% }
+.hwrite { display:flex; align-items:center; gap:6px; margin:-2px 0 6px; color:var(--da-muted); font-size:12px } .hwrite svg { width:13px; height:13px; flex:none }
+.hwrite.busy span { background:linear-gradient(90deg, var(--da-muted) 30%, var(--da-ink) 50%, var(--da-muted) 70%); background-size:200% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:da-shimmer 1.6s linear infinite }
+.hform .btn.nudge { animation:da-nudge 1.2s var(--da-ease) 2 } @keyframes da-nudge { 0%, 100% { box-shadow:0 0 0 0 rgba(108,92,231,0) } 50% { box-shadow:0 0 0 6px rgba(108,92,231,.22) } }
+.edr { display:flex; align-items:center; gap:4px; margin:0 0 8px; padding:4px 4px 4px 10px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-lavender); animation:da-in .25s var(--da-ease) } .edr[hidden] { display:none }
+.edr-go { flex:1; min-width:0; display:flex; align-items:center; gap:8px; padding:4px 0; border:0; background:none; color:var(--da-text); font:inherit; font-size:12.5px; text-align:left; cursor:pointer }
+.edr-go svg { width:15px; height:15px; flex:none; color:var(--da-ink) } .edr-go .edr-t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap } .edr-go b { flex:none; font-weight:650; color:var(--da-ink) }
+.edr-x { flex:none; width:26px; height:26px; border:0; border-radius:8px; background:none; color:var(--da-muted); font-size:16px; line-height:1; cursor:pointer } .edr-x:hover { background:rgba(0,0,0,.06) }
+.edpop small { display:flex; align-items:center; gap:6px } .edpop small svg { width:13px; height:13px }
+@media (prefers-reduced-motion: reduce) { .hwrite.busy span, .hform .btn.nudge, .edr { animation:none } .hwrite.busy span { color:var(--da-muted) } }
 .row.agent .msg { box-shadow:inset 3px 0 0 var(--da-ink) } .row.agent .meta b { font-weight:650; color:var(--da-text) }
 .row.rate { justify-content:center } .row.rate .col { width:100%; max-width:420px } .rcard { display:flex; flex-direction:column; gap:10px; margin-top:4px } .faces { display:flex; gap:6px; flex-wrap:wrap }
 .face { width:42px; height:42px; border-radius:12px; border:1px solid var(--da-line, rgba(0,0,0,.12)); background:transparent; font-size:22px; line-height:1; cursor:pointer }
@@ -823,7 +828,7 @@ class DeepAssistant extends HTMLElement {
       this._persist(); this._markLast(); this._teamStatus = h.team_status || null; this._rated = !!h.rating;
     }
     this._teamCheck();
-    this.showView('chat'); this._scroll(true); this._markRead(sid).then(() => this._refreshBadge());
+    this.showView('chat'); this._scroll(true); this._markRead(sid).then(() => this._refreshBadge()); setTimeout(() => this._edCheck(), 300);
   }
   // ---------------------------------------------------------------- lifecycle
   connectedCallback() { if (!this._rendered) this._render(); }
@@ -908,6 +913,7 @@ class DeepAssistant extends HTMLElement {
         <button class="jump" type="button" hidden>${SVG.arrowdown}<span>Latest</span></button>
         <div class="pop pop-emoji" role="dialog" aria-label="Emoji"><input class="search" placeholder="Search emoji" aria-label="Search emoji"><div class="egrid"></div></div>
         <div class="pop pop-gif" role="dialog" aria-label="GIFs"><input class="search" placeholder="Search GIFs" aria-label="Search GIFs"><div class="ggrid"></div><div class="empty" hidden></div></div>
+        <div class="edr" role="status" hidden><button class="edr-go" type="button">${SVG.mail}<span class="edr-t">Your email isn't sent yet</span><b>Review &amp; send</b></button><button class="edr-x" type="button" aria-label="Dismiss the reminder">&times;</button></div>
         <form class="cbox">
           <div class="attach" hidden></div>
           <div class="rec" aria-live="polite"><i></i><span class="rlabel">Listening…</span><span class="rtime">0:00</span><button type="button" class="cicon rstop" aria-label="Stop dictation" title="Stop">${SVG.stop}</button></div>
@@ -1044,8 +1050,8 @@ class DeepAssistant extends HTMLElement {
     this.$launcher.setAttribute('aria-expanded', String(open)); this.$launcher.setAttribute('aria-label', open ? 'Minimize the assistant' : 'Open the ' + this.botName + ' assistant');
     if (!launcher || open === this._wasOpen) return; this._wasOpen = open;
     this._emit(open ? 'open' : 'close');
-    if (open) { if (this._introOn()) this._playIntro(); this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); this._teamCheck(); { const np = this.shadowRoot.querySelector('.npop'); if (np) np.hidden = true; clearTimeout(this._newsPopT); } this._newsLive(true); if (this._voice && this._voice.orb) this._voice.orb.resume(); }
-    else { this._stopIntro(); this._bindViewport(false); this._closePops(); if (this._voice && this._voice.orb) this._voice.orb.pause(); if (this.shadowRoot.activeElement && this.shadowRoot.activeElement !== this.$launcher) this.$launcher.focus({ preventScroll: true }); }
+    if (open) { if (this._introOn()) this._playIntro(); this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); this._teamCheck(); { const np = this.shadowRoot.querySelector('.npop'); if (np) np.hidden = true; clearTimeout(this._newsPopT); } this._newsLive(true); if (this._voice && this._voice.orb) this._voice.orb.resume(); clearTimeout(this._edPopT); setTimeout(() => this._edCheck(), 300); }
+    else { this._stopIntro(); this._bindViewport(false); this._closePops(); this._edPop(1500); if (this._voice && this._voice.orb) this._voice.orb.pause(); if (this.shadowRoot.activeElement && this.shadowRoot.activeElement !== this.$launcher) this.$launcher.focus({ preventScroll: true }); }
   }
   // ---------------------------------------------------------------- opening animation (launcher tap)
   _introOn() { return this.getAttribute('mode') === 'launcher' && this.getAttribute('intro') !== 'off' && !this._reduced && !(this._cfg && this._cfg.intro === false); }
@@ -1072,7 +1078,7 @@ class DeepAssistant extends HTMLElement {
     if (on && !this._vvH) { this._vvH = () => { this.$panel.style.setProperty('--da-vvh', Math.round(vv.height) + 'px'); this.$panel.style.setProperty('--da-vv-top', Math.round(vv.offsetTop) + 'px'); }; vv.addEventListener('resize', this._vvH); vv.addEventListener('scroll', this._vvH); this._vvH(); }
     else if (!on && this._vvH) { vv.removeEventListener('resize', this._vvH); vv.removeEventListener('scroll', this._vvH); this._vvH = null; }
   }
-  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); this._applyFooter(); this._applyComposerCaps(); this._applyTabs(); this._loadNews().then(() => { this._paintNewsDot(); this._newsLive(); }); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); } } catch {} }
+  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); this._applyFooter(); this._applyComposerCaps(); this._applyTabs(); this._loadNews().then(() => { this._paintNewsDot(); this._newsLive(); }); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); this._edPop(4000); } } catch {} }
   _setBusy(on) { this._busy = on; this.shadowRoot.querySelector('.i-send').hidden = on; this.shadowRoot.querySelector('.i-stop').hidden = !on; this.$send.classList.toggle('stop', on); this.$send.setAttribute('aria-label', on ? 'Stop generating' : 'Send'); this.$send.title = on ? 'Stop' : 'Send'; this.$log.setAttribute('aria-busy', String(on)); this._setStatus(on ? 'work' : (this._voice ? 'call' : 'idle')); this._syncSend(); }
   _setStatus(mode) {
     const sh = this.shadowRoot, st = sh.querySelector('.st'); if (!st) return;
@@ -2012,20 +2018,21 @@ class DeepAssistant extends HTMLElement {
     if (ev.status === 'slot_taken') box.insertAdjacentHTML('beforeend', '<p class="note warn">That slot was just taken.</p>');
     el.appendChild(box); this._emit('booking', { status: ev.status, leadId: ev.lead_id || null, handoffUrl: ev.handoff_url || null, slot: ev.slot || null, schedule: ev.schedule || null });
   }
-  _renderHandover(el, prefill) {
+  _renderHandover(el, prefill, keep) {  // keep: a saved, unsent email (the reminder brought it back): no new draft
     if (el.querySelector('.hform')) return; const me = this._me || {}; const known = !!(me.signed_in && me.verified && me.email);
     el.classList.add('hascard'); el.closest('.row').classList.add('wide');
     const f = document.createElement('form'); f.className = 'hform card'; f.noValidate = true; f.style.marginTop = '12px'; const id = 'h' + Math.random().toString(36).slice(2, 7);
     const host = (this._cfg && (this._cfg.host_short || this._cfg.host_name)) || 'Deep';
     f.innerHTML = `<div class="bk-t"><b>Email ${esc(host)}</b></div>
-      <div class="hsum" aria-live="polite"><b>${SVG.spark}What ${esc(host)} will see</b><span class="sk"><span class="l"><i></i><i></i></span></span><small>Writing your email from this chat…</small></div>
       ${known ? '' : `<div class="field"><label for="${id}n">Your name</label><input class="inp" id="${id}n" name="name" maxlength="120" required autocomplete="name"></div>
       <div class="field"><label for="${id}e">Email for the reply</label><input class="inp" id="${id}e" name="email" type="email" maxlength="200" required autocomplete="email" inputmode="email"></div>`}
-      <div class="field"><label for="${id}m">Your email to ${esc(host)}</label><textarea class="inp" id="${id}m" name="message" rows="6" maxlength="2000" required></textarea></div>
+      <div class="field"><label for="${id}m">Your email to ${esc(host)}</label><span class="hwrite${keep ? '' : ' busy'}" aria-live="polite">${SVG.spark}<span>${keep ? 'Your unsent email from earlier. Edit anything, then send.' : 'Writing your email from this chat…'}</span></span><textarea class="inp" id="${id}m" name="message" rows="6" maxlength="2000" required></textarea></div>
       <button class="btn primary block" type="submit">${SVG.mail}Send to ${esc(host)}</button><p class="note" role="status">${known ? 'Replies go to ' + esc(me.email) + '.' : 'A real person replies by email.'}</p>`;
     const field = (n) => f.elements[n]; field('message').value = prefill || ''; if (!known) { if (me.name) field('name').value = me.name; if (me.email) field('email').value = me.email; }
-    const note = f.querySelector('.note'); let typed = false; field('message').addEventListener('input', () => { typed = true; });
-    this._handoverDraft(f, () => typed);
+    const note = f.querySelector('.note'); let typed = !!keep, saveT = 0;
+    field('message').addEventListener('input', () => { typed = true; clearTimeout(saveT); saveT = setTimeout(() => this._edSet({ message: field('message').value }), 400); });
+    this._edSet({ sid: this._sid, message: field('message').value, dismissed: false, pops: 0 });
+    if (!keep) this._handoverDraft(f, () => typed); else this._handoverNudge(f);
     f.onsubmit = async (e) => { e.preventDefault(); const b = f.querySelector('button[type=submit]'); const name = known ? (me.name || '') : field('name').value.trim(); const email = known ? me.email : field('email').value.trim(); const message = field('message').value.trim();
       const bad = !known && name.length < 2 ? field('name') : !known && !EMAIL_RE.test(email) ? field('email') : message.length < 2 ? field('message') : null;
       f.querySelectorAll('.inp').forEach((x) => x.setAttribute('aria-invalid', String(x === bad)));
@@ -2033,22 +2040,70 @@ class DeepAssistant extends HTMLElement {
       b.disabled = true; b.classList.add('loading'); note.className = 'note'; note.textContent = 'Sending…';
       try { const r = await fetch(this._url('/handover'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ session_id: this._sid, name, email, message }) });
         const d = r.ok ? await r.json() : null;
-        if (d && d.ok) { this._teamStatus = 'waiting'; setTimeout(() => this._teamCheck(), 1500); f.innerHTML = `<div class="booked"><div class="bk-ok" tabindex="-1"><svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>Message sent</span></div><p class="note">The team will reply here and to <b>${esc(email)}</b>.${d.visitor_mailed ? ' A copy is in your inbox.' : ''}</p></div>`; f.querySelector('.bk-ok').focus({ preventScroll: true }); this._announce('Message sent'); this._emit('handover', { leadId: d.lead_id, email, briefSent: d.brief_sent }); }
+        if (d && d.ok) { this._teamStatus = 'waiting'; setTimeout(() => this._teamCheck(), 1500); clearTimeout(f._nudgeT); this._edClear(); f.classList.add('sent');
+          if (d.chat_line) { this._transcript.push({ role: 'bot', text: d.chat_line, ts: Date.now() }); this._persist(); }
+          f.innerHTML = `<div class="booked"><div class="bk-ok" tabindex="-1"><svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>${d.chat_line ? 'Email sent to ' + esc(host) : 'Message sent'}</span></div><p class="note">${d.chat_line ? esc(host) + ' will reply to' : 'The team will reply here and to'} <b>${esc(email)}</b>${d.chat_line ? ' and here in this chat' : ''}.${d.visitor_mailed ? ' A copy is in your inbox.' : ''}</p></div>`; f.querySelector('.bk-ok').focus({ preventScroll: true }); this._announce('Message sent'); this._emit('handover', { leadId: d.lead_id, email, briefSent: d.brief_sent }); }
         else { b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = r.status === 422 ? 'Please check the email address.' : "Couldn't send right now. Please try again."; } }
       catch { b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = 'Connection problem. Please try again.'; } };
     el.appendChild(f); this._emit('action', { action: 'handover_form' });
     requestAnimationFrame(() => { this._stick = true; this._scroll(); if (!this._coarse) (known ? field('message') : field('name')).focus({ preventScroll: true }); });
   }
-  async _handoverDraft(f, typed) {  // the email the assistant writes from the chat (POST /handover/draft); the visitor edits it
-    const box = f.querySelector('.hsum'), host = (this._cfg && (this._cfg.host_short || this._cfg.host_name)) || 'Deep'; let d = null;
+  async _handoverDraft(f, typed) {  // the email the assistant writes from the chat (POST /handover/draft); the visitor edits it.
+    // Deep's summary of the chat goes in his email only: the visitor sees their own email, nothing else
+    const st = f.querySelector('.hwrite'); let d = null;
     try { const r = await fetch(this._url('/handover/draft'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ session_id: this._sid }) }); d = r.ok ? await r.json() : null; } catch {}
-    if (!f.isConnected || !box.isConnected) return;
+    if (!f.isConnected) return;
     const msg = f.elements.message;
-    if (d && d.message && msg && !typed()) { msg.value = d.message; msg.scrollTop = 0; }
-    if (!d || !d.summary) { box.remove(); return; }
-    const open = (d.unanswered || []).length ? `<ul>${d.unanswered.map((q) => `<li>${esc(q)}</li>`).join('')}</ul>` : '';
-    box.innerHTML = `<b>${SVG.spark}What ${esc(host)} will see</b><p>${esc(d.summary)}</p>${open}<small>${d.by_ai ? 'Summarised by AI from your chat, with the chat attached. Edit your email below before sending.' : 'Your questions from this chat, with the chat attached.'}</small>`;
-    this._scroll();
+    if (d && d.message && msg && !typed()) { msg.value = d.message; msg.scrollTop = 0; this._edSet({ message: d.message }); }
+    if (st) { st.classList.remove('busy'); if (d && d.message) st.querySelector('span').textContent = 'Written from your chat. Edit anything, then send.'; else st.remove(); }
+    this._handoverNudge(f);
+  }
+  _handoverNudge(f) {  // 40 s with a finished email and no send: the button asks once, gently
+    clearTimeout(f._nudgeT);
+    f._nudgeT = setTimeout(() => { if (!f.isConnected || f.classList.contains('sent')) return; const b = f.querySelector('button[type=submit]'), n = f.querySelector('.note');
+      if (b && !b.disabled) { b.classList.add('nudge'); if (n && !n.classList.contains('warn')) n.textContent = `Ready when you are: it goes straight to ${this._hostShort()}'s inbox.`; } }, 40000);
+  }
+  // ---------------------------------------------------------------- unsent email reminder (Email Deep)
+  // one unsent email is kept per browser for 3 days (localStorage): a strip above the composer while the form is out of
+  // sight, a note above the closed launcher when the visitor closes the chat or comes back, and "Review & send" brings it back
+  _hostShort() { return (this._cfg && (this._cfg.host_short || this._cfg.host_name)) || 'Deep'; }
+  _edGet() { try { const d = JSON.parse(localStorage.getItem(this._key('edraft')) || 'null'); return d && Date.now() - (d.ts || 0) < 3 * 86400000 ? d : null; } catch { return null; } }
+  _edSet(patch, touch = true) { try { const d = { ...(this._edGet() || {}), ...patch }; if (touch || !d.ts) d.ts = Date.now(); localStorage.setItem(this._key('edraft'), JSON.stringify(d)); } catch {} this._edCheck(); }
+  _edClear() { try { localStorage.removeItem(this._key('edraft')); } catch {} clearTimeout(this._edPopT); const pop = this.shadowRoot.querySelector('.npop'); if (pop && pop.dataset.kind === 'email') pop.hidden = true; this._edCheck(); }
+  _edPending() { const d = this._edGet(); return d && !d.dismissed && d.sid && (d.message || '').trim().length > 1 ? d : null; }
+  _edCheck() {
+    const bar = this.shadowRoot && this.shadowRoot.querySelector('.edr'); if (!bar || !this.$log) return;
+    if (!bar._bound) { bar._bound = true; bar.querySelector('.edr-go').onclick = () => this._edGo(); bar.querySelector('.edr-x').onclick = () => { this._edSet({ dismissed: true }, false); this._emit('action', { action: 'email_reminder_dismissed' }); };
+      let raf = 0; this.$log.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; this._edCheck(); }); }, { passive: true }); }
+    const d = this._edPending(); let show = !!d && this._view === 'chat';
+    if (show) { const f = d.sid === this._sid ? this.$log.querySelector('.hform:not(.sent)') : null;
+      if (f) { const r = (f.querySelector('button[type=submit]') || f).getBoundingClientRect(), L = this.$log.getBoundingClientRect(); show = r.bottom < L.top + 8 || r.top > L.bottom - 8; } }   // the Send button out of sight
+    if (show && bar.hidden) { bar.querySelector('.edr-t').textContent = `Your email to ${this._hostShort()} isn't sent yet`; this._emit('action', { action: 'email_reminder', kind: 'strip' }); }
+    bar.hidden = !show;
+  }
+  async _edGo() {  // "Review & send": the form back in view (re-created after a reload), the send button ready
+    const d = this._edPending(); if (!d) return;
+    if (!this.hasAttribute('open')) this.setAttribute('open', '');
+    if (d.sid !== this._sid) await this.openConversation(d.sid); else this.showView('chat');
+    let f = this.$log.querySelector('.hform:not(.sent)');
+    if (!f) { const el = this._add('bot', `Your email to ${this._hostShort()} isn't sent yet. Here it is, ready to go.`); this._renderHandover(el, d.message, true); f = el.querySelector('.hform'); }
+    if (!f) return;
+    f.scrollIntoView({ block: 'center', behavior: this._reduced ? 'auto' : 'smooth' });
+    const b = f.querySelector('button[type=submit]'); if (b) { b.classList.remove('nudge'); void b.offsetWidth; b.classList.add('nudge'); setTimeout(() => b.focus({ preventScroll: true }), 350); }
+    this._emit('action', { action: 'email_reminder_open' }); setTimeout(() => this._edCheck(), 500);
+  }
+  _edPop(delay) {  // the note above the closed launcher: at most three times for one email
+    const d = this._edPending(), pop = this.shadowRoot && this.shadowRoot.querySelector('.npop');
+    if (!d || !pop || this.getAttribute('mode') !== 'launcher' || (d.pops || 0) >= 3) return;
+    clearTimeout(this._edPopT);
+    this._edPopT = setTimeout(() => {
+      if (this.hasAttribute('open') || !this._edPending()) return; clearTimeout(this._newsPopT);
+      pop.dataset.kind = 'email';
+      pop.querySelector('.npb').innerHTML = `<span class="npt edpop"><small>${SVG.mail}<span>Not sent yet</span></small><b>Your email to ${esc(this._hostShort())} is ready. Tap to review and send it.</b></span>`;
+      pop.hidden = false; this._edSet({ pops: (d.pops || 0) + 1 }, false); this._emit('action', { action: 'email_reminder', kind: 'popup' });
+      pop.querySelector('.npb').onclick = () => { pop.hidden = true; delete pop.dataset.kind; this._edGo(); };
+      pop.querySelector('.npx').onclick = () => { pop.hidden = true; delete pop.dataset.kind; };
+    }, delay);
   }
   // ---------------------------------------------------------------- answer cards (docs/UI_CARDS.md)
   _uiModule() {  // lazy: renderer + parser bundle load on the first card; one failure disables cards for this page load
@@ -2382,7 +2437,7 @@ class DeepAssistant extends HTMLElement {
       this._history.push({ role: 'user', content: shown }, { role: 'assistant', content: answer }); this._history = this._history.slice(-12);
       const entry = { role: 'bot', text: failed ? bot.dataset.raw : answer, sources, ts: Date.now(), mid, err: failed || undefined, ui: (card && card.done && card.program) || undefined }; this._transcript.push(entry); if (card) card.entry = entry; this._persist();
       this._controller = null; this._setBusy(false); if (!this._voice) this._focusInput(); this._scroll();
-      this._emit('answer', { question: text, answer: raw, sources, messageId: mid, failed }); if (!failed) this._maybeRate();
+      this._emit('answer', { question: text, answer: raw, sources, messageId: mid, failed }); if (!failed) this._maybeRate(); this._edCheck();
       if (this._view === 'chat' && this._sid === sid) await this._markRead(sid);
       this._refreshBadge(); if (this._view === 'messages') this._renderConversations();
       clearTimeout(this._titleT); this._titleT = setTimeout(() => { if (this._view === 'messages') this._renderConversations(); else this._convos = null; }, 6000);

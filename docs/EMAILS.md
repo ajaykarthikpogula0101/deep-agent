@@ -14,10 +14,17 @@ Replies to a visitor email go to the host; replies to the host brief go to the v
 **Email Deep** (`app/escalate.py`). When the assistant could not help (a refused answer, a thumbs-down, or "can I talk to
 a person"), the visitor gets an **Email Deep** button. The form opens with an email the assistant wrote from the chat
 (`POST /handover/draft`, only for the visitor's own conversation): a short note from the visitor to Deep, in their
-language, which they can edit, and a "What Deep will see" box with the summary and the questions still open. Deep's email
-has WHAT THEY NEED, STILL OPEN, THEIR MESSAGE, ABOUT THEM and THE CHAT, and Reply-To is the visitor. One model call
-per chat state (cached until a new message); without a model key or when the model fails, the draft is built from the
-visitor's own questions. `HANDOVER_SUMMARY=false` restores the plain host brief.
+language, which they can edit. The summary is for Deep only and never shown in the chat. Deep's email has WHAT THEY
+NEED, STILL OPEN, THEIR MESSAGE, ABOUT THEM and THE CHAT, and Reply-To is the visitor. One model call per chat state
+(cached until a new message); without a model key or when the model fails, the draft is built from the visitor's own
+questions. Once sent, the chat history says `Email sent to Deep: "<need>". Deep will reply to <email>, and the reply
+will also show here in this chat.` `HANDOVER_SUMMARY=false` restores the plain host brief.
+
+Unsent emails are not lost: the widget keeps one per browser for 3 days (localStorage `da:<api>:edraft`) and reminds
+the visitor with a strip above the composer while the Send button is out of sight ("Your email to Deep isn't sent yet
+· Review & send"), a note above the closed launcher when they close the chat, and again on a later visit (static/widget.js
+mounts the chat closed instead of showing the greeting); at most three notes per email, and the strip's x stops them.
+"Review & send" brings the email back as they left it, even after a reload.
 
 ## Variables
 

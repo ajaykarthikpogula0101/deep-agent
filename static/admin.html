@@ -23,6 +23,14 @@
   .btn { padding:7px 12px; border:1px solid var(--line-strong); border-radius:4px; background:var(--panel); cursor:pointer; min-height:36px }
   .btn:hover { border-color:var(--scan) } .btn.primary { background:var(--beam); border-color:var(--beam); color:var(--on-beam); font-weight:600 } .btn.danger { color:var(--danger) }
   .btn:disabled { opacity:.5; cursor:default }
+  .kn { display:flex; flex-direction:column; gap:8px }
+  .knrow { display:flex; align-items:center; gap:14px; padding:12px 14px; border:1px solid var(--line); border-radius:6px; background:var(--panel-2); cursor:pointer }
+  .knrow:not(.on) { opacity:.72 } .knrow:hover { border-color:var(--line-strong) }
+  .knb { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px } .knb small { color:var(--muted); font-size:12.5px } .knb .knnote { color:var(--beam-text) }
+  .knsw { position:relative; flex:none; width:40px; height:22px } .knsw input { position:absolute; inset:0; opacity:0; margin:0; cursor:pointer }
+  .knsw i { position:absolute; inset:0; border-radius:999px; background:var(--line-strong); transition:background .15s } .knsw i::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:var(--text); transition:transform .15s }
+  .knsw input:checked + i { background:var(--scan) } .knsw input:checked + i::after { transform:translateX(18px); background:var(--bg) } .knsw input:focus-visible + i { outline:2px solid var(--beam); outline-offset:2px }
+  .chip.knon { color:var(--scan); border-color:var(--scan) } .chip.knoff { color:var(--muted) }
   nav { display:flex; gap:2px; padding:0 20px; border-bottom:1px solid var(--line); background:var(--panel); overflow-x:auto }
   nav button { background:transparent; border:0; border-bottom:2px solid transparent; padding:10px 14px; color:var(--muted); cursor:pointer; white-space:nowrap }
   nav button.on { color:var(--text); border-bottom-color:var(--scan) }
@@ -83,7 +91,7 @@
 </header>
 <nav>
   <button data-pane="overview" class="on">Overview</button><button data-pane="convos">Conversations</button><button data-pane="bookings">Bookings</button><button data-pane="gaps">Gaps</button>
-  <button data-pane="sessions">Sessions</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="help">Help center</button><button data-pane="news">News <span class="chip" id="nw-badge" hidden style="padding:0 7px;font-size:11px"></span></button><button data-pane="emails">Emails</button><button data-pane="outreach">Outreach <span class="chip" id="or-badge" hidden style="padding:0 7px;font-size:11px"></span></button>
+  <button data-pane="sessions">Sessions</button><button data-pane="knowledge">Knowledge</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="help">Help center</button><button data-pane="news">News <span class="chip" id="nw-badge" hidden style="padding:0 7px;font-size:11px"></span></button><button data-pane="emails">Emails</button><button data-pane="outreach">Outreach <span class="chip" id="or-badge" hidden style="padding:0 7px;font-size:11px"></span></button>
 </nav>
 <main>
   <section class="pane on" id="overview">
@@ -123,6 +131,21 @@
   <section class="pane" id="sessions">
     <div id="sess-summary" class="chips" style="margin-bottom:12px"></div>
     <div class="wrap"><table id="sess"><thead><tr><th>when</th><th>where</th><th>network</th><th>channel</th><th>came from</th><th>landing page</th><th>visitor</th><th>msgs</th><th>leads</th><th>ip</th></tr></thead><tbody></tbody></table></div>
+  </section>
+  <section class="pane" id="knowledge">
+    <div class="card">
+      <h2>What the chatbot answers from</h2>
+      <p class="muted" style="margin:0 0 12px;font-size:13px">Switch a website off and the chatbot stops reading it straight away: no answers, no sources and no live
+        search from it. Asked about it, the chatbot says it can't help with that here and offers to email Deep or book a call.
+        Help-center articles and custom answers always stay on, because they are your own words.</p>
+      <div class="kn" id="kn-list"><p class="muted">Loading…</p></div>
+      <p class="muted" id="kn-scope" style="font-size:12.5px;margin:12px 0 0"></p>
+    </div>
+    <div class="card">
+      <h2>Try a question · see which pages the chatbot would read, with the switches as they are now</h2>
+      <form class="inline" id="kn-test" style="display:flex;gap:8px;flex-wrap:wrap"><input name="q" placeholder="e.g. What does SPAN Global Services do?" maxlength="300" required style="flex:1;min-width:220px"><button class="btn primary" type="submit">Test</button></form>
+      <div id="kn-hits" style="margin-top:10px"></div>
+    </div>
   </section>
   <section class="pane" id="guidance">
     <div class="card">
@@ -638,6 +661,28 @@ async function loadSessions() {
     return `<tr class="click" data-sid="${esc(it.session_id)}"><td>${fmt(it.first_seen)}</td><td>${esc([it.city, it.region, it.country_code].filter(Boolean).join(', ')) || `<span class="muted">${esc(it.geo_status === 'unknown' ? 'IP hidden' : it.geo_status || '')}</span>`}</td><td class="muted ell">${esc(it.net_org || it.isp || '')}${netChip(it)}</td><td>${esc(it.channel || 'direct')}</td><td class="ell">${it.utm && it.utm.utm_source ? 'utm: ' + esc(it.utm.utm_source) + '/' + esc(it.utm.utm_medium || '-') : esc(it.referrer_host || 'direct')}</td><td class="muted ell">${esc(path)}</td><td class="muted">${it.visits > 1 ? 'returning (' + it.visits + ')' : (it.visitor_id ? 'new' : '-')}</td><td>${it.messages}</td><td class="ok">${it.leads || ''}</td><td class="muted">${esc(it.ip || '')}</td></tr>`; }).join('');
   tb.querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { document.querySelector('nav button[data-pane="convos"]').click(); openConvo(tr.dataset.sid); });
 }
+// Knowledge (app/knowledge.py): one switch per website the chatbot answers from
+function paintKnowledge(d) {
+  const off = (d.sources || []).filter(x => !x.on).length;
+  $('kn-list').innerHTML = (d.sources || []).map(x => `<label class="knrow${x.on ? ' on' : ''}">
+      <span class="knsw"><input type="checkbox" data-key="${esc(x.key)}" ${x.enabled ? 'checked' : ''} aria-label="Answer from ${esc(x.name)}"><i></i></span>
+      <span class="knb"><b>${esc(x.name)}</b>${x.host !== x.name ? ` <span class="muted">${esc(x.host)}</span>` : ''}<small>${esc(x.about)} · ${x.pages} pages, ${x.chunks} passages</small>
+        ${x.note && x.note !== 'switched off here' ? `<small class="knnote">${esc(x.note)}</small>` : ''}</span>
+      <span class="chip ${x.on ? 'knon' : 'knoff'}">${x.on ? 'in use' : 'off'}</span></label>`).join('');
+  $('kn-scope').textContent = off ? 'The chatbot is told: ' + (d.scope_note || '').replace(/^KNOWLEDGE SCOPE \(set by the site owner\): /, '') : 'Everything is on: the chatbot answers from all of these websites.';
+  $('kn-list').querySelectorAll('input[data-key]').forEach(cb => cb.onchange = async () => {
+    cb.disabled = true;
+    try { paintKnowledge(await api('/admin/knowledge', { method: 'POST', body: JSON.stringify({ key: cb.dataset.key, on: cb.checked }) })); }
+    catch (e) { cb.checked = !cb.checked; cb.disabled = false; $('kn-scope').textContent = e.message; }
+  });
+}
+async function loadKnowledge() { try { paintKnowledge(await api('/admin/knowledge')); } catch (e) { $('kn-list').innerHTML = `<p class="muted">${esc(e.message)}</p>`; } }
+$('kn-test').onsubmit = async (e) => { e.preventDefault(); const q = e.target.q.value.trim(); $('kn-hits').innerHTML = '<p class="muted">Searching…</p>';
+  try { const d = await api('/admin/knowledge/test?q=' + encodeURIComponent(q));
+    $('kn-hits').innerHTML = d.hits.length ? `<div class="wrap"><table><thead><tr><th>score</th><th>website</th><th>page</th><th>passage</th></tr></thead><tbody>` + d.hits.map(h =>
+      `<tr><td>${h.score.toFixed(2)}</td><td>${esc(h.site)}</td><td><a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(h.title || h.url)}</a></td><td class="muted" style="font-size:12.5px">${esc(h.text)}…</td></tr>`).join('') + '</tbody></table></div>'
+      : '<p class="muted">Nothing found: the chatbot would say it can\'t help with that and offer to email Deep.</p>';
+  } catch (err) { $('kn-hits').innerHTML = `<p class="muted">${esc(err.message)}</p>`; } };
 async function loadGuidance() { const g = await api('/admin/guidance'); $('gtext').value = g.text || ''; $('gtext').maxLength = g.max_chars; }
 $('gsave').onclick = async () => { $('gstatus').textContent = 'saving…'; try { await api('/admin/guidance', { method: 'PUT', body: JSON.stringify({ text: $('gtext').value }) }); $('gstatus').textContent = 'saved · live within 30 s'; } catch (e) { $('gstatus').textContent = e.message; } };
 async function loadAnswers() {
@@ -844,7 +889,7 @@ async function load() {
   try { sessionStorage.setItem('dh_admin', token); } catch {}
   $('status').textContent = 'loading…';
   let err = null;
-  try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadAnswers(), loadEmails(), loadOutreach(), loadHelpCenter(), loadNews(), loadSites()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
+  try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadKnowledge(), loadAnswers(), loadEmails(), loadOutreach(), loadHelpCenter(), loadNews(), loadSites()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
   catch (e) { err = e; $('status').textContent = e.message; }
   if (!err || !/wrong token/.test(err.message)) { openHashBooking(); openHashConvo(); }  // a failing unrelated pane must not block the deep link
 }
