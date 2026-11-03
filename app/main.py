@@ -40,7 +40,7 @@ from app import chat as chat_mod
 from app import help as help_center
 from app import news
 from app import escalate
-from app import chat_email, compare, intent, knowledge
+from app import chat_email, compare, intent, knowledge, quote, rewrite
 from app import sites
 from app.chat import respond, sse
 from app.config import settings
@@ -52,7 +52,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.11.02.9"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.11.03.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -340,6 +340,27 @@ class HandoverIn(BaseModel):
 
 class HandoverDraftIn(BaseModel):
     session_id: str = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class QuoteIn(BaseModel):
+    session_id: str = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    name: str = Field(default="", max_length=120)
+    email: str = Field(default="", max_length=200)
+    company: str = Field(default="", max_length=120)
+    data_types: list[str] = Field(default_factory=list, max_length=10)
+    titles: str = Field(default="", max_length=200)
+    industry: str = Field(default="", max_length=120)
+    regions: str = Field(default="", max_length=200)
+    volume: str = Field(default="", max_length=40)
+    timeline: str = Field(default="", max_length=40)
+    budget: str = Field(default="", max_length=40)
+    notes: str = Field(default="", max_length=1500)
+
+
+class RewriteIn(BaseModel):
+    session_id: str = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    message_id: int = Field(ge=1)
+    mode: str = Field(pattern=r"^(shorter|simpler|detail)$")
 
 
 class ChatEmailIn(BaseModel):
@@ -757,7 +778,8 @@ def widget_config(request: Request):
             "news": {"enabled": settings.news_enabled, "tenant": settings.news_tenant, "popup": settings.news_popup,
                      "reactions": news.REACTIONS}, "host_photo": "/static/email/host.png",
             "host_name": getattr(settings, "host_full_name", "") or "Deep", "host_short": settings.host_name_short or "Deep",
-            "compare": settings.compare_enabled, "chat_email": settings.chat_email_enabled}
+            "compare": settings.compare_enabled, "chat_email": settings.chat_email_enabled,
+            "quote": settings.quote_enabled, "rewrite": settings.rewrite_enabled and bool(settings.chat_api_key)}
 
 
 # ---- News tab (app/news.py)
@@ -1252,6 +1274,68 @@ def chat_email_send(body: ChatEmailIn, request: Request, x_visitor_id: str | Non
         raise HTTPException(429, "this chat was emailed a few times already; try again later")
     except chat_email.Empty:
         raise HTTPException(422, "there is nothing to send yet: ask a question first")
+
+
+@app.get("/quote/form")
+def quote_form(request: Request, session_id: str = "", x_visitor_id: str | None = Header(default=None)):
+    """The quote form (app/quote.py): its choices, prefilled from the visitor's own chat when it is theirs."""
+    if not settings.quote_enabled:
+        raise HTTPException(404, "quote requests are off")
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    vid, uid = _owner(request, x_visitor_id)
+    own = bool(session_id) and conversations.owns(session_id, vid, uid)
+    return {**quote.options(), "prefill": quote.prefill(session_id if own else None)}
+
+
+@app.post("/quote")
+def quote_send(body: QuoteIn, request: Request, x_visitor_id: str | None = Header(default=None)):
+    """Send Deep a quote request from the chat; stored as a lead (status 'quote')."""
+    if not settings.quote_enabled:
+        raise HTTPException(404, "quote requests are off")
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    _ensure(request, body.session_id, x_visitor_id)   # a quote can come before any question
+    vid, uid = _owner(request, x_visitor_id)
+    if not conversations.owns(body.session_id, vid, uid):
+        raise HTTPException(404, "no such conversation")
+    form = body.model_dump()
+    v = _visitor(request)
+    if v.get("signed_in") and v.get("verified"):   # a verified identity beats whatever the form says
+        form["name"], form["email"] = v.get("name") or form["name"], v.get("email") or form["email"]
+    try:
+        return quote.submit(body.session_id, form)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except quote.Limited:
+        raise HTTPException(429, "a few quote requests were sent from this chat already; Deep will reply by email")
+
+
+@app.post("/chat/rewrite")
+def chat_rewrite(body: RewriteIn, request: Request, x_visitor_id: str | None = Header(default=None)):
+    """Shorter / Simpler / More detail on one of the visitor's own answers (app/rewrite.py)."""
+    if not settings.rewrite_enabled or not settings.chat_api_key:
+        raise HTTPException(404, "rewriting answers is off")
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    vid, uid = _owner(request, x_visitor_id)
+    if not conversations.owns(body.session_id, vid, uid):
+        raise HTTPException(404, "no such conversation")
+    try:
+        return rewrite.rewrite(body.session_id, body.message_id, body.mode)
+    except rewrite.NotFound:
+        raise HTTPException(404, "no such answer")
+    except rewrite.Limited:
+        raise HTTPException(429, "that's a lot of rewrites; try asking a new question")
+    except Exception as e:
+        log.warning("rewrite failed: %s", e)
+        raise HTTPException(502, "couldn't rewrite that answer right now")
 
 
 @app.get("/compare/options")

@@ -299,7 +299,7 @@ def _earlier_visitor_texts(session_id: str) -> list[str]:
 def _already_with_deep(session_id: str) -> bool:
     """Booked, or already wrote to Deep from this chat: the card and the ping add nothing."""
     with conn() as c:
-        return c.execute("""SELECT 1 FROM leads WHERE session_id = %s AND status IN ('booked', 'handover') LIMIT 1""",
+        return c.execute("""SELECT 1 FROM leads WHERE session_id = %s AND status IN ('booked', 'handover', 'quote') LIMIT 1""",
                          (session_id,)).fetchone() is not None
 
 
@@ -400,8 +400,8 @@ def _alert(session_id: str, m: dict[str, Any], mailer=None) -> bool:
 
 # ---------------------------------------------------------------- prompt notes and replies
 BUYING_NOTE = ("\nThe visitor is showing buying intent ({why}). Answer their question as usual from the sources; then, in one short "
-               "sentence, offer a call with Deep to work out exact options and pricing for what they need (the interface shows the "
-               "booking buttons). Do not invent prices, volumes or delivery times.")
+               "sentence, suggest sending Deep a quick quote request or booking a short call to get exact options and pricing for "
+               "what they need (the interface shows both buttons right below; don't ask them to pick a time). Do not invent prices, volumes or delivery times.")
 STUDENT_NOTE = ("\nThe visitor seems to be a student (a project or assignment), not a customer: answer their questions from the "
                 "sources as usual, but do not offer a call with Deep or the booking tools.")
 

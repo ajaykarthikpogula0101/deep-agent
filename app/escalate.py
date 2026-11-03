@@ -38,7 +38,7 @@ _cache: dict[str, tuple[float, int, dict[str, Any]]] = {}
 _lock = threading.Lock()
 
 # the chat's own notes about an earlier hand-over: never part of what Deep is told the visitor asked
-_SENT_LINES = ("Email sent to ", "Hand-over request sent")
+_SENT_LINES = ("Email sent to ", "Hand-over request sent", "Quote request sent to ")
 
 # turns where the assistant did not give the visitor what they came for
 _FELL_SHORT = ("refused", "error", "handover", "handover_offered", "stopped")

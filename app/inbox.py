@@ -177,7 +177,7 @@ def metrics(days: int = 7) -> dict[str, Any]:
                FROM sessions WHERE team_status IS NOT NULL""", (days,)).fetchone()
         frustrated = c.execute("""SELECT count(DISTINCT session_id) FROM events WHERE kind = 'frustration'
                                     AND ts > now() - make_interval(days => %s)""", (days,)).fetchone()[0]
-        flagged = dict(c.execute("""SELECT kind, count(DISTINCT session_id) FROM events WHERE kind IN ('wrong_fit', 'buying')
+        flagged = dict(c.execute("""SELECT kind, count(DISTINCT session_id) FROM events WHERE kind IN ('wrong_fit', 'buying', 'quote')
                                       AND ts > now() - make_interval(days => %s) GROUP BY kind""", (days,)).fetchall())
         top = c.execute(
             """SELECT lower(regexp_replace(trim(question), '\\s+', ' ', 'g')) AS q, count(*)
@@ -200,6 +200,7 @@ def metrics(days: int = 7) -> dict[str, Any]:
         "frustrated": int(frustrated),   # chats where the visitor seemed frustrated (app/mood.py)
         "buying": int(flagged.get("buying", 0)),        # chats with a buying moment (app/intent.py)
         "wrong_fit": int(flagged.get("wrong_fit", 0)),  # job seekers, students, sellers (app/intent.py)
+        "quotes": int(flagged.get("quote", 0)),         # chats that sent a quote request (app/quote.py)
         "daily": [{"day": str(d), "conversations": int(s), "resolved": int(r), "refused": int(f)} for d, s, r, f in daily],
         "top_questions": [{"question": q, "count": int(n)} for q, n in top],
     }
@@ -217,14 +218,15 @@ def conversations(days: int = 7, limit: int = 100) -> list[dict[str, Any]]:
                       s.city, s.country_code, s.channel, s.referrer_host, s.leads, s.team_status, s.rating,
                       EXISTS (SELECT 1 FROM events e WHERE e.session_id = m.session_id AND e.kind = 'frustration'),
                       EXISTS (SELECT 1 FROM events e WHERE e.session_id = m.session_id AND e.kind = 'buying'),
-                      (SELECT e.detail->>'kind' FROM events e WHERE e.session_id = m.session_id AND e.kind = 'wrong_fit' ORDER BY e.id LIMIT 1)
+                      (SELECT e.detail->>'kind' FROM events e WHERE e.session_id = m.session_id AND e.kind = 'wrong_fit' ORDER BY e.id LIMIT 1),
+                      EXISTS (SELECT 1 FROM events e WHERE e.session_id = m.session_id AND e.kind = 'quote')
                FROM messages m LEFT JOIN sessions s ON s.session_id = m.session_id
                WHERE m.ts > now() - make_interval(days => %s)
                GROUP BY m.session_id, s.city, s.country_code, s.channel, s.referrer_host, s.leads, s.team_status, s.rating
                ORDER BY max(m.ts) DESC LIMIT %s""",
             (list(_RESOLVED), days, limit)).fetchall()
     cols = ["session_id", "started", "last", "questions", "first_question", "resolved", "refused", "handovers", "up", "down",
-            "city", "country_code", "channel", "referrer_host", "leads", "team_status", "rating", "frustrated", "buying", "wrong_fit"]
+            "city", "country_code", "channel", "referrer_host", "leads", "team_status", "rating", "frustrated", "buying", "wrong_fit", "quote"]
     return [dict(zip(cols, r)) for r in rows]
 
 

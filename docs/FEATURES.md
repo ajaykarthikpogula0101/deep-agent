@@ -484,6 +484,17 @@ in the wrong alphabet is read again (`STT_HINT_RECHECK`). Answers are spoken bac
   with Reply-To Deep and a "Book a call" button. The address is kept as a lead (status `transcript`, so the lead score
   and hot-lead alert see it), and the form says so. Only the browser's own chats, only after an answer, at most 3 an
   hour per chat and 5 a day per address. `CHAT_EMAIL_ENABLED` switches it off.
+* **Quote request** (`app/quote.py`): a short form inside the chat (what data, job titles, industry, regions, how many,
+  needed by, optional budget and note, name and email) sends Deep one tidy request he can price: "[Quote request] Ada (Acme):
+  5,000 – 25,000 IT managers · US · ASAP", reply-to the visitor, with what they asked in the chat. It is filled in from the
+  chat first (data types, the job titles behind a volume, countries, volume, deadline, budget), stored as a lead (status
+  `quote`), shown in the chat history, tagged in Conversations and counted on Overview. Open it from Home → *Get a quote*, the
+  ⋯ menu, or the buying-moment card (its first button). The assistant never quotes a price itself. At most 3 per chat and 5
+  per address a day. `QUOTE_ENABLED` switches it off.
+* **Shorter / Simpler / More detail** (`app/rewrite.py`): a ✎ button on every answer reshapes it in place: shorter (three
+  sentences), simpler (everyday words), or more detail (the question's pages searched again, new sources). Shorter and
+  simpler use only the answer's own facts and keep its citations; *Original* brings the first version back. One model call
+  per answer and mode (cached), at most 20 an hour per chat. `REWRITE_ENABLED` switches it off.
 * **Console → Detections**: switches for frustration, wrong fit, buying moment and the buying email (with how many chats
   each caught in 30 days), and the wrong-fit routes. `.env` can switch them off install-wide.
 * **The team answers inside the chat** (`app/team.py`, like Intercom Fin's "The team can also help"): the hand-over

@@ -173,6 +173,10 @@ class Settings(BaseSettings):
     compare_enabled: bool = Field(default=True, alias="COMPARE_ENABLED")
     # "Email me this chat" (app/chat_email.py): the visitor gets the conversation by email; their address is kept as a lead
     chat_email_enabled: bool = Field(default=True, alias="CHAT_EMAIL_ENABLED")
+    # quote request (app/quote.py): a short form in the chat sends Deep a structured request he can price; never a price from the bot
+    quote_enabled: bool = Field(default=True, alias="QUOTE_ENABLED")
+    # Shorter / Simpler / More detail on an answer (app/rewrite.py)
+    rewrite_enabled: bool = Field(default=True, alias="REWRITE_ENABLED")
     hot_lead_score: int = Field(default=60, alias="HOT_LEAD_SCORE")
     # knowledge-gap loop (app/gaps.py): nightly drafts for unanswered questions; an approved draft becomes a custom answer
     # and (GAP_FOLLOWUP) the people who asked get the answer by email
