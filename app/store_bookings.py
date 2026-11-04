@@ -74,14 +74,17 @@ def missing_zoom_link(days: int = 3, limit: int = 20) -> list[dict[str, Any]]:
 
 
 def list_for_visitor(visitor_id: str | None, user_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
-    """Every booking made in a chat session of this browser (visitor id) or signed-in user, newest start first."""
+    """Every booking made in a chat session of this browser (visitor id) or signed-in user: the upcoming active ones first,
+    then the rest, each newest start first. Upcoming first so the limit never hides a call they still have behind older,
+    moved or cancelled bookings dated later."""
     if not visitor_id and not user_id:
         return []
     cols = ", ".join("b." + c for c in COLS)
     with conn() as c:
         rows = c.execute(
             f"""SELECT {cols} FROM bookings b JOIN sessions s ON s.session_id = b.session_id
-                WHERE s.visitor_id = %s::text OR s.user_id = %s::text ORDER BY b.start_utc DESC LIMIT %s""",
+                WHERE s.visitor_id = %s::text OR s.user_id = %s::text
+                ORDER BY (b.status IN ('confirmed', 'pending_zoom') AND b.start_utc > now()) DESC, b.start_utc DESC LIMIT %s""",
             (visitor_id, user_id, max(1, min(limit, 100)))).fetchall()
     out = []
     for r in rows:
