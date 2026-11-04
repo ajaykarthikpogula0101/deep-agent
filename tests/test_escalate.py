@@ -1,6 +1,7 @@
 """Email Deep (app/escalate.py): the email the assistant writes from the chat, and the summary Deep receives."""
 from __future__ import annotations
 
+import time
 import uuid
 from types import SimpleNamespace as NS
 from unittest.mock import patch
@@ -135,14 +136,19 @@ def test_the_draft_endpoint_only_reads_your_own_chat_and_the_handover_sends_the_
         assert other["message"] == ""
         assert c.post("/handover/draft", json={"session_id": sid}).status_code == 400   # no visitor id at all
     mails = []
-    with patch("app.main.settings.handover_summary", True), patch("app.main.escalate.draft", return_value=d), \
+    E._cache[sid] = (time.monotonic(), E.conversation(sid)[-1]["id"], dict(d))   # opening the form wrote the draft
+    with patch("app.main.settings.handover_summary", True), patch("app.main.escalate.draft", side_effect=AssertionError("no new draft")), \
             patch("app.main.escalate.send_host", side_effect=lambda lead, dd: mails.append((lead, dd)) or True), \
             patch("app.booking.email.send_visitor_confirmation", return_value=False):
         r = c.post("/handover", json={"session_id": sid, "name": "Ada Lovelace", "email": "ajaykarthik.ldn+escalate@gmail.com",
                                       "message": "Hi Deep, I need Texas nurses."}, headers={"X-Visitor-Id": vid}).json()
-    assert r["ok"] and r["brief_sent"]
+        assert r["ok"] and r["brief_sent"] is None                                    # confirmed at once; the email follows
+        for _ in range(100):
+            if mails:
+                break
+            time.sleep(0.05)
     lead, dd = mails[0]
-    assert dd is d and lead["reason"] == "Hi Deep, I need Texas nurses." and lead["email"] == "ajaykarthik.ldn+escalate@gmail.com"
+    assert dd == d and lead["reason"] == "Hi Deep, I need Texas nurses." and lead["email"] == "ajaykarthik.ldn+escalate@gmail.com"
     line = "Email sent to Deep: “Nurse email lists for Texas”. Deep will reply to ajaykarthik.ldn+escalate@gmail.com, " \
            "and the reply will also show here in this chat."
     assert r["chat_line"] == line

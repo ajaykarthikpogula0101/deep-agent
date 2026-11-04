@@ -199,6 +199,15 @@ def draft(session_id: str | None, client: Any = None) -> dict[str, Any]:
     return d
 
 
+def cached(session_id: str | None) -> dict[str, Any] | None:
+    """The draft already written for this chat as it stands (opening the form wrote it), without a model call; None if not."""
+    turns = conversation(session_id)
+    last = turns[-1]["id"] if turns else 0
+    with _lock:
+        hit = _cache.get(session_id or "")
+    return dict(hit[2]) if hit and hit[1] == last and time.monotonic() - hit[0] < CACHE_SECONDS else None
+
+
 def public(d: dict[str, Any]) -> dict[str, Any]:
     """What the widget gets: the email to put in the form. The summary is for Deep's email only, never shown in the chat."""
     return {k: d.get(k) for k in ("subject", "message", "by_ai")}

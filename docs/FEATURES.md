@@ -501,6 +501,14 @@ in the wrong alphabet is read again (`STT_HINT_RECHECK`). Answers are spoken bac
   shows "Deep replied" with the first words (clicking it opens the chat), and the tab title blinks "(1) New message from
   Deep" until they come back. After Email Deep the chat offers "Get a notification when Deep replies? Turn on" (browsers
   only allow asking from a click); without permission the blinking tab still works. `REPLY_NOTIFY` switches it off.
+* **Email Deep confirms at once**: POST /handover saves the request (the lead, the chat line, the team status) and answers
+  straight away; the company lookup, Deep's summary (when the form had not written it yet) and both emails go out on a
+  worker thread. The visitor sees "Email sent to Deep … A copy is on its way to your inbox." in well under a second
+  (it was 20-40 s when the mail server or the model was slow).
+* **No prices from the assistant** (`PRICE_POLICY=quote`, the default): every sentence of page text that states a money
+  amount is left out before the model reads it (blog posts quote market prices, not this offer), and the model is told to
+  say what pricing depends on and point to *Get a quote* or a call. A price question gets a *Get a quote* button under the
+  answer. `PRICE_POLICY=sources` brings back the older behaviour.
 * **Console → Detections**: switches for frustration, wrong fit, buying moment and the buying email (with how many chats
   each caught in 30 days), and the wrong-fit routes. `.env` can switch them off install-wide.
 * **The team answers inside the chat** (`app/team.py`, like Intercom Fin's "The team can also help"): the hand-over

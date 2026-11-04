@@ -180,6 +180,10 @@ class Settings(BaseSettings):
     # while a visitor waits for Deep's reply in the chat, the widget keeps checking (also closed) and, when it comes, shows a
     # browser notification (if they allowed it) and blinks the tab title
     reply_notify: bool = Field(default=True, alias="REPLY_NOTIFY")
+    # prices in answers: "quote" (default) = the assistant never states prices, price ranges or costs, even ones a page
+    # mentions (blog posts discuss market prices), and points to Get a quote or a call; "sources" = the older behaviour,
+    # prices the sources state may be repeated with their citation
+    price_policy: str = Field(default="quote", alias="PRICE_POLICY")
     hot_lead_score: int = Field(default=60, alias="HOT_LEAD_SCORE")
     # knowledge-gap loop (app/gaps.py): nightly drafts for unanswered questions; an approved draft becomes a custom answer
     # and (GAP_FOLLOWUP) the people who asked get the answer by email

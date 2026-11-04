@@ -179,6 +179,32 @@ REFUSAL_OFF_TOPIC = (
     "I can only help with questions about Deep, Champions Group's companies, the mission log and the tools used here, "
     "or with booking a call. What would you like to know?"
 )
+PRICE_NOTE = ("\nPRICES: never state a price, price range, rate or cost (per contact, per record, per month or in total), "
+              "even when a source mentions one: those pages often describe market prices, not this offer. When the visitor asks "
+              "about price or cost, say in one sentence that pricing depends on the data, volume and timeline they need, and that "
+              "they can get exact options by sending a quick quote request (the 'Get a quote' button in this chat) or on a short "
+              "call with Deep. Do not guess or compare prices, and do not describe pricing examples, plans or tiers.")
+
+
+_CUR = r"(?:[$€£₹]|\b(?:usd|us\$|eur|gbp|inr|rs\.?)\s?)"
+_AMT = r"\d[\d,]*(?:\.\d+)?(?:\s?(?:k|m|mn|million|thousand|lakhs?|crores?)\b)?"
+_PRICE_RE = re.compile(
+    _CUR + _AMT + r"(?:\s?(?:-|–|—|to)\s?" + _CUR + r"?" + _AMT + r")?"                                    # $373 to $582, USD 5k
+    r"|\b" + _AMT + r"\s?(?:-|–|—|to)\s?" + _AMT + r"\s?(?:usd|dollars|euros?|pounds|rupees|cents)\b"   # 300-500 dollars
+    r"|\b" + _AMT + r"\s?(?:usd|dollars|euros?|pounds|rupees|cents)\b",                                  # 50 cents, 2,000 rupees
+    re.I)
+
+
+_PRICE_SENTENCE = re.compile(r"[^.!?\n]*?(?:" + _PRICE_RE.pattern + r")[^!?\n]*?(?:[.!?](?=\s|$)|(?=\n)|$)", re.I)
+
+
+def redact_prices(text: str) -> str:
+    """Every sentence of page text that states a money amount is left out (PRICE_POLICY=quote): the model cannot repeat or
+    paraphrase a price it never sees. Counts ("20,000 contacts") and years stay."""
+    out = _PRICE_SENTENCE.sub("", text or "")
+    return re.sub(r"[ \t]{2,}", " ", out)
+
+
 REFUSAL_INJECTION = (
     "I follow a fixed set of rules and can't change them from chat. "
     "Happy to answer questions about the site or help you book a call with Deep."

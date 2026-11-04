@@ -322,7 +322,7 @@ function renderHandover(el, prefill) {
   f.onsubmit = async e => { e.preventDefault(); const b = f.querySelector('button'); b.disabled = true; const email = field('email').value.trim();
     try { const r = await fetch(HANDOVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: SESSION, name: field('name').value.trim(), email, message: field('message').value.trim() }) });
       const d = r.ok ? await r.json() : null;
-      if (d && d.ok) { f.innerHTML = `<div class="note ok">Sent. Deep will reply to ${esc(email)}.${d.visitor_mailed ? ' A copy is in your inbox.' : ''}</div>`; }
+      if (d && d.ok) { f.innerHTML = `<div class="note ok">Sent. Deep will reply to ${esc(email)}.${d.visitor_mailed ? ' A copy is in your inbox.' : d.copy_queued ? ' A copy is on its way to your inbox.' : ''}</div>`; }
       else { b.disabled = false; f.querySelector('.note').textContent = r.status === 422 ? 'Please check the email address.' : 'Could not send right now. Please try again or email ' + (d && d.host_email || 'us') + '.'; } }
     catch { b.disabled = false; f.querySelector('.note').textContent = 'Connection problem. Please try again.'; } };
   el.appendChild(f); requestAnimationFrame(() => { scrollLatest(); field('name').focus(); });

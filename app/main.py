@@ -52,7 +52,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.11.04.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.11.04.3"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -1240,11 +1240,14 @@ def handover(body: HandoverIn, request: Request, x_visitor_id: str | None = Head
     _ensure(request, body.session_id, x_visitor_id)
     send, line = send_host_brief, None
     if settings.handover_summary:   # Deep gets the assistant's summary of the chat (app/escalate.py)
-        d = escalate.draft(body.session_id)
-        send = lambda lead: escalate.send_host(lead, d)  # noqa: E731
-        line = escalate.chat_line(d, email.strip())
+        # the draft opening the form wrote is reused; if there is none, the chat line uses the quick rules draft and Deep's
+        # summary is written on the worker thread, so the visitor never waits for a model call here
+        ready = escalate.cached(body.session_id)
+        sid = body.session_id
+        send = (lambda lead: escalate.send_host(lead, ready)) if ready else (lambda lead: escalate.send_host(lead, escalate.draft(sid)))  # noqa: E731
+        line = escalate.chat_line(ready or escalate.fallback(escalate.conversation(sid)), email.strip())
     try:
-        result = inbox.save_handover(body.session_id, name, email, body.message, send, chat_line=line)
+        result = inbox.save_handover(body.session_id, name, email, body.message, send, chat_line=line, background=True)
     except Exception as e:
         log.error("handover failed: %s", e)
         raise HTTPException(500, "could not save the request; please email " + settings.host_email)

@@ -31,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender --da-dot
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.11.04.2';
+const VERSION = '2026.11.04.3';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -1959,7 +1959,8 @@ class DeepAssistant extends HTMLElement {
     if (this._nudged || !answer || !nSources) return [];
     if (CMP_RE.test(question) && !(this._cfg && this._cfg.compare === false)) return [{ icon: 'layers', label: 'Compare something else', kind: 'compare', fn: () => this.openCompare() }];
     const t = (question + ' ' + answer).toLowerCase(); let item = null;
-    if (/\b(pric(e|ing)|cost|quote|demo|trial|walkthrough|how (does|do) (it|this|that) work)\b/.test(t)) item = { icon: 'play', label: 'See it in a walkthrough', kind: 'booking', fn: () => this.startBooking('walkthrough', 'Book a product walkthrough') };
+    if (/\b(pric(e|es|ing)|cost|costs|quote|how much|rates?)\b/.test(question.toLowerCase()) && !(this._cfg && this._cfg.quote === false)) item = { icon: 'tag', label: 'Get a quote', kind: 'quote', fn: () => this.openQuote() };
+    else if (/\b(pric(e|ing)|cost|quote|demo|trial|walkthrough|how (does|do) (it|this|that) work)\b/.test(t)) item = { icon: 'play', label: 'See it in a walkthrough', kind: 'booking', fn: () => this.startBooking('walkthrough', 'Book a product walkthrough') };
     else if (/\b(data|solution|platform|product|intent|leads?|campaigns?|gtm|go-to-market|abm|prospect)/.test(t) && this._transcript.filter((m) => m.role === 'user').length >= 2) item = { icon: 'user', label: 'Talk to an expert', kind: 'booking', fn: () => this.startBooking(null, 'Talk to an expert') };
     if (item) this._nudged = true;
     return item ? [item] : [];
@@ -2302,7 +2303,7 @@ class DeepAssistant extends HTMLElement {
         const d = r.ok ? await r.json() : null;
         if (d && d.ok) { this._teamStatus = 'waiting'; this._teamWait(true); setTimeout(() => this._teamCheck(), 1500); setTimeout(() => this._notifyAsk(f), 50); clearTimeout(f._nudgeT); this._edClear(); f.classList.add('sent');
           if (d.chat_line) { this._transcript.push({ role: 'bot', text: d.chat_line, ts: Date.now() }); this._persist(); }
-          f.innerHTML = `<div class="booked"><div class="bk-ok" tabindex="-1"><svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>${d.chat_line ? 'Email sent to ' + esc(host) : 'Message sent'}</span></div><p class="note">${d.chat_line ? esc(host) + ' will reply to' : 'The team will reply here and to'} <b>${esc(email)}</b>${d.chat_line ? ' and here in this chat' : ''}.${d.visitor_mailed ? ' A copy is in your inbox.' : ''}</p></div>`; f.querySelector('.bk-ok').focus({ preventScroll: true }); this._announce('Message sent'); this._emit('handover', { leadId: d.lead_id, email, briefSent: d.brief_sent }); }
+          f.innerHTML = `<div class="booked"><div class="bk-ok" tabindex="-1"><svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>${d.chat_line ? 'Email sent to ' + esc(host) : 'Message sent'}</span></div><p class="note">${d.chat_line ? esc(host) + ' will reply to' : 'The team will reply here and to'} <b>${esc(email)}</b>${d.chat_line ? ' and here in this chat' : ''}.${d.visitor_mailed ? ' A copy is in your inbox.' : d.copy_queued ? ' A copy is on its way to your inbox.' : ''}</p></div>`; f.querySelector('.bk-ok').focus({ preventScroll: true }); this._announce('Message sent'); this._emit('handover', { leadId: d.lead_id, email, briefSent: d.brief_sent }); }
         else { b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = r.status === 422 ? 'Please check the email address.' : "Couldn't send right now. Please try again."; } }
       catch { b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = 'Connection problem. Please try again.'; } };
     el.appendChild(f); this._emit('action', { action: 'handover_form' });

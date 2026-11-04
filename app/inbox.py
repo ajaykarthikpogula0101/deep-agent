@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 from typing import Any
 
 from app import enrich
@@ -73,10 +74,13 @@ def set_feedback(message_id: int, rating: int, note: str | None, session_id: str
 
 # ---------------------------------------------------------------- human hand-over
 def save_handover(session_id: str | None, name: str, email: str, message: str, send_brief, send_visitor=None,
-                  chat_line: str | None = None) -> dict[str, Any]:
+                  chat_line: str | None = None, background: bool = False) -> dict[str, Any]:
     """Store the request as a lead (status 'handover'), email the host, acknowledge the visitor.
     `chat_line` is what the chat history says about it (Email Deep, app/escalate.chat_line); the older line otherwise.
-    Returns {"lead_id", "brief_sent", "visitor_mailed"}."""
+    Returns {"lead_id", "brief_sent", "visitor_mailed"}.
+    background=True (POST /handover): the lead, the chat line and the team status are saved before returning; the company
+    lookup and both emails run on a worker thread, so the visitor sees "Email sent" at once. brief_sent and visitor_mailed
+    are then None, and "copy_queued" says whether a copy is on its way to the visitor."""
     from app.tracking import attach_lead, describe_session
 
     if send_visitor is None:
@@ -84,8 +88,8 @@ def save_handover(session_id: str | None, name: str, email: str, message: str, s
 
     name, email, message = name.strip()[:120], email.strip()[:200], message.strip()[:2000]
     origin = describe_session(session_id)
-    data = enrich.lookup(email)
-    company = enrich.summary(data)
+    data = {} if background else enrich.lookup(email)
+    company = enrich.summary(data) if data else ""
     with conn() as c:
         row = c.execute(
             """INSERT INTO leads(name, email, reason, slot_start, visitor_tz, status, schedule_slug, session_id, company, enrichment)
@@ -100,21 +104,55 @@ def save_handover(session_id: str | None, name: str, email: str, message: str, s
             "note": ("Recent conversation:\n" + transcript) if transcript else "", "session_id": session_id,
             "schedule": "-", "slot_label_host": "-", "slot_label_visitor": "-", "visitor_tz": "-",
             "company": company, "enrichment": data}
-    sent = False
-    try:
-        sent = bool(send_brief(lead))
-    except Exception as e:
-        log.error("handover brief failed: %s", e)
-    if sent:
-        with conn() as c:
-            c.execute("UPDATE leads SET brief_sent = true WHERE id = %s", (lead_id,))
-            c.commit()
-    mailed = False
-    try:
-        mailed = bool(send_visitor(lead))
-    except Exception as e:
-        log.error("handover visitor ack failed: %s", e)
-    log_event("handover", session_id, {"lead_id": lead_id, "brief_sent": sent, "visitor_mailed": mailed, "origin": origin})
+
+    def deliver() -> tuple[bool, bool]:
+        if background:   # the company lookup the synchronous path did before the insert
+            try:
+                found = enrich.lookup(email)
+                if found:
+                    lead["enrichment"], lead["company"] = found, enrich.summary(found)
+                    with conn() as c:
+                        c.execute("UPDATE leads SET company = %s, enrichment = %s::jsonb WHERE id = %s",
+                                  (lead["company"] or None, json.dumps(found, default=str), lead_id))
+                        c.commit()
+            except Exception as e:
+                log.warning("handover enrichment failed: %s", e)
+        sent = False
+        try:
+            sent = bool(send_brief(lead))
+        except Exception as e:
+            log.error("handover brief failed: %s", e)
+        if sent:
+            with conn() as c:
+                c.execute("UPDATE leads SET brief_sent = true WHERE id = %s", (lead_id,))
+                c.commit()
+        mailed = False
+        try:
+            mailed = bool(send_visitor(lead))
+        except Exception as e:
+            log.error("handover visitor ack failed: %s", e)
+        log_event("handover", session_id, {"lead_id": lead_id, "brief_sent": sent, "visitor_mailed": mailed, "origin": origin,
+                                           "background": background})
+        return sent, mailed
+
+    copy_queued = None
+    if background:
+        try:
+            from app.booking.email import render_visitor
+
+            copy_queued = bool(settings.smtp_host) and render_visitor(lead) is not None
+        except Exception:
+            copy_queued = False
+
+        def run() -> None:
+            try:
+                deliver()
+            except Exception as e:
+                log.error("handover delivery failed: %s", e)
+        threading.Thread(target=run, daemon=True, name=f"handover-{lead_id}").start()
+        sent = mailed = None
+    else:
+        sent, mailed = deliver()
     if session_id:
         try:  # the conversation now waits for the team; Deep can answer it from the console (app/team.py)
             from app import team
@@ -124,7 +162,7 @@ def save_handover(session_id: str | None, name: str, email: str, message: str, s
             log.warning("team status failed: %s", e)
     log_message(session_id, "assistant", chat_line or f"Hand-over request sent to {settings.host_email}.", outcome="handover",
                 question=message)
-    return {"lead_id": lead_id, "brief_sent": sent, "visitor_mailed": mailed}
+    return {"lead_id": lead_id, "brief_sent": sent, "visitor_mailed": mailed, **({"copy_queued": copy_queued} if background else {})}
 
 
 def recent_transcript_text(session_id: str | None, limit: int = 8) -> str:
