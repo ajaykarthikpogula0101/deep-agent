@@ -40,7 +40,7 @@ from app.booking.tools import TOOLS, run_tool, schedules_prompt
 from app.config import settings
 from app.db import log_event
 from app.embeddings import embed_query
-from app import compare, intent, knowledge, mood
+from app import compare, intent, knowledge, live, mood
 from app.guidance import get_guidance, guidance_block, match_custom_answer
 from app.rag import prompts, understand
 from app.rag.retrieve import Hit, company_names, confident, date_range, pinned_rules, rank_sites, search
@@ -169,8 +169,15 @@ def respond(
         message = "Please look at the attached file" + ("s." if len(attachments) > 1 else ".")
     t0 = time.monotonic()
     logged = message + ("".join(f"\n[attached: {a['name']}]({a['url']})" for a in attachments) if attachments else "")
-    inbox.log_message(session_id, "user", logged, reason=user_reason)
+    uid = inbox.log_message(session_id, "user", logged, reason=user_reason)
     team.visitor_wrote(session_id, logged)   # a conversation with the team: tell the host (throttled); never raises
+    live.emit(session_id, {"type": "message", "role": "user", "id": uid, "text": logged[:4000]}, visitor=False)   # the console, at once
+    agent = live.agent_for(session_id)
+    if agent:   # the team has taken this chat over (app/live.py): the message is theirs to answer, the assistant stays quiet
+        live.typing(session_id, "visitor", False)
+        yield sse({"type": "live", "on": True, "agent": agent})
+        yield sse({"type": "done"})
+        return
     text, outcome, reason, sources, finished = "", "answered", None, [], False
     used_model = settings.chat_model
     card = None
@@ -209,6 +216,8 @@ def respond(
                                         model=used_model)
                 if mid:
                     yield sse({"type": "meta", "message_id": mid, "outcome": outcome})
+                live.emit(session_id, {"type": "message", "role": "assistant", "id": mid, "text": (text or "")[:4000], "outcome": outcome},
+                          visitor=False)
                 if card is not None:
                     try:
                         prog = card.get("program") or ""

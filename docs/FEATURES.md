@@ -509,6 +509,19 @@ in the wrong alphabet is read again (`STT_HINT_RECHECK`). Answers are spoken bac
   amount is left out before the model reads it (blog posts quote market prices, not this offer), and the model is told to
   say what pricing depends on and point to *Get a quote* or a call. A price question gets a *Get a quote* button under the
   answer. `PRICE_POLICY=sources` brings back the older behaviour.
+* **Live chat** (`app/live.py`, Console → Inbox): a live chat desk for Deep and the team.
+  - *Inbox*: chats waiting for a person (longest wait first, with a timer), taken over (Live), with the team, or recent; the
+    chat in the middle; who the visitor is on the right (company, location, network, visits, earlier chats, lead score,
+    signals such as frustrated / buying / quote, the quote request, bookings, pages). New messages arrive instantly over a
+    console stream (GET /admin/live); "Turn on alerts" adds a sound and a desktop notification when a visitor who is with
+    the team writes.
+  - *Take over*: the assistant stops answering in that chat; the visitor sees "Deep joined the chat" and their messages go
+    to Deep; *Hand back to AI* (or closing the chat, or 20 minutes with no team activity, `LIVE_IDLE_MINUTES`) brings the
+    assistant back ("Deep left the chat. The assistant is back.").
+  - *Typing and Seen*: the visitor sees "Deep is typing…", Deep sees "the visitor is typing…", and "Seen" appears under
+    Deep's message once the visitor has read it. Messages travel over a stream per open chat
+    (GET /conversations/{sid}/live) in about 0.2 s; the 12 s check stays as a fallback.
+  - `LIVE_CHAT` switches the widget's live stream off.
 * **Console → Detections**: switches for frustration, wrong fit, buying moment and the buying email (with how many chats
   each caught in 30 days), and the wrong-fit routes. `.env` can switch them off install-wide.
 * **The team answers inside the chat** (`app/team.py`, like Intercom Fin's "The team can also help"): the hand-over

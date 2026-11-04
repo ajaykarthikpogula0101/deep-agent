@@ -31,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender --da-dot
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.11.04.3';
+const VERSION = '2026.11.04.4';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -253,6 +253,14 @@ textarea.inp { height:auto; min-height:68px; padding:9px 12px; resize:vertical; 
 @media (prefers-reduced-motion: reduce) { .frus { animation:none } }
 .nask-note { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:10px; padding:10px 12px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-subtle); font-size:12.5px; color:var(--da-text) }
 .nask-note > span { display:flex; align-items:center; gap:8px } .nask-note svg { width:16px; height:16px; flex:none; color:var(--da-ink) }
+.livenote { display:flex; justify-content:center; margin:10px 0 }
+.livenote span { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:999px; background:var(--da-subtle); color:var(--da-muted); font-size:12px; font-weight:500 }
+.livenote svg { width:13px; height:13px }
+.agtyping { display:flex; align-items:center; gap:8px; margin:6px 0 4px 6px; color:var(--da-muted); font-size:12.5px }
+.agtyping .dots { display:inline-flex; gap:3px; padding:9px 11px; border-radius:14px; background:var(--da-bot, var(--da-subtle)); border:1px solid var(--da-line) }
+.agtyping .dots i { width:6px; height:6px; border-radius:50%; background:var(--da-muted); animation:da-typ 1.2s infinite ease-in-out } .agtyping .dots i:nth-child(2) { animation-delay:.15s } .agtyping .dots i:nth-child(3) { animation-delay:.3s }
+@keyframes da-typ { 0%, 60%, 100% { opacity:.35; transform:none } 30% { opacity:1; transform:translateY(-3px) } }
+@media (prefers-reduced-motion: reduce) { .agtyping .dots i { animation:none } }
 .qform { margin-top:4px } .qform .bk-t { display:block } .qform .bk-t small { display:block; color:var(--da-muted); font-weight:400; font-size:12.5px; margin-top:2px }
 .qform .field { margin-top:10px } .qform .inp { width:100%; box-sizing:border-box } .qform select.inp { height:38px } .qform .opt { color:var(--da-muted); font-weight:400 }
 .qgrid { display:grid; grid-template-columns:1fr 1fr; gap:0 10px } @media (max-width:360px) { .qgrid { grid-template-columns:1fr } } .qform .btn.block { margin-top:14px }
@@ -776,7 +784,7 @@ class DeepAssistant extends HTMLElement {
   setToken(token) { if (token) this.setAttribute('token', token); else this.removeAttribute('token'); }
   reset() { this.newChat(); }
   newChat() {
-    this._email = null;
+    this._email = null; this._liveDisconnect(); this._setLive(null, false);
     if (this._busy) this._stop(); this.stopVoice();
     this._sid = uuid(); store.set(this._key('sid'), this._sid);
     this.removeAttribute('outreach-event'); this._outreachSent = false;  // a fresh conversation carries no pop-up context
@@ -853,7 +861,7 @@ class DeepAssistant extends HTMLElement {
       this._history = this._transcript.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.agent ? `${m.author || 'Deep'} (from the team): ${m.text}` : m.text })).slice(-12);
       this._persist(); this._markLast(); this._teamStatus = h.team_status || null; this._rated = !!h.rating;
     }
-    this._teamCheck();
+    this._liveDisconnect(); this._setLive(null, false); this._teamCheck(); this._liveConnect();
     this.showView('chat'); this._scroll(true); this._markRead(sid).then(() => this._refreshBadge()); setTimeout(() => this._edCheck(), 300);
   }
   // ---------------------------------------------------------------- lifecycle
@@ -1036,7 +1044,7 @@ class DeepAssistant extends HTMLElement {
     // composer
     this.$cbox.addEventListener('submit', (e) => { e.preventDefault(); if (this._busy) this._stop(); else this._send(); });
     this.$q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!this._busy) this._send(); } if (e.key === 'Escape' && (this._busy || this.shadowRoot.querySelector('.pop.open'))) { e.preventDefault(); if (this._busy) this._stop(); this._closePops(); } });
-    this.$q.addEventListener('input', () => { this._autosize(); this._syncSend(); });
+    this.$q.addEventListener('input', () => { this._autosize(); this._syncSend(); this._typingSend(!!this.$q.value.trim()); });
     this.$q.addEventListener('focus', () => this.$cbox.classList.add('focus'));
     this.$q.addEventListener('blur', () => this.$cbox.classList.remove('focus'));
     const plus = sh.querySelector('.b-plus'), pmenu = sh.querySelector('.pmenu');
@@ -1083,8 +1091,8 @@ class DeepAssistant extends HTMLElement {
     this.$launcher.setAttribute('aria-expanded', String(open)); this.$launcher.setAttribute('aria-label', open ? 'Minimize the assistant' : 'Open the ' + this.botName + ' assistant');
     if (!launcher || open === this._wasOpen) return; this._wasOpen = open;
     this._emit(open ? 'open' : 'close');
-    if (open) { if (this._introOn()) this._playIntro(); this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); this._teamCheck(); { const np = this.shadowRoot.querySelector('.npop'); if (np) np.hidden = true; clearTimeout(this._newsPopT); } this._newsLive(true); if (this._voice && this._voice.orb) this._voice.orb.resume(); clearTimeout(this._edPopT); setTimeout(() => this._edCheck(), 300); }
-    else { this._stopIntro(); this._bindViewport(false); this._closePops(); this._edPop(1500); if (this._voice && this._voice.orb) this._voice.orb.pause(); if (this.shadowRoot.activeElement && this.shadowRoot.activeElement !== this.$launcher) this.$launcher.focus({ preventScroll: true }); }
+    if (open) { if (this._introOn()) this._playIntro(); this._bindViewport(true); this._health(); setTimeout(() => { if (!this._voice) this._focusInput(); }, 60); this._refreshBadge(); this._teamCheck(); this._liveConnect(); { const np = this.shadowRoot.querySelector('.npop'); if (np) np.hidden = true; clearTimeout(this._newsPopT); } this._newsLive(true); if (this._voice && this._voice.orb) this._voice.orb.resume(); clearTimeout(this._edPopT); setTimeout(() => this._edCheck(), 300); }
+    else { this._stopIntro(); this._liveDisconnect(); this._bindViewport(false); this._closePops(); this._edPop(1500); if (this._voice && this._voice.orb) this._voice.orb.pause(); if (this.shadowRoot.activeElement && this.shadowRoot.activeElement !== this.$launcher) this.$launcher.focus({ preventScroll: true }); }
   }
   // ---------------------------------------------------------------- opening animation (launcher tap)
   _introOn() { return this.getAttribute('mode') === 'launcher' && this.getAttribute('intro') !== 'off' && !this._reduced && !(this._cfg && this._cfg.intro === false); }
@@ -1637,7 +1645,7 @@ class DeepAssistant extends HTMLElement {
     const after = this._transcript.reduce((a, m) => Math.max(a, m.aid || 0), 0); let d = null;
     try { const r = await fetch(this._url('/conversations/' + encodeURIComponent(sid) + '/updates?after=' + after), { headers: this._headers(false) }); if (r.ok) d = await r.json(); } catch {}
     if (!d || sid !== this._sid) return;
-    this._teamStatus = d.team_status || null; if (d.rating) this._rated = true;
+    this._teamStatus = d.team_status || null; if (d.rating) this._rated = true; if ('live_agent' in d) this._setLive(d.live_agent, false);
     const fresh = (d.messages || []).filter((m) => !this._transcript.some((t) => t.aid === m.id));
     fresh.forEach((m) => this._addAgent(m));
     if (fresh.length) { this._persist(); this._markLast(); this._announce(`${fresh[fresh.length - 1].author || 'Deep'} from the team replied`); this._notifyReply(fresh[fresh.length - 1], fresh.length);
@@ -1646,6 +1654,55 @@ class DeepAssistant extends HTMLElement {
     this._teamWait(waiting);
     if (waiting && this.hasAttribute('open')) this._teamT = setTimeout(() => this._teamCheck(), 12000);
     else if (waiting && this._notifyOn()) this._teamT = setTimeout(() => this._teamCheck(), document.hidden ? 30000 : 20000);
+  }
+  // ---------------------------------------------------------------- live chat with the team (app/live.py): one stream while the chat is open
+  _liveWanted() { return !!(this.api && this._sid && this._transcript.length && this.hasAttribute('open') && !(this._cfg && this._cfg.live === false) && typeof ReadableStream !== 'undefined'); }
+  async _liveConnect() {
+    if (this._liveCtl || !this._liveWanted()) return;
+    const sid = this._sid, ctl = new AbortController(); this._liveCtl = ctl; let ok = false;
+    try {
+      const r = await fetch(this._url('/conversations/' + encodeURIComponent(sid) + '/live'), { headers: this._headers(false), signal: ctl.signal });
+      if (!r.ok || !r.body) throw new Error('http ' + r.status);
+      ok = true; this._liveFails = 0;
+      const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+      while (true) {
+        const { value, done } = await reader.read(); if (done) break; buf += dec.decode(value, { stream: true });
+        let i; while ((i = buf.indexOf('\n\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2); if (!line.startsWith('data:')) continue;
+          let ev; try { ev = JSON.parse(line.slice(5)); } catch { continue; } if (sid === this._sid) this._liveEvent(ev); }
+      }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    finally { if (this._liveCtl === ctl) this._liveCtl = null; }
+    if (!ok) this._liveFails = (this._liveFails || 0) + 1;
+    if (sid === this._sid && this._liveWanted() && (this._liveFails || 0) < 6) { clearTimeout(this._liveT); this._liveT = setTimeout(() => this._liveConnect(), ok ? 1000 : Math.min(30000, 2000 * 2 ** this._liveFails)); }
+  }
+  _liveDisconnect() { clearTimeout(this._liveT); if (this._liveCtl) { const c = this._liveCtl; this._liveCtl = null; c.abort(); } this._liveTyping(false); }
+  _liveEvent(ev) {
+    if (ev.type === 'message' && ev.role === 'agent') { this._liveTyping(false); this._teamCheck(); }
+    else if (ev.type === 'typing' && ev.who === 'agent') this._liveTyping(ev.on, ev.author);
+    else if (ev.type === 'live') this._setLive(ev.on ? ev.agent : null, !ev.initial, !!ev.initial);
+  }
+  _setLive(agent, announce, initial) {
+    const was = this._liveAgent || null; this._liveAgent = agent || null;
+    if (this.$log && ((announce && was !== this._liveAgent) || (initial && agent && !this.$log.querySelector('.livenote')))) {
+      const host = agent || was || this._hostShort();
+      this._liveNote(agent ? (initial ? `You're chatting with ${host}` : `${host} joined the chat`) : `${host} left the chat. The assistant is back.`);
+    }
+    if (this.$panel) this.$panel.classList.toggle('is-live', !!this._liveAgent);
+  }
+  _liveNote(text) { this._liveTyping(false); const d = document.createElement('div'); d.className = 'livenote'; d.setAttribute('role', 'status'); d.innerHTML = `<span>${SVG.user}${esc(text)}</span>`; this.$log.appendChild(d); this._scroll(); }
+  _liveTyping(on, author) {
+    clearTimeout(this._agTypT); const old = this.$log && this.$log.querySelector('.agtyping'); if (!on) { if (old) old.remove(); return; }
+    const who = author || this._liveAgent || this._hostShort(); const d = old || document.createElement('div'); d.className = 'agtyping'; d.setAttribute('aria-live', 'polite');
+    d.innerHTML = `<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>${esc(who)} is typing…</span>`;
+    if (!old) this.$log.appendChild(d); else this.$log.appendChild(d); this._scroll(); this._agTypT = setTimeout(() => this._liveTyping(false), 8000);
+  }
+  _typingSend(on) {  // "is typing" for the team, only while the chat is with them; at most every 2.5 s, off after 4 s idle
+    if (!this.api || !this._sid || !this._transcript.length || !(this._liveAgent || this._teamStatus === 'waiting' || this._teamStatus === 'replied')) return;
+    const post = (v) => { this._typOn = v; fetch(this._url('/conversations/' + encodeURIComponent(this._sid) + '/typing'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ on: v }) }).catch(() => {}); };
+    clearTimeout(this._typOffT);
+    if (!on) { if (this._typOn) post(false); return; }
+    if (!this._typOn || Date.now() - (this._typAt || 0) > 2500) { this._typAt = Date.now(); post(true); }
+    this._typOffT = setTimeout(() => post(false), 4000);
   }
   // ---------------------------------------------------------------- notify when Deep replies (a browser notification + a blinking tab)
   _notifyOn() { return !(this._cfg && this._cfg.reply_notify === false); }
@@ -2644,7 +2701,7 @@ class DeepAssistant extends HTMLElement {
     const user = this._add('user', '', Date.now()); this._setText(user, shown); this._transcript.push({ role: 'user', text: shown, ts: Date.now() }); this._persist(); this._emit('question', { text, attachments: files.map((a) => a.id) });
     this._attachments = []; this._renderAttachments();
     const bot = this._add('bot', ''); const act = this._activity(bot); this._markLast();
-    let answer = '', sources = [], all = [], failed = false, mid = null, offer = false, frus = null, buy = null, fit = null, booking = false, card = null; const sid = this._sid;
+    let answer = '', sources = [], all = [], failed = false, mid = null, offer = false, frus = null, buy = null, fit = null, booking = false, card = null, liveEv = null; const sid = this._sid;
     this._controller = new AbortController(); const me = this._me || {};
     const fail = (msg) => { failed = true; this._setText(bot, msg); bot.classList.add('err'); };
     try {
@@ -2678,6 +2735,7 @@ class DeepAssistant extends HTMLElement {
           else if (ev.type === 'lang') { this._lastLang = ev.code || null; }
           else if (ev.type === 'handover') { bot.classList.remove('skel'); this._renderHandover(bot, ev.prefill || ''); this._emit('action', { action: 'handover_requested' }); }
           else if (ev.type === 'handover_offer') { offer = true; this._emit('action', { action: 'unanswered', label: text }); }
+          else if (ev.type === 'live') { liveEv = ev; }
           else if (ev.type === 'buying') { buy = ev; this._emit('action', { action: 'buying', label: (ev.kinds || []).join(',') }); }
           else if (ev.type === 'wrong_fit') { fit = ev; this._nudged = true; this._emit('action', { action: 'wrong_fit', label: ev.kind }); }
           else if (ev.type === 'frustration') { frus = ev; this._emit('action', { action: 'frustration', label: (ev.reasons || []).join(',') }); }
@@ -2689,6 +2747,11 @@ class DeepAssistant extends HTMLElement {
       if (e.name === 'AbortError') { this._uiDrop(card); this._setText(bot, answer || 'Stopped.'); if (answer) bot.insertAdjacentHTML('beforeend', '<div class="note">Stopped.</div>'); }
       else { this._uiDrop(card); fail("Couldn't reach Deep. Check your connection, then try again."); this._online = false; this._health(); this._emit('error', { error: String(e) }); }
     } finally {
+      if (liveEv && !failed) {   // the team has this chat (app/live.py): no assistant bubble, the message waits for them
+        bot.closest('.row').remove(); this._history.push({ role: 'user', content: shown }); this._history = this._history.slice(-12);
+        this._setLive(liveEv.agent, false); this._typingSend(false); this._controller = null; this._setBusy(false); if (!this._voice) this._focusInput();
+        this._markLast(); this._scroll(); this._liveConnect(); return;
+      }
       if (card && !card.done) this._uiDrop(card);   // stream ended without 'ui end' (abort, provider error): no half card
       // _stick still holds "was the reader at the bottom before the last change", so the tail below follows the same rule
       bot.classList.remove('streaming'); if (bot.classList.contains('skel')) this._setText(bot, answer || '…', all);
@@ -2704,7 +2767,7 @@ class DeepAssistant extends HTMLElement {
       this._history.push({ role: 'user', content: shown }, { role: 'assistant', content: answer }); this._history = this._history.slice(-12);
       const entry = { role: 'bot', text: failed ? bot.dataset.raw : answer, sources, ts: Date.now(), mid, err: failed || undefined, ui: (card && card.done && card.program) || undefined }; this._transcript.push(entry); if (card) card.entry = entry; this._persist();
       this._controller = null; this._setBusy(false); if (!this._voice) this._focusInput(); this._scroll();
-      this._emit('answer', { question: text, answer: raw, sources, messageId: mid, failed }); if (!failed) this._maybeRate(); this._edCheck();
+      this._emit('answer', { question: text, answer: raw, sources, messageId: mid, failed }); if (!failed) this._maybeRate(); this._edCheck(); this._liveConnect();
       if (this._view === 'chat' && this._sid === sid) await this._markRead(sid);
       this._refreshBadge(); if (this._view === 'messages') this._renderConversations();
       clearTimeout(this._titleT); this._titleT = setTimeout(() => { if (this._view === 'messages') this._renderConversations(); else this._convos = null; }, 6000);

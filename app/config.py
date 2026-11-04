@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     help_answer_min_score: float = Field(default=0.62, alias="HELP_ANSWER_MIN_SCORE")  # cite an article in a chat answer
     # the team answering inside the chat (app/team.py)
     team_reply_author: str = Field(default="Deep", alias="TEAM_REPLY_AUTHOR")            # name shown on console replies
+    live_chat: bool = Field(default=True, alias="LIVE_CHAT")   # live chat (app/live.py): instant team messages, typing, take-over
+    live_idle_minutes: int = Field(default=20, alias="LIVE_IDLE_MINUTES")   # a take-over with no team activity this long ends by itself
     team_email_after_minutes: int = Field(default=3, alias="TEAM_EMAIL_AFTER_MINUTES")  # unread team reply -> email
     team_host_notify_minutes: int = Field(default=15, alias="TEAM_HOST_NOTIFY_MINUTES")  # "visitor wrote again" throttle
     # News tab (app/news.py): which tenant this widget shows, and how far back / how many items

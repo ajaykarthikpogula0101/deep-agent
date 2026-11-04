@@ -53,13 +53,20 @@ def rate(session_id: str, visitor_id: str | None, user_id: str | None, score: in
 
 # ---------------------------------------------------------------- hand-off status
 def set_status(session_id: str, status: str | None) -> bool:
-    """None = back to the assistant only. Used by the console and by the hand-over form ('waiting')."""
+    """None = back to the assistant only. Used by the console and by the hand-over form ('waiting'). Closing a chat (or
+    giving it back to the assistant) also ends a take-over (app/live.py)."""
     if status is not None and status not in STATUSES:
         return False
     with conn() as c:
         n = c.execute("UPDATE sessions SET team_status = %s, team_status_at = now() WHERE session_id = %s",
                       (status, session_id)).rowcount
         c.commit()
+    if n:
+        from app import live
+
+        if status in (None, "closed"):
+            live.hand_back(session_id, reason="closed")
+        live.emit(session_id, {"type": "status", "team_status": status}, visitor=False)
     return n > 0
 
 
@@ -87,6 +94,10 @@ def reply(session_id: str, text: str, author: str | None = None) -> dict[str, An
         c.execute("UPDATE sessions SET team_status = 'replied', team_status_at = now() WHERE session_id = %s", (session_id,))
         c.commit()
     log_event("team_reply", session_id, {"message_id": int(row[0]), "author": author, "chars": len(text)})
+    from app import live   # instant in the visitor's chat and the console (app/live.py); the polling stays as the fallback
+
+    live.touch(session_id)
+    live.emit(session_id, {"type": "message", "role": "agent", "id": int(row[0]), "author": author, "text": text, "ts": row[1].isoformat()})
     return {"id": int(row[0]), "ts": row[1], "role": "agent", "author": author, "text": text}
 
 
@@ -97,8 +108,9 @@ def updates(session_id: str, visitor_id: str | None, user_id: str | None, after_
             return None
         rows = c.execute("""SELECT id, ts, text, author FROM messages WHERE session_id = %s AND role = 'agent' AND id > %s
                             ORDER BY id""", (session_id, max(0, int(after_id or 0)))).fetchall()
-        st = c.execute("SELECT team_status, rating FROM sessions WHERE session_id = %s", (session_id,)).fetchone()
+        st = c.execute("SELECT team_status, rating, live_agent FROM sessions WHERE session_id = %s", (session_id,)).fetchone()
     return {"session_id": session_id, "team_status": st[0] if st else None, "rating": st[1] if st else None,
+            "live_agent": st[2] if st else None,
             "messages": [{"id": r[0], "ts": r[1], "role": "agent", "author": r[3] or "Deep", "text": r[2]} for r in rows]}
 
 

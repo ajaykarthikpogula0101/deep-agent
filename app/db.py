@@ -422,7 +422,9 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS rating_note TEXT;
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS rated_at TIMESTAMPTZ;
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_status TEXT;          -- NULL (AI only) | waiting | replied | closed
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_status_at TIMESTAMPTZ;
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_notified_at TIMESTAMPTZ;  -- last "visitor wrote again" email to the host
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_notified_at TIMESTAMPTZ;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS live_agent TEXT;          -- live chat (app/live.py): who took the chat over; NULL = the assistant answers
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS live_at TIMESTAMPTZ;      -- last team activity in a taken-over chat (idle ones end by themselves)  -- last "visitor wrote again" email to the host
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS author TEXT;               -- role 'agent': who on the team wrote it
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ;   -- role 'agent': emailed to the visitor
 

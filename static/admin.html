@@ -174,6 +174,50 @@
   .back { margin-bottom:14px }
   .lead.hot { background:var(--accent); border-color:var(--accent); color:#fff }
   #convo-mem pre { border-radius:10px }
+  /* live inbox (app/live.py) */
+  .ibx [hidden] { display:none !important }
+  .ibx { display:grid; grid-template-columns:300px minmax(0, 1fr) 290px; height:calc(100vh - 150px); min-height:520px; border:1px solid var(--line);
+         border-radius:14px; background:var(--panel); box-shadow:var(--shadow); overflow:hidden }
+  .ib-list { display:flex; flex-direction:column; border-right:1px solid var(--line); min-height:0; background:var(--side) }
+  .ib-tabs { display:flex; gap:2px; padding:10px; border-bottom:1px solid var(--line); flex-wrap:wrap }
+  .ib-tabs button { flex:1; min-height:32px; padding:4px 8px; border:0; border-radius:8px; background:transparent; color:var(--muted); font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; white-space:nowrap }
+  .ib-tabs button.on { background:var(--panel); color:var(--text); box-shadow:var(--shadow) } .ib-tabs b { color:var(--accent-strong); margin-left:3px }
+  .ib-items { flex:1; overflow-y:auto; min-height:0 }
+  .ib-pad { padding:16px; margin:0; font-size:13px }
+  .ib-it { display:grid; grid-template-columns:1fr auto; gap:2px 8px; width:100%; padding:12px 14px; border:0; border-bottom:1px solid var(--line); background:transparent;
+           text-align:left; font:inherit; color:var(--text); cursor:pointer }
+  .ib-it:hover { background:var(--panel-2) } .ib-it.on { background:var(--accent-soft) }
+  .ib-it b { font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .ib-it .w { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums } .ib-it .w.late { color:var(--danger); font-weight:600 }
+  .ib-it .sn { grid-column:1 / -1; font-size:12.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .ib-it .fl { grid-column:1 / -1; display:flex; gap:4px; flex-wrap:wrap; margin-top:3px } .ib-it .fl:empty { display:none }
+  .ib-foot { display:flex; align-items:center; gap:8px; padding:10px 12px; border-top:1px solid var(--line); font-size:12px; color:var(--muted) }
+  .ib-foot .btn { margin-left:auto; min-height:30px; padding:4px 10px; font-size:12px }
+  .ib-dot { width:8px; height:8px; border-radius:50%; background:var(--line-strong) } .ib-dot.on { background:var(--scan) } .ib-dot.off { background:var(--danger) }
+  .ib-chat { display:flex; flex-direction:column; min-width:0; min-height:0 }
+  .ib-empty { margin:auto; max-width:320px; text-align:center; display:flex; flex-direction:column; gap:6px; color:var(--muted); font-size:13.5px } .ib-empty b { color:var(--text); font-size:15px }
+  .ib-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 18px; border-bottom:1px solid var(--line) }
+  .ib-head .who { min-width:0 } .ib-head .who b { display:block; font-size:15px } .ib-head .who small { color:var(--muted); font-size:12.5px }
+  .ib-head .acts { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap }
+  .ib-livechip { display:inline-flex; align-items:center; gap:6px; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; background:color-mix(in oklab, var(--scan) 12%, var(--panel)); color:var(--scan) }
+  .ib-livechip::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor }
+  .ib-msgs { flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:10px; background:var(--bg) }
+  .ib-m { max-width:76%; display:flex; flex-direction:column; gap:3px } .ib-m .bub { padding:9px 13px; border-radius:14px; white-space:pre-wrap; word-break:break-word; font-size:14px; line-height:1.5 }
+  .ib-m .meta { font-size:11.5px; color:var(--muted) }
+  .ib-m.user { align-self:flex-start } .ib-m.user .bub { background:var(--panel); border:1px solid var(--line); border-bottom-left-radius:4px }
+  .ib-m.assistant { align-self:flex-start } .ib-m.assistant .bub { background:var(--panel-2); color:var(--ink-soft); border-bottom-left-radius:4px }
+  .ib-m.agent { align-self:flex-end; text-align:right } .ib-m.agent .bub { background:var(--accent); color:#fff; border-bottom-right-radius:4px; text-align:left }
+  .ib-m .seen { font-size:11.5px; color:var(--scan); font-weight:600 }
+  .ib-note { align-self:center; font-size:12px; color:var(--muted); background:var(--panel-2); padding:3px 10px; border-radius:999px }
+  .ib-typing { padding:0 18px 8px; font-size:12.5px; color:var(--muted); background:var(--bg) }
+  .ib-form { display:flex; gap:10px; align-items:flex-end; padding:12px 14px; border-top:1px solid var(--line); background:var(--panel) }
+  .ib-form textarea { flex:1; min-height:44px; max-height:180px; resize:none }
+  .ib-prof { border-left:1px solid var(--line); overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:14px; font-size:13px; background:var(--side) }
+  .ib-prof h3 { margin:0; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:600 }
+  .ib-prof .big { font-size:16px; font-weight:650 } .ib-prof dl { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; margin:0 } .ib-prof dt { color:var(--muted) } .ib-prof dd { margin:0; overflow-wrap:anywhere }
+  .ib-prof ul { margin:0; padding-left:18px } .ib-prof li { margin:0 0 3px }
+  @media (max-width:1200px) { .ibx { grid-template-columns:260px minmax(0, 1fr) } .ib-prof { display:none } }
+  @media (max-width:760px) { .ibx { grid-template-columns:1fr; height:auto } .ib-list { max-height:280px } .ib-chat { min-height:520px } }
   /* small screens: the sidebar becomes a top strip */
   @media (max-width:900px) {
     .app { grid-template-columns:1fr }
@@ -193,6 +237,7 @@
   <nav aria-label="Console sections">
     <button data-pane="overview" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Overview</span></button>
     <div class="ng">Visitors</div>
+    <button data-pane="inbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg><span>Inbox</span> <span class="chip" id="ib-badge" hidden></span></button>
     <button data-pane="convos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Conversations</span></button>
     <button data-pane="sessions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Sessions</span></button>
     <button data-pane="bookings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Bookings</span></button>
@@ -230,6 +275,32 @@
     <div class="grid2">
       <div class="card"><h2>Weekly digest · emailed to the host every Monday 09:00 <button class="btn" type="button" id="digest-send" style="float:right">email it now</button><button class="btn" type="button" id="digest-rich" style="float:right;margin-right:8px">preview rich email</button></h2><pre class="pv" id="digest-pv"></pre><iframe id="digest-frame" hidden sandbox title="Rich digest preview" style="width:100%;height:600px;border:1px solid #2a2a2a;border-radius:8px;background:#fff"></iframe><p class="status" id="digest-status"></p></div>
       <div class="card"><h2>Suggested questions · live on the widget <button class="btn" type="button" id="sugg-refresh" style="float:right">refresh</button></h2><div id="sugg" class="chips"></div><p class="muted" id="sugg-note" style="font-size:13px"></p></div>
+    </div>
+  </section>
+  <section class="pane" id="inbox">
+    <div class="ibx">
+      <aside class="ib-list" aria-label="Chats">
+        <div class="ib-tabs" role="tablist">
+          <button type="button" role="tab" data-view="waiting" class="on">Waiting <b id="ib-c-waiting"></b></button>
+          <button type="button" role="tab" data-view="live">Live <b id="ib-c-live"></b></button>
+          <button type="button" role="tab" data-view="team">With team</button>
+          <button type="button" role="tab" data-view="recent">Recent</button>
+        </div>
+        <div class="ib-items" id="ib-items"><p class="muted ib-pad">Loading…</p></div>
+        <div class="ib-foot"><span class="ib-dot" id="ib-conn" title="Live connection"></span><span id="ib-conn-l">Connecting…</span>
+          <button class="btn ghost" type="button" id="ib-alerts">Turn on alerts</button></div>
+      </aside>
+      <section class="ib-chat" aria-label="Conversation">
+        <div class="ib-empty" id="ib-empty"><b>Pick a chat</b><span>Chats waiting for a person appear on the left, longest wait first. New messages arrive here instantly.</span></div>
+        <header class="ib-head" id="ib-head" hidden></header>
+        <div class="ib-msgs" id="ib-msgs" role="log" aria-live="polite"></div>
+        <div class="ib-typing" id="ib-typing" hidden></div>
+        <form class="ib-form" id="ib-form" hidden>
+          <textarea id="ib-text" rows="2" placeholder="Write a reply… (Enter to send, Shift+Enter for a new line)" aria-label="Reply"></textarea>
+          <button class="btn primary" type="submit">Send</button>
+        </form>
+      </section>
+      <aside class="ib-prof" id="ib-prof" aria-label="Visitor"></aside>
     </div>
   </section>
   <section class="pane" id="convos">
@@ -561,7 +632,7 @@ const PANE_SUB = { overview: 'How the assistant is doing', convos: 'Every chat, 
   bookings: 'Calls booked in the chat, lead scores and briefs', outreach: 'Pop-up rules and the organisations visiting', knowledge: 'What the chatbot answers from',
   gaps: "Questions it couldn't answer, and drafted answers to approve", detections: 'Frustration, wrong-fit visitors and buying moments',
   guidance: 'House rules the assistant follows', answers: 'Exact answers for exact questions', help: 'Articles visitors can read in the widget',
-  news: 'Stories, feeds and the News tab', emails: 'The emails the assistant sends' };
+  news: 'Stories, feeds and the News tab', emails: 'The emails the assistant sends', inbox: 'Chats waiting for a person, live' };
 function paneTitle(b) { $('page-title').textContent = b.querySelector('span') ? b.querySelector('span').textContent.trim() : b.textContent.trim(); $('page-sub').textContent = PANE_SUB[b.dataset.pane] || ''; document.title = $('page-title').textContent + ' · ask deep console'; }
 // "Title · explanation" card headings: the explanation becomes a quieter second line
 function splitHeadings(root) { (root || document).querySelectorAll('.card > h2').forEach(h => { if (h.dataset.split) return; h.dataset.split = '1'; const t = h.firstChild; if (!t || t.nodeType !== 3) return; const i = t.textContent.indexOf(' · '); if (i < 0) return; const sub = document.createElement('span'); sub.className = 'h2s'; sub.textContent = t.textContent.slice(i + 3).trim(); t.textContent = t.textContent.slice(0, i); h.appendChild(sub); }); }
@@ -1094,12 +1165,139 @@ $('nwdform').onsubmit = async (e) => { e.preventDefault(); const f = e.target, t
   } catch (err) { $('nwd-status').textContent = err.message; } };
 $('nwtform').onsubmit = async (e) => { e.preventDefault(); const f = e.target; const body = { slug: f.slug.value, name: f.name.value, blog_feed_url: f.blog_feed_url.value, youtube_channel_id: f.youtube_channel_id.value, mention_query: f.mention_query.value, sitemap_index_url: f.sitemap_index_url.value, sitemap_types: f.sitemap_types.value, enabled: f.enabled.checked, site_url: f.site_url.value, kb_enabled: f.kb_enabled.checked };
   try { await api('/admin/news/tenants', { method: 'POST', body: JSON.stringify(body) }); $('nwt-status').textContent = 'saved'; $('nw-tenant').value = ''; loadNews(); } catch (err) { $('nwt-status').textContent = err.message; } };
+
+// ================================================================ live inbox (app/live.py): the queue, the chat, the visitor; instant through /admin/live
+const IB = { view: 'waiting', sid: null, data: null, items: [], es: null, fails: 0, typT: 0, typAt: 0, typOn: false, visT: 0, refreshT: 0 };
+const ago = ts => { if (!ts) return ''; const m = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 60000)); return m < 1 ? 'now' : m < 60 ? m + 'm' : m < 1440 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : Math.floor(m / 1440) + 'd'; };
+const ibWho = it => it.name || it.email || ('Visitor' + (it.city ? ' · ' + it.city : it.country_code ? ' · ' + it.country_code : ''));
+async function loadInbox() {
+  const d = await api('/admin/inbox?view=' + IB.view); IB.items = d.items || [];
+  const c = d.counts || {}; $('ib-c-waiting').textContent = c.waiting || ''; $('ib-c-live').textContent = c.live || '';
+  $('ib-badge').textContent = c.waiting || ''; $('ib-badge').hidden = !c.waiting;
+  paintInboxList();
+}
+function paintInboxList() {
+  const box = $('ib-items');
+  if (!IB.items.length) { box.innerHTML = `<p class="muted ib-pad">${{ waiting: 'Nobody is waiting for a person right now.', live: 'No chat is taken over.', team: 'No chat is with the team.', recent: 'No chats in the last 24 hours.' }[IB.view]}</p>`; return; }
+  box.innerHTML = IB.items.map(it => { const wait = it.waiting_since ? ago(it.waiting_since) : ''; const late = it.waiting_since && (Date.now() - new Date(it.waiting_since)) > 5 * 60000;
+    const who = it.last_role === 'agent' ? 'You: ' : it.last_role === 'assistant' ? 'Assistant: ' : '';
+    const fl = [it.live_agent ? `<span class="ib-livechip">Live · ${esc(it.live_agent)}</span>` : '', it.team_status === 'waiting' ? '<span class="tag warn">waiting</span>' : '',
+      it.frustrated ? '<span class="tag" style="color:var(--danger)">frustrated</span>' : '', it.buying ? '<span class="tag ok">buying</span>' : '', it.quote ? '<span class="tag warn">quote</span>' : ''].join('');
+    return `<button type="button" class="ib-it${it.session_id === IB.sid ? ' on' : ''}" data-sid="${esc(it.session_id)}"><b>${esc(ibWho(it))}</b>
+      <span class="w${late ? ' late' : ''}" title="${wait ? 'waiting for a person' : 'last message'}">${wait ? '⏱ ' + wait : ago(it.last_ts)}</span>
+      <span class="sn">${esc(who + (it.last_text || ''))}</span><span class="fl">${fl}</span></button>`; }).join('');
+  box.querySelectorAll('.ib-it').forEach(b => b.onclick = () => openInbox(b.dataset.sid));
+}
+document.querySelectorAll('.ib-tabs button').forEach(b => b.onclick = () => { IB.view = b.dataset.view; document.querySelectorAll('.ib-tabs button').forEach(x => x.classList.toggle('on', x === b)); loadInbox().catch(e => { $('ib-items').innerHTML = `<p class="muted ib-pad">${esc(e.message)}</p>`; }); });
+async function openInbox(sid) {
+  IB.sid = sid; paintInboxList(); $('ib-empty').hidden = true; $('ib-head').hidden = false; $('ib-form').hidden = false; $('ib-typing').hidden = true;
+  const d = await api('/admin/inbox/' + encodeURIComponent(sid)); if (IB.sid !== sid) return; IB.data = d; paintInboxChat(); paintInboxProfile(); $('ib-text').focus();
+}
+function paintInboxChat() {
+  const d = IB.data, p = d.profile || {}, live = p.live_agent;
+  $('ib-head').innerHTML = `<div class="who"><b>${esc(p.name || p.email || 'Visitor')}</b><small>${esc([p.company, [p.city, p.country].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || 'No name yet')}</small></div>
+    ${live ? `<span class="ib-livechip">Live · ${esc(live)}</span>` : (p.team_status ? `<span class="tag ${p.team_status === 'waiting' ? 'warn' : 'muted'}">${esc(p.team_status)}</span>` : '<span class="tag muted">assistant</span>')}
+    <div class="acts">${live ? '<button class="btn" type="button" id="ib-back">Hand back to AI</button>' : '<button class="btn primary" type="button" id="ib-take">Take over</button>'}
+      <button class="btn ghost" type="button" id="ib-close">Close chat</button></div>`;
+  if ($('ib-take')) $('ib-take').onclick = () => ibTakeover(true); if ($('ib-back')) $('ib-back').onclick = () => ibTakeover(false);
+  $('ib-close').onclick = async () => { if (!IB.sid) return; await api(`/admin/conversations/${encodeURIComponent(IB.sid)}/status`, { method: 'POST', body: JSON.stringify({ status: 'closed' }) }); await refreshInboxChat(); loadInbox(); };
+  const seenAt = p.last_read_at ? new Date(p.last_read_at).getTime() : 0;
+  const msgs = (d.messages || []).filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'agent');
+  const lastAgent = [...msgs].reverse().find(m => m.role === 'agent');
+  $('ib-msgs').innerHTML = msgs.map(m => { const t = new Date(m.ts).getTime(); const who = m.role === 'user' ? (p.name || 'Visitor') : m.role === 'agent' ? (m.author || 'Team') : 'Assistant';
+    const seen = m === lastAgent && seenAt && seenAt >= t - 1000 ? ' · <span class="seen">Seen</span>' : '';
+    return `<div class="ib-m ${m.role}" data-id="${m.id}"><div class="bub">${esc(m.text)}</div><div class="meta">${esc(who)} · ${esc(fmt(m.ts))}${seen}</div></div>`; }).join('')
+    + (live ? `<div class="ib-note">${esc(live)} has this chat · the assistant is paused</div>` : '');
+  $('ib-text').placeholder = live ? `Reply to ${p.name || 'the visitor'} live… (Enter to send)` : `Reply in ${p.name ? p.name + "'s" : 'the visitor\'s'} chat… (Enter to send; Take over to pause the assistant)`;
+  const box = $('ib-msgs'); box.scrollTop = box.scrollHeight;
+}
+function paintInboxProfile() {
+  const p = (IB.data || {}).profile || {}; const sc = p.score;
+  const row = (k, v) => v ? `<dt>${esc(k)}</dt><dd>${v}</dd>` : '';
+  $('ib-prof').innerHTML = `<div><div class="big">${esc(p.name || 'Visitor')}</div><div class="muted">${esc(p.email || 'No email yet')}</div></div>
+    ${sc ? `<div><h3>Lead score</h3><span class="lead ${esc(sc.label)}">${esc(sc.label.replace(/_/g, ' '))} · ${sc.score}</span></div>` : ''}
+    <div><h3>About</h3><dl>${row('Company', esc(p.company))}${row('Location', esc([p.city, p.region, p.country].filter(Boolean).join(', ')))}${row('Network', esc(p.net_org))}
+      ${row('Came from', esc([p.channel, p.referrer_host].filter(Boolean).join(' · ')))}${row('Visits', p.visits ? String(p.visits) : '')}${row('Earlier chats', p.earlier_chats ? String(p.earlier_chats) : '')}${row('First seen', esc(fmt(p.first_seen)))}</dl></div>
+    ${(p.flags || []).length ? `<div><h3>Signals</h3><div class="chips">${p.flags.map(f => `<span class="chip">${esc({ frustration: 'frustrated', buying: 'buying moment', quote: 'asked for a quote', wrong_fit: 'wrong fit', handover: 'emailed Deep' }[f] || f)}</span>`).join('')}</div></div>` : ''}
+    ${p.quote ? `<div><h3>Quote request</h3><dl>${row('Data', esc((p.quote.data_types || []).join(', ')))}${row('Titles', esc(p.quote.titles))}${row('Regions', esc(p.quote.regions))}${row('Volume', esc(p.quote.volume))}${row('Needed by', esc(p.quote.timeline))}${row('Budget', esc(p.quote.budget))}</dl></div>` : ''}
+    ${(p.bookings || []).length ? `<div><h3>Bookings</h3><ul>${p.bookings.map(b => `<li>${esc(b.name)} · ${esc(fmt(b.start_utc))} · ${esc(b.status)}</li>`).join('')}</ul></div>` : ''}
+    ${(p.pages || []).length ? `<div><h3>Pages</h3><ul>${p.pages.map(u => { let t = u; try { t = new URL(u).pathname; } catch {} return `<li class="ell" title="${esc(u)}">${esc(t)}</li>`; }).join('')}</ul></div>` : ''}`;
+}
+async function refreshInboxChat() { if (!IB.sid) return; const sid = IB.sid; const d = await api('/admin/inbox/' + encodeURIComponent(sid)); if (IB.sid === sid) { IB.data = d; paintInboxChat(); paintInboxProfile(); } }
+async function ibTakeover(on) {
+  if (!IB.sid) return;
+  try { await api(`/admin/conversations/${encodeURIComponent(IB.sid)}/takeover`, { method: 'POST', body: JSON.stringify({ on }) }); await refreshInboxChat(); loadInbox(); }
+  catch (e) { $('status').textContent = e.message; }
+}
+$('ib-form').onsubmit = async (e) => { e.preventDefault(); const t = $('ib-text').value.trim(); if (!t || !IB.sid) return; const b = $('ib-form').querySelector('button'); b.disabled = true;
+  try { await api(`/admin/conversations/${encodeURIComponent(IB.sid)}/reply`, { method: 'POST', body: JSON.stringify({ text: t }) }); $('ib-text').value = ''; ibTyping(false); await refreshInboxChat(); loadInbox(); }
+  catch (err) { $('status').textContent = err.message; } finally { b.disabled = false; $('ib-text').focus(); } };
+$('ib-text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('ib-form').requestSubmit(); } });
+$('ib-text').addEventListener('input', () => ibTyping(!!$('ib-text').value.trim()));
+function ibTyping(on) {   // the visitor sees "Deep is typing…": at most every 2.5 s, off after 4 s idle
+  if (!IB.sid) return; clearTimeout(IB.typT); const sid = IB.sid;
+  const post = v => { IB.typOn = v; api(`/admin/conversations/${encodeURIComponent(sid)}/typing`, { method: 'POST', body: JSON.stringify({ on: v }) }).catch(() => {}); };
+  if (!on) { if (IB.typOn) post(false); return; }
+  if (!IB.typOn || Date.now() - IB.typAt > 2500) { IB.typAt = Date.now(); post(true); }
+  IB.typT = setTimeout(() => post(false), 4000);
+}
+// alerts: a short sound and a desktop notification when a visitor waiting for a person writes
+function ibAlertsOn() { try { return localStorage.getItem('dh_ib_alerts') === '1'; } catch { return false; } }
+function paintAlerts() { $('ib-alerts').textContent = ibAlertsOn() ? 'Alerts on' : 'Turn on alerts'; $('ib-alerts').classList.toggle('primary', !ibAlertsOn()); }
+$('ib-alerts').onclick = async () => { const on = !ibAlertsOn(); if (on && typeof Notification !== 'undefined' && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch {} }
+  try { localStorage.setItem('dh_ib_alerts', on ? '1' : '0'); } catch {} if (on) ibBeep(); paintAlerts(); };
+let ibAudio = null;
+function ibBeep() { try { ibAudio = ibAudio || new (window.AudioContext || window.webkitAudioContext)(); const o = ibAudio.createOscillator(), g = ibAudio.createGain(); o.type = 'sine'; o.frequency.value = 880;
+  g.gain.setValueAtTime(0.0001, ibAudio.currentTime); g.gain.exponentialRampToValueAtTime(0.15, ibAudio.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ibAudio.currentTime + 0.35);
+  o.connect(g); g.connect(ibAudio.destination); o.start(); o.stop(ibAudio.currentTime + 0.4); } catch {} }
+async function ibAlert(ev) {
+  if (!ibAlertsOn()) return; const looking = !document.hidden && IB.sid === ev.sid && document.querySelector('#inbox.on');
+  if (looking) return;
+  let it = IB.items.find(x => x.session_id === ev.sid);
+  if (!it) { try { const w = await api('/admin/inbox?view=waiting'); it = (w.items || []).find(x => x.session_id === ev.sid); } catch {} }
+  if (!it || !(it.team_status || it.live_agent)) return;   // only chats with the team, not every assistant chat
+  ibBeep();
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    try { const n = new Notification(`${ibWho(it)} wrote`, { body: (ev.text || '').slice(0, 140), tag: 'ib-' + ev.sid });
+      n.onclick = () => { window.focus(); document.querySelector('nav button[data-pane="inbox"]').click(); openInbox(ev.sid); n.close(); }; } catch {}
+  }
+}
+// the live stream: fetch so the admin token travels in a header, not the address
+async function ibConnect() {
+  if (IB.es || !$('token').value.trim()) return; const ctl = new AbortController(); IB.es = ctl; let ok = false;
+  try {
+    const r = await fetch('/admin/live', { headers: H(), signal: ctl.signal }); if (!r.ok || !r.body) throw new Error('http ' + r.status);
+    ok = true; IB.fails = 0; $('ib-conn').className = 'ib-dot on'; $('ib-conn-l').textContent = 'Live';
+    const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+    while (true) { const { value, done } = await rd.read(); if (done) break; buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf('\n\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2); if (!line.startsWith('data:')) continue; let ev; try { ev = JSON.parse(line.slice(5)); } catch { continue; } ibEvent(ev); } }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  finally { if (IB.es === ctl) IB.es = null; }
+  if (!ok) IB.fails++; $('ib-conn').className = 'ib-dot off'; $('ib-conn-l').textContent = 'Reconnecting…';
+  setTimeout(ibConnect, ok ? 1000 : Math.min(30000, 2000 * 2 ** Math.min(IB.fails, 4)));
+}
+function ibRefreshSoon() { clearTimeout(IB.refreshT); IB.refreshT = setTimeout(() => loadInbox().catch(() => {}), 400); }
+function ibEvent(ev) {
+  if (!ev || !ev.sid) return;
+  if (ev.type === 'message') {
+    if (ev.sid === IB.sid) { $('ib-typing').hidden = true; refreshInboxChat().catch(() => {}); }
+    if (ev.role === 'user') ibAlert(ev);
+    ibRefreshSoon();
+  } else if (ev.type === 'typing' && ev.who === 'visitor' && ev.sid === IB.sid) {
+    const p = (IB.data || {}).profile || {}; clearTimeout(IB.visT); $('ib-typing').textContent = `${p.name || 'The visitor'} is typing…`; $('ib-typing').hidden = !ev.on;
+    if (ev.on) IB.visT = setTimeout(() => { $('ib-typing').hidden = true; }, 7000);
+  } else if (ev.type === 'seen' && ev.sid === IB.sid) { if (IB.data && IB.data.profile) { IB.data.profile.last_read_at = ev.read_at; paintInboxChat(); } }
+  else if (ev.type === 'live' || ev.type === 'status') { if (ev.sid === IB.sid) refreshInboxChat().catch(() => {}); ibRefreshSoon(); }
+}
+setInterval(() => { if (IB.items.length) paintInboxList(); }, 30000);
+paintAlerts();
+
 async function load() {
   const token = $('token').value.trim(); if (!token) { $('status').textContent = 'enter the admin token'; return; }
   try { sessionStorage.setItem('dh_admin', token); } catch {}
   $('status').textContent = 'loading…';
   let err = null;
-  try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadKnowledge(), loadDetections(), loadAnswers(), loadEmails(), loadOutreach(), loadHelpCenter(), loadNews(), loadSites()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; }
+  try { await Promise.all([loadOverview(), loadConvos(), loadBookings(), loadGaps(), loadSessions(), loadGuidance(), loadKnowledge(), loadDetections(), loadAnswers(), loadEmails(), loadOutreach(), loadHelpCenter(), loadNews(), loadSites(), loadInbox()]); $('status').textContent = `updated ${new Date().toLocaleTimeString()}`; ibConnect(); }
   catch (e) { err = e; $('status').textContent = e.message; }
   if (!err || !/wrong token/.test(err.message)) { openHashBooking(); openHashConvo(); }  // a failing unrelated pane must not block the deep link
 }

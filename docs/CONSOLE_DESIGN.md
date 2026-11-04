@@ -36,6 +36,8 @@ Numbers use tabular figures.
 - **Tables**: sticky light header, 10 px cells, hover tint on clickable rows, dates never wrap.
 - **Buttons**: default (outlined), primary (accent), danger, ghost; 36 px high; visible focus ring.
 - **Switches** (Knowledge, Detections): accent when on.
+- **Inbox**: three panes in one card (queue 300 px · chat · visitor 290 px); visitor bubbles left on white, assistant left on
+  `--panel-2`, the team's right on the accent; a centred pill for state notes; the profile pane hides under 1200 px.
 
 ## 5. Layout
 248 px sidebar + fluid content (max 1480 px), 32 px page padding, 20 px between cards, 12 px between tiles; 4 px base grid.

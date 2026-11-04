@@ -40,7 +40,7 @@ from app import chat as chat_mod
 from app import help as help_center
 from app import news
 from app import escalate
-from app import chat_email, compare, intent, knowledge, quote, rewrite
+from app import chat_email, compare, intent, knowledge, live, quote, rewrite
 from app import sites
 from app.chat import respond, sse
 from app.config import settings
@@ -52,7 +52,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.11.04.3"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.11.04.4"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -763,7 +763,43 @@ def conversations_read(session_id: str, request: Request, x_visitor_id: str | No
     if not _origin_ok(request):
         raise HTTPException(403, "origin not allowed")
     vid, uid = _owner(request, x_visitor_id)
-    return {"ok": conversations.mark_read(session_id, vid, uid)}
+    ok = conversations.mark_read(session_id, vid, uid)
+    if ok:
+        live.seen(session_id)   # the console shows "Seen" under the team's messages (app/live.py)
+    return {"ok": ok}
+
+
+# ---- live chat (app/live.py): instant team messages, typing, take-over
+class TypingIn(BaseModel):
+    on: bool = True
+
+
+@app.get("/conversations/{session_id}/live")
+async def conversations_live(session_id: str, request: Request, x_visitor_id: str | None = Header(default=None)):
+    """The visitor's live stream for one of their conversations: the team's messages, their typing, take-over on and off."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    vid, uid = _owner(request, x_visitor_id)
+    if not conversations.owns(session_id, vid, uid):
+        raise HTTPException(404, "no such conversation")
+    agent = live.agent_for(session_id)
+    return StreamingResponse(live.stream(live.visitor_topic(session_id), request.is_disconnected,
+                                         first={"type": "live", "on": bool(agent), "agent": agent, "sid": session_id, "initial": True}),
+                             media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/conversations/{session_id}/typing")
+def conversations_typing(session_id: str, body: TypingIn, request: Request, x_visitor_id: str | None = Header(default=None)):
+    """The visitor is typing (sent at most every few seconds while the chat is with the team): shown in the console."""
+    if not _origin_ok(request):
+        raise HTTPException(403, "origin not allowed")
+    if not _track_limiter.allow(_client_ip(request)):
+        raise HTTPException(429, "too many requests")
+    vid, uid = _owner(request, x_visitor_id)
+    if not conversations.owns(session_id, vid, uid):
+        raise HTTPException(404, "no such conversation")
+    live.typing(session_id, "visitor", body.on)
+    return {"ok": True}
 
 
 # ---- composer media: uploads, GIFs, speech
@@ -780,7 +816,7 @@ def widget_config(request: Request):
             "host_name": getattr(settings, "host_full_name", "") or "Deep", "host_short": settings.host_name_short or "Deep",
             "compare": settings.compare_enabled, "chat_email": settings.chat_email_enabled,
             "quote": settings.quote_enabled, "rewrite": settings.rewrite_enabled and bool(settings.chat_api_key),
-            "reply_notify": settings.reply_notify}
+            "reply_notify": settings.reply_notify, "live": settings.live_chat}
 
 
 # ---- News tab (app/news.py)
@@ -1626,6 +1662,63 @@ def admin_team_reply(session_id: str, body: TeamReplyIn, x_admin_token: str | No
     if out is None:
         raise HTTPException(404, "no such conversation")
     return out
+
+
+class TakeOverIn(BaseModel):
+    on: bool = True
+    author: str | None = Field(default=None, max_length=80)
+
+
+class AgentTypingIn(BaseModel):
+    on: bool = True
+    author: str | None = Field(default=None, max_length=80)
+
+
+@app.get("/admin/live")
+async def admin_live(request: Request, x_admin_token: str | None = Header(default=None)):
+    """The console's live stream: every conversation's messages, typing, "Seen", take-overs and status changes."""
+    _require_admin(x_admin_token)
+    return StreamingResponse(live.stream(live.CONSOLE, request.is_disconnected, first={"type": "hello", "streams": live.hub.count(live.CONSOLE)}),
+                             media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/admin/inbox")
+def admin_inbox(view: str = "waiting", x_admin_token: str | None = Header(default=None)):
+    """The console's live inbox: chats waiting for a person (longest wait first), taken over, with the team, or recent."""
+    _require_admin(x_admin_token)
+    return live.inbox(view)
+
+
+@app.get("/admin/inbox/{session_id}")
+def admin_inbox_chat(session_id: str, x_admin_token: str | None = Header(default=None)):
+    """One chat for the inbox: the messages and who the visitor is."""
+    _require_admin(x_admin_token)
+    t = inbox.transcript(session_id)
+    if not t.get("messages") and not t.get("session"):
+        raise HTTPException(404, "no such conversation")
+    return {**t, "profile": live.profile(session_id)}
+
+
+@app.post("/admin/conversations/{session_id}/takeover")
+def admin_takeover(session_id: str, body: TakeOverIn, x_admin_token: str | None = Header(default=None)):
+    """Take the chat over from the assistant (it stops answering there), or hand it back."""
+    _require_admin(x_admin_token)
+    if body.on:
+        out = live.take_over(session_id, body.author)
+        if out is None:
+            raise HTTPException(404, "no such conversation")
+        return out
+    live.hand_back(session_id)
+    return {"ok": True, "live_agent": None}
+
+
+@app.post("/admin/conversations/{session_id}/typing")
+def admin_typing(session_id: str, body: AgentTypingIn, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    live.typing(session_id, "agent", body.on, author=(body.author or settings.team_reply_author or settings.host_name_short or "Deep"))
+    if body.on:
+        live.touch(session_id)
+    return {"ok": True}
 
 
 class TeamStatusIn(BaseModel):
