@@ -333,6 +333,14 @@
     } catch (e) { return false; }
   })();
   if (EMAIL_PENDING && !ASK && !CHAT && !HELPA && !NEWSA) setTimeout(function () { mount(false).catch(function () {}); }, 1500);
+  // the visitor is waiting for Deep's reply in this tab's conversation (static/deep-assistant.js _teamWait): mount the chat
+  // closed so it keeps checking, notifies them and blinks the tab when the reply comes; it never opens on its own
+  var TEAM_PENDING = (function () {
+    try { var w = JSON.parse(lget('da:' + ORIGIN + ':teamwait') || 'null');
+      return !!(w && w.sid && w.sid === sget('da:' + ORIGIN + ':sid') && Date.now() - (w.ts || 0) < 2 * 86400000);
+    } catch (e) { return false; }
+  })();
+  if (TEAM_PENDING && !EMAIL_PENDING && !ASK && !CHAT && !HELPA && !NEWSA) setTimeout(function () { mount(false).catch(function () {}); }, 1500);
 
   if (PROACTIVE.enabled && dismissLevel() < 2 && !EMAIL_PENDING) setTimeout(function () { outreachCheck('load'); }, PROACTIVE.delayMs);
 

@@ -52,7 +52,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-APP_VERSION = "2026.11.03.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
+APP_VERSION = "2026.11.04.2"  # bump when the widget changes; appended as ?v= to static URLs and shown in the console/footer
 app = FastAPI(title="deependhq assistant", docs_url=None, redoc_url=None)
 
 
@@ -779,7 +779,8 @@ def widget_config(request: Request):
                      "reactions": news.REACTIONS}, "host_photo": "/static/email/host.png",
             "host_name": getattr(settings, "host_full_name", "") or "Deep", "host_short": settings.host_name_short or "Deep",
             "compare": settings.compare_enabled, "chat_email": settings.chat_email_enabled,
-            "quote": settings.quote_enabled, "rewrite": settings.rewrite_enabled and bool(settings.chat_api_key)}
+            "quote": settings.quote_enabled, "rewrite": settings.rewrite_enabled and bool(settings.chat_api_key),
+            "reply_notify": settings.reply_notify}
 
 
 # ---- News tab (app/news.py)

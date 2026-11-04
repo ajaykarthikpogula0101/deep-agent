@@ -177,6 +177,9 @@ class Settings(BaseSettings):
     quote_enabled: bool = Field(default=True, alias="QUOTE_ENABLED")
     # Shorter / Simpler / More detail on an answer (app/rewrite.py)
     rewrite_enabled: bool = Field(default=True, alias="REWRITE_ENABLED")
+    # while a visitor waits for Deep's reply in the chat, the widget keeps checking (also closed) and, when it comes, shows a
+    # browser notification (if they allowed it) and blinks the tab title
+    reply_notify: bool = Field(default=True, alias="REPLY_NOTIFY")
     hot_lead_score: int = Field(default=60, alias="HOT_LEAD_SCORE")
     # knowledge-gap loop (app/gaps.py): nightly drafts for unanswered questions; an approved draft becomes a custom answer
     # and (GAP_FOLLOWUP) the people who asked get the answer by email

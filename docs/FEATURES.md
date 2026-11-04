@@ -495,6 +495,12 @@ in the wrong alphabet is read again (`STT_HINT_RECHECK`). Answers are spoken bac
   sentences), simpler (everyday words), or more detail (the question's pages searched again, new sources). Shorter and
   simpler use only the answer's own facts and keep its citations; *Original* brings the first version back. One model call
   per answer and mode (cached), at most 20 an hour per chat. `REWRITE_ENABLED` switches it off.
+* **Notify when Deep replies** (static/deep-assistant.js, static/widget.js): while a visitor waits for Deep's reply in the
+  chat (after Email Deep), the widget keeps checking every 20 s even with the chat closed, and on the next page (the loader
+  mounts it closed). When Deep replies from the console and the visitor isn't looking at the chat, a browser notification
+  shows "Deep replied" with the first words (clicking it opens the chat), and the tab title blinks "(1) New message from
+  Deep" until they come back. After Email Deep the chat offers "Get a notification when Deep replies? Turn on" (browsers
+  only allow asking from a click); without permission the blinking tab still works. `REPLY_NOTIFY` switches it off.
 * **Console → Detections**: switches for frustration, wrong fit, buying moment and the buying email (with how many chats
   each caught in 30 days), and the wrong-fit routes. `.env` can switch them off install-wide.
 * **The team answers inside the chat** (`app/team.py`, like Intercom Fin's "The team can also help"): the hand-over

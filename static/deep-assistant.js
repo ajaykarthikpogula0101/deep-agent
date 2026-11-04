@@ -31,7 +31,7 @@
  * Theming      Indigo Dream tokens, override on the element: --da-primary --da-primary-hover --da-navy --da-lavender --da-dot
  *              --da-bg --da-surface --da-success --da-text --da-muted --da-line --da-font --da-radius
  */
-const VERSION = '2026.11.03.2';
+const VERSION = '2026.11.04.2';
 // Ask Deep links from booking emails: the Send test copy carries only a question key (prefilled, never sent)
 const ASK_SAMPLE = { prep: 'How should I prepare for this call?', agenda: 'What will we cover on the call?', join: 'How do I join the call?',
   confirm_how: 'How do I confirm my time on Zoom?', after_confirm: 'What happens after I confirm on Zoom?', about: 'What can Deep help me with?',
@@ -251,6 +251,8 @@ textarea.inp { height:auto; min-height:68px; padding:9px 12px; resize:vertical; 
 .frus { display:flex; flex-direction:column; gap:10px; margin:10px 0 0; padding:12px 14px; border:1px solid var(--da-line); border-radius:14px; background:var(--da-surface); box-shadow:inset 3px 0 0 var(--da-primary); font-size:13.5px; line-height:1.45; animation:da-in .3s var(--da-ease) }
 .frus p { margin:0 } .frus b { font-weight:650 } .frus .frow { display:flex; gap:8px; flex-wrap:wrap } .frus .btn svg { width:15px; height:15px; margin-right:6px; vertical-align:-3px }
 @media (prefers-reduced-motion: reduce) { .frus { animation:none } }
+.nask-note { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:10px; padding:10px 12px; border:1px solid var(--da-line); border-radius:12px; background:var(--da-subtle); font-size:12.5px; color:var(--da-text) }
+.nask-note > span { display:flex; align-items:center; gap:8px } .nask-note svg { width:16px; height:16px; flex:none; color:var(--da-ink) }
 .qform { margin-top:4px } .qform .bk-t { display:block } .qform .bk-t small { display:block; color:var(--da-muted); font-weight:400; font-size:12.5px; margin-top:2px }
 .qform .field { margin-top:10px } .qform .inp { width:100%; box-sizing:border-box } .qform select.inp { height:38px } .qform .opt { color:var(--da-muted); font-weight:400 }
 .qgrid { display:grid; grid-template-columns:1fr 1fr; gap:0 10px } @media (max-width:360px) { .qgrid { grid-template-columns:1fr } } .qform .btn.block { margin-top:14px }
@@ -650,6 +652,7 @@ const SVG = {
   checkc: I('<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 10"/>'),
   phone: I('<path d="M5 4h3.5l1.5 4-2 1.5a12 12 0 0 0 6.5 6.5L16 14l4 1.5V19a1 1 0 0 1-1 1A15 15 0 0 1 4 5a1 1 0 0 1 1-1z"/>'),
   wand: I('<path d="M15 4V2M15 10V8M11 6h2M17 6h2M4 20l10-10M18 13l1-1M16 16l1 1"/>'),
+  bell: I('<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
   tag: I('<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9z"/><circle cx="7.5" cy="7.5" r="1.5"/>'),
   layers: I('<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>'),
   compass: I('<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5 5-2z"/>'),
@@ -767,7 +770,7 @@ class DeepAssistant extends HTMLElement {
     });
   }
   book(callType) { return this.startBooking(callType || null); }
-  open() { this.setAttribute('open', ''); }
+  open() { this.setAttribute('open', ''); this._blinkStop(); }
   close() { this.removeAttribute('open'); }
   toggle() { this.hasAttribute('open') ? this.close() : this.open(); }
   setToken(token) { if (token) this.setAttribute('token', token); else this.removeAttribute('token'); }
@@ -1108,7 +1111,7 @@ class DeepAssistant extends HTMLElement {
     if (on && !this._vvH) { this._vvH = () => { this.$panel.style.setProperty('--da-vvh', Math.round(vv.height) + 'px'); this.$panel.style.setProperty('--da-vv-top', Math.round(vv.offsetTop) + 'px'); }; vv.addEventListener('resize', this._vvH); vv.addEventListener('scroll', this._vvH); this._vvH(); }
     else if (!on && this._vvH) { vv.removeEventListener('resize', this._vvH); vv.removeEventListener('scroll', this._vvH); this._vvH = null; }
   }
-  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); if (this._brand() !== 'LakeB2B') this._refreshWelcome(); this._applyExtras(); this._applyFooter(); this._applyComposerCaps(); this._applyTabs(); this._loadNews().then(() => { this._paintNewsDot(); this._newsLive(); }); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); this._edPop(4000); } } catch {} }
+  async _loadConfig() { if (!this.api) return; try { const r = await fetch(this._url('/widget-config')); if (r.ok) { this._cfg = await r.json(); if (this._brand() !== 'LakeB2B') this._refreshWelcome(); this._applyExtras(); if (this._teamWaiting() && !this.hasAttribute('open')) this._teamCheck(); this._applyFooter(); this._applyComposerCaps(); this._applyTabs(); this._loadNews().then(() => { this._paintNewsDot(); this._newsLive(); }); if (this._view === 'help' && !this._helpPage) this._renderHelp(); if (this._view === 'home') this._renderHome(); this._edPop(4000); } } catch {} }
   _setBusy(on) { this._busy = on; this.shadowRoot.querySelector('.i-send').hidden = on; this.shadowRoot.querySelector('.i-stop').hidden = !on; this.$send.classList.toggle('stop', on); this.$send.setAttribute('aria-label', on ? 'Stop generating' : 'Send'); this.$send.title = on ? 'Stop' : 'Send'; this.$log.setAttribute('aria-busy', String(on)); this._setStatus(on ? 'work' : (this._voice ? 'call' : 'idle')); this._syncSend(); }
   _setStatus(mode) {
     const sh = this.shadowRoot, st = sh.querySelector('.st'); if (!st) return;
@@ -1637,9 +1640,52 @@ class DeepAssistant extends HTMLElement {
     this._teamStatus = d.team_status || null; if (d.rating) this._rated = true;
     const fresh = (d.messages || []).filter((m) => !this._transcript.some((t) => t.aid === m.id));
     fresh.forEach((m) => this._addAgent(m));
-    if (fresh.length) { this._persist(); this._markLast(); this._announce(`${fresh[fresh.length - 1].author || 'Deep'} from the team replied`);
+    if (fresh.length) { this._persist(); this._markLast(); this._announce(`${fresh[fresh.length - 1].author || 'Deep'} from the team replied`); this._notifyReply(fresh[fresh.length - 1], fresh.length);
       if (this.hasAttribute('open') && this._view === 'chat') this._markRead(sid).then(() => this._refreshBadge()); else this._refreshBadge(); }
-    if ((this._teamStatus === 'waiting' || this._teamStatus === 'replied') && this.hasAttribute('open')) this._teamT = setTimeout(() => this._teamCheck(), 12000);
+    const waiting = this._teamStatus === 'waiting' || this._teamStatus === 'replied';
+    this._teamWait(waiting);
+    if (waiting && this.hasAttribute('open')) this._teamT = setTimeout(() => this._teamCheck(), 12000);
+    else if (waiting && this._notifyOn()) this._teamT = setTimeout(() => this._teamCheck(), document.hidden ? 30000 : 20000);
+  }
+  // ---------------------------------------------------------------- notify when Deep replies (a browser notification + a blinking tab)
+  _notifyOn() { return !(this._cfg && this._cfg.reply_notify === false); }
+  _teamWait(on) {  // the loader (static/widget.js) mounts the chat closed on the next page while this is set, so the check goes on
+    try { const k = this._key('teamwait'); if (on) localStorage.setItem(k, JSON.stringify({ sid: this._sid, ts: Date.now() })); else { const w = JSON.parse(localStorage.getItem(k) || 'null'); if (w && w.sid === this._sid) localStorage.removeItem(k); } } catch {}
+  }
+  _teamWaiting() { try { const w = JSON.parse(localStorage.getItem(this._key('teamwait')) || 'null'); return !!(w && w.sid === this._sid && Date.now() - (w.ts || 0) < 2 * 86400000); } catch { return false; } }
+  _notifyReply(m, count) {
+    if (!this._notifyOn()) return;
+    const looking = !document.hidden && this.hasAttribute('open') && this._view === 'chat';
+    if (looking) return;
+    const who = m.author || this._hostShort(), text = trunc(plain(m.text || ''), 140);
+    if (document.hidden || !document.hasFocus()) this._blinkStart(count, who);
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && (document.hidden || !document.hasFocus())) {
+      try {
+        const n = new Notification(`${who} replied`, { body: text, icon: this._hostPhoto() || undefined, tag: 'deep-reply-' + this._sid, renotify: true });
+        n.onclick = () => { try { window.focus(); } catch {} this.open(); this.showView('chat'); this._scroll(true); this._blinkStop(); n.close(); this._emit('action', { action: 'reply_notification_click' }); };
+        this._emit('action', { action: 'reply_notification' });
+      } catch {}
+    }
+  }
+  _blinkStart(count, who) {
+    if (this._blink) { this._blink.n += count; return; }
+    const orig = document.title; this._blink = { orig, n: count, on: false };
+    this._blink.t = setInterval(() => { const b = this._blink; if (!b) return; b.on = !b.on; document.title = b.on ? `(${b.n}) New message from ${who}` : b.orig; }, 1200);
+    if (!this._blinkBound) {
+      this._blinkBound = true;
+      const stop = () => { if (!document.hidden && document.hasFocus()) this._blinkStop(); };
+      document.addEventListener('visibilitychange', stop); window.addEventListener('focus', stop);
+    }
+  }
+  _blinkStop() { const b = this._blink; if (!b) return; clearInterval(b.t); document.title = b.orig; this._blink = null; }
+  _notifyAsk(box) {  // after Email Deep: offer the browser notification once, from a click (browsers only allow asking then)
+    if (!this._notifyOn() || typeof Notification === 'undefined' || Notification.permission !== 'default' || !box) return;
+    const host = this._hostShort(); const d = document.createElement('div'); d.className = 'nask-note';
+    d.innerHTML = `<span>${SVG.bell}<span>Get a notification when ${esc(host)} replies, even in another tab?</span></span><button type="button" class="btn primary sm">Turn on</button>`;
+    d.querySelector('button').onclick = async () => { let r = 'default'; try { r = await Notification.requestPermission(); } catch {}
+      d.innerHTML = `<span>${SVG.bell}<span>${r === 'granted' ? `Notifications on. We'll tell you when ${esc(host)} replies.` : `No problem. The tab will blink when ${esc(host)} replies.`}</span></span>`;
+      this._emit('action', { action: 'reply_notification_permission', label: r }); };
+    box.appendChild(d); this._scroll();
   }
   // Fin-style rating of the whole conversation: offered once, after two answers and a quiet moment
   _maybeRate() {
@@ -2254,7 +2300,7 @@ class DeepAssistant extends HTMLElement {
       b.disabled = true; b.classList.add('loading'); note.className = 'note'; note.textContent = 'Sending…';
       try { const r = await fetch(this._url('/handover'), { method: 'POST', headers: this._headers(), body: JSON.stringify({ session_id: this._sid, name, email, message }) });
         const d = r.ok ? await r.json() : null;
-        if (d && d.ok) { this._teamStatus = 'waiting'; setTimeout(() => this._teamCheck(), 1500); clearTimeout(f._nudgeT); this._edClear(); f.classList.add('sent');
+        if (d && d.ok) { this._teamStatus = 'waiting'; this._teamWait(true); setTimeout(() => this._teamCheck(), 1500); setTimeout(() => this._notifyAsk(f), 50); clearTimeout(f._nudgeT); this._edClear(); f.classList.add('sent');
           if (d.chat_line) { this._transcript.push({ role: 'bot', text: d.chat_line, ts: Date.now() }); this._persist(); }
           f.innerHTML = `<div class="booked"><div class="bk-ok" tabindex="-1"><svg class="chk" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9 15.5l4 4 8-8"/></svg><span>${d.chat_line ? 'Email sent to ' + esc(host) : 'Message sent'}</span></div><p class="note">${d.chat_line ? esc(host) + ' will reply to' : 'The team will reply here and to'} <b>${esc(email)}</b>${d.chat_line ? ' and here in this chat' : ''}.${d.visitor_mailed ? ' A copy is in your inbox.' : ''}</p></div>`; f.querySelector('.bk-ok').focus({ preventScroll: true }); this._announce('Message sent'); this._emit('handover', { leadId: d.lead_id, email, briefSent: d.brief_sent }); }
         else { b.disabled = false; b.classList.remove('loading'); note.className = 'note warn'; note.textContent = r.status === 422 ? 'Please check the email address.' : "Couldn't send right now. Please try again."; } }
