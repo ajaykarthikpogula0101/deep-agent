@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Assistant console</title>
+<title>ask deep · console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#0e1311; --panel:#141b18; --panel-2:#1b2420; --line:#27332d; --line-strong:#3a4a41; --text:#e6ece8; --muted:#9aa8a0; --scan:#8fd3a3; --beam:#f28c28; --beam-text:#f6a94f; --danger:#e8907f; --on-beam:#1a1208 }
-  :root[data-theme="light"] { --bg:#f2f5f1; --panel:#fbfcfa; --panel-2:#e9eeea; --line:#d3dcd5; --line-strong:#aebbb2; --text:#182019; --muted:#5c6b62; --scan:#257a4d; --beam:#f28c28; --beam-text:#a94c12; --danger:#b4452f; --on-beam:#1a1208 }
+  :root { color-scheme:light; --bg:#f6f4f1; --panel:#fffefc; --panel-2:#f3f0eb; --line:#e7e2da; --line-strong:#d4cdc2; --text:#1d1a17; --muted:#6e675f; --scan:#1f7a4a; --beam:#f26722; --beam-text:#b8470d; --danger:#b4361f; --on-beam:#ffffff; --accent:#e85d17; --accent-strong:#c94c0e; --accent-soft:#fdeee3; --ink-soft:#3a352f; --side:#fbf9f6; --shadow:0 1px 2px rgba(40,30,20,.05), 0 1px 1px rgba(40,30,20,.03); --shadow-md:0 8px 24px -12px rgba(40,30,20,.18); --ring:0 0 0 3px rgba(242,103,34,.22) }
+  :root[data-theme="dark"] { color-scheme:dark; --bg:#141210; --panel:#1c1a17; --panel-2:#24211d; --line:#2f2b26; --line-strong:#423c35; --text:#efebe5; --muted:#a39b90; --scan:#6fcf97; --beam:#f28c4a; --beam-text:#f6a46e; --danger:#f0937f; --on-beam:#1a1208; --accent:#f2843f; --accent-strong:#f6a46e; --accent-soft:#3a2416; --ink-soft:#d8d2c9; --side:#181614; --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-md:0 12px 28px -14px rgba(0,0,0,.6); --ring:0 0 0 3px rgba(242,132,63,.3) }
   * { box-sizing:border-box }
   body { margin:0; background:var(--bg); color:var(--text); font:400 15px/1.5 "IBM Plex Sans", system-ui, sans-serif }
   .mono { font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase }
@@ -81,23 +81,145 @@
   .out { display:inline-block; border-radius:999px; padding:1px 9px; font-size:12px; border:1px solid var(--line-strong); white-space:nowrap }
   .out.good_fit, .out.follow_up { color:var(--scan); border-color:var(--scan) } .out.not_fit, .out.no_show { color:var(--danger); border-color:var(--danger) } .out.rate { color:var(--beam-text); border-color:var(--beam-text) }
   #tplform label { display:flex; flex-direction:column; gap:4px } #tplform label input[type=checkbox] { width:auto } #tplform label:has(input[type=checkbox]) { flex-direction:row; align-items:center; gap:8px; font:inherit; text-transform:none; letter-spacing:0; color:var(--text) }
+
+  /* ================================================================ console layout and components (docs/CONSOLE_DESIGN.md) */
+  body { font:400 14.5px/1.55 "Geist", ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing:antialiased; letter-spacing:-.003em }
+  .mono, .pv, #convo-mem pre { font-family:"Geist Mono", ui-monospace, monospace }
+  a { color:var(--accent-strong); text-underline-offset:2px } a:hover { color:var(--accent) }
+  .app { display:grid; grid-template-columns:248px minmax(0, 1fr); min-height:100vh }
+  /* sidebar */
+  .side { position:sticky; top:0; height:100vh; display:flex; flex-direction:column; gap:6px; padding:18px 12px 14px; background:var(--side);
+          border-right:1px solid var(--line); overflow-y:auto }
+  .brand { display:flex; align-items:center; gap:10px; padding:2px 10px 16px }
+  .brand .mk { width:30px; height:30px; border-radius:9px; background:var(--accent); color:#fff; display:grid; place-items:center; flex:none }
+  .brand .mk svg { width:17px; height:17px }
+  .brand b { display:block; font-size:15px; font-weight:650; letter-spacing:-.01em; line-height:1.2 } .brand small { display:block; color:var(--muted); font-size:12px; line-height:1.3 }
+  nav { display:flex; flex-direction:column; gap:1px; padding:0; border:0; background:none; overflow:visible }
+  nav .ng { margin:16px 10px 6px; font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted) }
+  nav button { display:flex; align-items:center; gap:11px; width:100%; min-height:38px; padding:8px 10px; border:0; border-radius:9px; background:transparent;
+               color:var(--ink-soft); font-size:14px; font-weight:500; text-align:left; cursor:pointer; transition:background .15s, color .15s }
+  nav button svg { width:18px; height:18px; flex:none; color:var(--muted); transition:color .15s }
+  nav button:hover { background:var(--panel-2); color:var(--text) } nav button:hover svg { color:var(--text) }
+  nav button.on { background:var(--accent-soft); color:var(--accent-strong); font-weight:600; border:0 } nav button.on svg { color:var(--accent) }
+  nav button:focus-visible { outline:none; box-shadow:var(--ring) }
+  nav button .chip { margin-left:auto; padding:0 7px !important; font-size:11px !important; background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600 }
+  .side-foot { margin-top:auto; padding:12px 4px 0; border-top:1px solid var(--line); display:flex; align-items:center; gap:8px }
+  .side-foot .btn { flex:1; justify-content:center }
+  /* top bar */
+  .content { min-width:0; display:flex; flex-direction:column }
+  .top { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:16px 32px; background:color-mix(in oklab, var(--bg) 88%, transparent);
+         border-bottom:1px solid var(--line); backdrop-filter:saturate(1.4) blur(10px); -webkit-backdrop-filter:saturate(1.4) blur(10px) }
+  @supports not (backdrop-filter:blur(1px)) { .top { background:var(--bg) } }
+  .top .ttl { min-width:0 } .top h1 { margin:0; font-size:20px; font-weight:650; letter-spacing:-.02em; line-height:1.25 } .top p { margin:2px 0 0; color:var(--muted); font-size:13px }
+  .top .right { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+  .top .tok { position:relative } .top .tok svg { position:absolute; left:10px; top:50%; width:15px; height:15px; transform:translateY(-50%); color:var(--muted); pointer-events:none }
+  .top .tok input { padding-left:32px; width:190px }
+  .top .status { font-size:12.5px; color:var(--muted); white-space:nowrap }
+  main { padding:24px 32px 56px; max-width:1480px; width:100% }
+  #convo-list td:first-child, #sess td:first-child, #bk-list td:first-child, #hot-list td:first-child, #or-recent td:first-child, #down td:first-child { white-space:nowrap }
+  /* controls */
+  input, select, textarea { min-height:36px; padding:7px 11px; border:1px solid var(--line-strong); border-radius:9px; background:var(--panel); color:var(--text);
+                            transition:border-color .15s, box-shadow .15s }
+  input:hover, select:hover, textarea:hover { border-color:color-mix(in oklab, var(--line-strong) 60%, var(--text)) }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--accent); box-shadow:var(--ring) }
+  input[type=checkbox], input[type=radio] { min-height:0; accent-color:var(--accent) }
+  textarea { line-height:1.55 }
+  .btn { display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:7px 14px; border:1px solid var(--line-strong); border-radius:9px; background:var(--panel);
+         color:var(--text); font-weight:500; font-size:13.5px; box-shadow:var(--shadow); transition:background .15s, border-color .15s, box-shadow .15s }
+  .btn:hover { border-color:color-mix(in oklab, var(--line-strong) 50%, var(--text)); background:var(--panel-2) }
+  .btn:focus-visible { outline:none; box-shadow:var(--ring) }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600 } .btn.primary:hover { background:var(--accent-strong); border-color:var(--accent-strong) }
+  .btn.danger { color:var(--danger) } .btn.danger:hover { border-color:var(--danger); background:color-mix(in oklab, var(--danger) 8%, var(--panel)) }
+  .btn.ghost { background:transparent; box-shadow:none } .btn.icon { padding:7px 10px }
+  /* KPI tiles */
+  .tiles { grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:12px; margin-bottom:22px }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px 13px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:3px }
+  .tile small { color:var(--muted); font-size:12.5px; font-weight:500; letter-spacing:.005em; text-transform:none } .tile small::first-letter { text-transform:uppercase }
+  .tile .n { font-size:26px; font-weight:650; color:var(--text); letter-spacing:-.025em; line-height:1.15; font-variant-numeric:tabular-nums }
+  .tile .sub { color:var(--muted); font-size:12px; line-height:1.4 }
+  /* cards */
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:20px; box-shadow:var(--shadow) }
+  .card > h2, details.card > summary h2 { display:flex; align-items:flex-start; gap:10px; flex-wrap:wrap; margin:0 0 14px; font-size:15px; font-weight:650; color:var(--text);
+               letter-spacing:-.01em; line-height:1.35 }
+  .card > h2 .h2s { display:block; flex-basis:100%; order:3; margin-top:2px; font-size:13px; font-weight:400; color:var(--muted); letter-spacing:0 }
+  .card > h2 > .btn, .card > h2 > span:not(.h2s) { margin-left:auto; float:none !important }
+  .card > h2 > .btn + .btn { margin-left:0 }
+  .grid2 { gap:20px } .grid2 > .card { margin-bottom:20px }
+  /* tables */
+  .wrap { overflow-x:auto; border:1px solid var(--line); border-radius:12px; background:var(--panel) }
+  .card .wrap { border-radius:10px }
+  table { font-size:13.5px; font-variant-numeric:tabular-nums }
+  th { position:sticky; top:0; z-index:1; background:var(--panel-2); color:var(--muted); font-size:12px; font-weight:600; letter-spacing:0; text-transform:none; padding:9px 10px }
+  th::first-letter { text-transform:uppercase }
+  td { padding:10px 10px; border-bottom:1px solid var(--line) } tr:last-child td { border-bottom:0 }
+  tr.click:hover td { background:color-mix(in oklab, var(--accent-soft) 55%, var(--panel)) }
+  /* chips, tags, statuses */
+  .chip { background:var(--panel-2); border:1px solid var(--line); border-radius:999px; padding:3px 11px; font-size:12.5px; color:var(--ink-soft) }
+  .chip b { color:var(--accent-strong); font-weight:600 }
+  .tag { padding:1px 8px; font-weight:600; border:0; background:var(--panel-2) } .tag.ok { color:var(--scan); background:color-mix(in oklab, var(--scan) 12%, var(--panel)) }
+  .tag.warn { color:var(--beam-text); background:var(--accent-soft) } .tag.muted { color:var(--muted) }
+  .chip.knon { color:var(--scan); border-color:color-mix(in oklab, var(--scan) 40%, var(--line)); background:color-mix(in oklab, var(--scan) 9%, var(--panel)) }
+  /* switches and rows (Knowledge, Detections) */
+  .knrow { border-radius:12px; background:var(--panel); padding:13px 16px } .knrow:hover { border-color:var(--line-strong) } .knrow:not(.on) { opacity:.78 }
+  .knsw i { background:var(--line-strong) } .knsw i::after { background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2) }
+  .knsw input:checked + i { background:var(--accent) } .knsw input:checked + i::after { background:#fff }
+  .knprev { border-radius:12px; background:var(--panel-2) }
+  /* bars (Overview) */
+  .bars { height:120px; gap:6px; padding-top:8px } .bars div { border-radius:6px 6px 2px 2px; background:var(--line); overflow:visible }
+  .bars div i { border-radius:6px 6px 2px 2px; background:var(--scan) }
+  .bars div:hover::after { background:var(--text); color:var(--bg); border:0; border-radius:6px; padding:4px 8px; font-size:11.5px }
+  /* conversation view */
+  .tx { gap:12px } .m { border-radius:14px; background:var(--panel); box-shadow:var(--shadow); padding:11px 14px }
+  .m.user { background:var(--accent-soft); border-color:transparent } .m.agent { border-left:1px solid var(--line); background:color-mix(in oklab, var(--scan) 8%, var(--panel)) }
+  .back { margin-bottom:14px }
+  .lead.hot { background:var(--accent); border-color:var(--accent); color:#fff }
+  #convo-mem pre { border-radius:10px }
+  /* small screens: the sidebar becomes a top strip */
+  @media (max-width:900px) {
+    .app { grid-template-columns:1fr }
+    .side { position:static; height:auto; flex-direction:row; align-items:center; gap:10px; padding:10px 12px; border-right:0; border-bottom:1px solid var(--line); overflow-x:auto }
+    .brand { padding:0 6px 0 0 } .brand small, nav .ng, .side-foot { display:none }
+    nav { flex-direction:row; gap:4px } nav button { width:auto; white-space:nowrap; min-height:40px }
+    .top { padding:12px 16px; position:static } .top .tok input { width:150px } main { padding:16px }
+  }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important } }
 </style>
 </head>
 <body>
-<header>
-  <h1>ask <span>deep &gt;_</span> console</h1>
+<div class="app">
+<aside class="side">
+  <div class="brand"><span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 8 4 4-4 4M12 16h7"/></svg></span>
+    <span><b>ask deep</b><small>Assistant console</small></span></div>
+  <nav aria-label="Console sections">
+    <button data-pane="overview" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Overview</span></button>
+    <div class="ng">Visitors</div>
+    <button data-pane="convos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Conversations</span></button>
+    <button data-pane="sessions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Sessions</span></button>
+    <button data-pane="bookings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Bookings</span></button>
+    <button data-pane="outreach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg><span>Outreach</span> <span class="chip" id="or-badge" hidden style="padding:0 7px;font-size:11px"></span></button>
+    <div class="ng">Assistant</div>
+    <button data-pane="knowledge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>Knowledge</span></button>
+    <button data-pane="gaps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg><span>Gaps</span></button>
+    <button data-pane="detections"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></svg><span>Detections</span></button>
+    <button data-pane="guidance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36z"/></svg><span>Guidance</span></button>
+    <button data-pane="answers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg><span>Custom answers</span></button>
+    <div class="ng">Content</div>
+    <button data-pane="help"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/></svg><span>Help center</span></button>
+    <button data-pane="news"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8v4h-8z"/></svg><span>News</span> <span class="chip" id="nw-badge" hidden style="padding:0 7px;font-size:11px"></span></button>
+    <button data-pane="emails"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg><span>Emails</span></button>
+  </nav>
+  <div class="side-foot"><button class="btn ghost" id="theme" type="button" title="Switch light / dark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><span id="theme-l">Dark mode</span></button></div>
+</aside>
+<div class="content">
+<header class="top">
+  <div class="ttl"><h1 id="page-title">Overview</h1><p id="page-sub">How the assistant is doing</p></div>
   <div class="right">
-    <input id="token" type="password" placeholder="admin token" size="26">
-    <select id="days"><option value="1">today</option><option value="7" selected>7 days</option><option value="30">30 days</option><option value="90">90 days</option></select>
-    <button class="btn" id="go">Load</button>
-    <button class="btn" id="theme" title="Theme">◐</button>
-    <span class="status" id="status"></span>
+    <label class="tok" title="Admin token"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input id="token" type="password" placeholder="Admin token" aria-label="Admin token" autocomplete="current-password"></label>
+    <select id="days" aria-label="Period"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select>
+    <button class="btn primary" id="go" type="button">Load</button>
+    <span class="status" id="status" role="status"></span>
   </div>
 </header>
-<nav>
-  <button data-pane="overview" class="on">Overview</button><button data-pane="convos">Conversations</button><button data-pane="bookings">Bookings</button><button data-pane="gaps">Gaps</button>
-  <button data-pane="sessions">Sessions</button><button data-pane="knowledge">Knowledge</button><button data-pane="detections">Detections</button><button data-pane="guidance">Guidance</button><button data-pane="answers">Custom answers</button><button data-pane="help">Help center</button><button data-pane="news">News <span class="chip" id="nw-badge" hidden style="padding:0 7px;font-size:11px"></span></button><button data-pane="emails">Emails</button><button data-pane="outreach">Outreach <span class="chip" id="or-badge" hidden style="padding:0 7px;font-size:11px"></span></button>
-</nav>
 <main>
   <section class="pane on" id="overview">
     <div class="tiles" id="tiles"></div>
@@ -423,18 +545,32 @@
     </div>
   </section>
 </main>
+</div>
+</div>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = ts => ts ? new Date(ts).toLocaleString(undefined, { month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
 const pct = x => x == null ? '—' : Math.round(x * 100) + '%';
 try { $('token').value = sessionStorage.getItem('dh_admin') || ''; const t = localStorage.getItem('dh_theme'); if (t) document.documentElement.dataset.theme = t; } catch {}
-$('theme').onclick = () => { const n = (document.documentElement.dataset.theme || 'dark') === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = n; try { localStorage.setItem('dh_theme', n); } catch {} };
+const themeLabel = () => { $('theme-l').textContent = document.documentElement.dataset.theme === 'dark' ? 'Light mode' : 'Dark mode'; };
+$('theme').onclick = () => { const n = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = n; try { localStorage.setItem('dh_theme', n); } catch {} themeLabel(); };
+themeLabel();
+// the top bar names the section and what it is for
+const PANE_SUB = { overview: 'How the assistant is doing', convos: 'Every chat, with what was asked and what happened', sessions: 'Visits, where they came from and their networks',
+  bookings: 'Calls booked in the chat, lead scores and briefs', outreach: 'Pop-up rules and the organisations visiting', knowledge: 'What the chatbot answers from',
+  gaps: "Questions it couldn't answer, and drafted answers to approve", detections: 'Frustration, wrong-fit visitors and buying moments',
+  guidance: 'House rules the assistant follows', answers: 'Exact answers for exact questions', help: 'Articles visitors can read in the widget',
+  news: 'Stories, feeds and the News tab', emails: 'The emails the assistant sends' };
+function paneTitle(b) { $('page-title').textContent = b.querySelector('span') ? b.querySelector('span').textContent.trim() : b.textContent.trim(); $('page-sub').textContent = PANE_SUB[b.dataset.pane] || ''; document.title = $('page-title').textContent + ' · ask deep console'; }
+// "Title · explanation" card headings: the explanation becomes a quieter second line
+function splitHeadings(root) { (root || document).querySelectorAll('.card > h2').forEach(h => { if (h.dataset.split) return; h.dataset.split = '1'; const t = h.firstChild; if (!t || t.nodeType !== 3) return; const i = t.textContent.indexOf(' · '); if (i < 0) return; const sub = document.createElement('span'); sub.className = 'h2s'; sub.textContent = t.textContent.slice(i + 3).trim(); t.textContent = t.textContent.slice(0, i); h.appendChild(sub); }); }
+splitHeadings();
 const H = () => ({ 'X-Admin-Token': $('token').value.trim(), 'Content-Type': 'application/json' });
 async function api(path, opts) { const r = await fetch(path, { headers: H(), ...opts }); if (r.status === 403) throw new Error('wrong token (or ADMIN_TOKEN not set on the server)'); if (!r.ok) throw new Error('error ' + r.status); return r.json(); }
 const days = () => $('days').value;
 
-document.querySelectorAll('nav button').forEach(b => b.onclick = () => { document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b)); document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === b.dataset.pane)); try { sessionStorage.setItem('dh_pane', b.dataset.pane); } catch {} });
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => { document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b)); document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === b.dataset.pane)); try { sessionStorage.setItem('dh_pane', b.dataset.pane); } catch {} paneTitle(b); splitHeadings(); window.scrollTo({ top: 0 }); });
 try { const p = sessionStorage.getItem('dh_pane'); if (p) document.querySelector(`nav button[data-pane="${p}"]`)?.click(); } catch {}
 
 async function loadOverview() {
